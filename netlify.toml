@@ -1,0 +1,20 @@
+[build]
+  command = "npm run build"
+  functions = "netlify/functions"
+  publish = "dist"
+
+[dev]
+  command = "npm run dev:all"
+  port = 3000
+  targetPort = 9000
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[env.production]
+  VITE_API_URL = "/.netlify/functions"
+
+[env.development]
+  VITE_API_URL = "http://localhost:9000"
