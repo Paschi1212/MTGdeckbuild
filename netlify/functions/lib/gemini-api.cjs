@@ -18,6 +18,32 @@ const GEMINI_MODEL_AUDIT = 'gemini-3.5-flash'
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
 
+// Gemini occasionally returns 503 "UNAVAILABLE — high demand" for a few seconds at a time;
+// this is Google-side and transient, not something wrong with the request, so it's worth
+// one or two short retries before giving up rather than failing the whole request on the
+// first hiccup. The SDK surfaces the raw API error body as error.message (a JSON string),
+// not structured status/code fields, so this checks the message text defensively.
+function isRetryableGeminiError(error) {
+  const text = String(error?.message ?? error ?? '')
+  return error?.status === 503 || text.includes('"code":503') || text.includes('UNAVAILABLE') || text.includes('overloaded')
+}
+
+// Kept deliberately short (2 retries, ~0.6s/1.2s backoff) — every one of this file's
+// generateContent calls already runs inside a 30s Netlify function budget that's been hit
+// more than once this session, so retries must stay cheap, not turn one slow call into three.
+async function generateContentWithRetry(params, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await ai.models.generateContent(params)
+    } catch (error) {
+      if (attempt === retries || !isRetryableGeminiError(error)) throw error
+      const delayMs = 600 * (attempt + 1)
+      console.warn(`[Gemini] transient error (attempt ${attempt + 1}/${retries + 1}), retrying in ${delayMs}ms:`, error.message)
+      await new Promise(resolve => setTimeout(resolve, delayMs))
+    }
+  }
+}
+
 function mapUsage(result) {
   return {
     prompt_tokens: result.usageMetadata?.promptTokenCount ?? 0,
@@ -219,7 +245,7 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
   try {
     console.log('[Gemini] Auditing deck:', commander, `(model: ${GEMINI_MODEL_AUDIT})`)
 
-    const result = await ai.models.generateContent({
+    const result = await generateContentWithRetry({
       model: GEMINI_MODEL_AUDIT,
       contents: prompt,
       config: {
@@ -382,7 +408,7 @@ Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb de
   try {
     console.log('[Gemini] Suggesting commanders for:', playStyle)
 
-    const result = await ai.models.generateContent({
+    const result = await generateContentWithRetry({
       model: GEMINI_MODEL,
       contents: prompt,
       config: {
@@ -674,7 +700,7 @@ ${isFirstRound ? 'Baue die Manabasis und den Rest eines vollständigen Commander
 
 Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
 
-  const result = await ai.models.generateContent({
+  const result = await generateContentWithRetry({
     model: GEMINI_MODEL,
     contents: prompt,
     config: {
@@ -946,7 +972,7 @@ Antworte auf Deutsch, knapp und konkret (max. ca. 150 Wörter, außer der Nutzer
   ]
 
   try {
-    const result = await ai.models.generateContent({
+    const result = await generateContentWithRetry({
       model: GEMINI_MODEL,
       contents,
       config: {
