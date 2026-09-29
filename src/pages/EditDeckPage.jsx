@@ -502,7 +502,7 @@ export default function EditDeckPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-7xl mx-auto">
       <h1>✏️ {deckName ? `Deck Editieren: ${deckName}` : 'Deck Editieren'}</h1>
 
       {deckName && (

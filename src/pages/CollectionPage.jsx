@@ -6,7 +6,9 @@ import { loadCollection } from '../lib/collection'
 const COLOR_OPTIONS = [
   { id: 'W', hex: '#F8F6D8' },
   { id: 'U', hex: '#4FA8F5' },
-  { id: 'B', hex: '#1A1A1A' },
+  // True black doesn't work as a UI accent here — it's nearly identical to the dark-mode
+  // card surface color, which made the border/text disappear into the background entirely.
+  { id: 'B', hex: '#6b6b6b' },
   { id: 'R', hex: '#E8524A' },
   { id: 'G', hex: '#4ED689' },
   { id: 'C', hex: '#9CA3AF' } // colorless
@@ -226,7 +228,9 @@ export default function CollectionPage() {
                   className="w-8 h-8 rounded-full text-xs font-bold flex items-center justify-center transition"
                   style={{
                     backgroundColor: selectedColors.includes(color.id) ? color.hex : 'transparent',
-                    border: `2px solid ${color.hex}`,
+                    // Unselected border is always theme-neutral (not the mana hex itself) —
+                    // otherwise a swatch close to the current theme's surface color vanishes.
+                    border: `2px solid ${selectedColors.includes(color.id) ? color.hex : 'var(--color-border)'}`,
                     color: selectedColors.includes(color.id)
                       ? (color.id === 'B' || color.id === 'R' ? '#fff' : '#000')
                       : color.hex
