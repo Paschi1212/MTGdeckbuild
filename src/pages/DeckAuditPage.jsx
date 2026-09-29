@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import CardTile from '../components/CardTile'
 import { readApiError } from '../lib/apiError'
@@ -49,6 +49,13 @@ export default function DeckAuditPage() {
   }
 
   const backToDeck = () => navigate(`/decks/${encodeURIComponent(deckName || '')}`)
+
+  // Split "cards to add" into what's already owned vs. what would need buying — audit-deck
+  // is allowed to suggest either (it only prefers owned cards when they strategically fit,
+  // never restricted to them), but the single flat grid didn't make that distinction visible.
+  const ownedNames = useMemo(() => new Set((collectionSampleNames || []).map(n => n.toLowerCase())), [collectionSampleNames])
+  const ownedCardsToAdd = (audit?.cardsToAdd || []).filter(c => ownedNames.has((c.name || '').toLowerCase()))
+  const toBuyCardsToAdd = (audit?.cardsToAdd || []).filter(c => !ownedNames.has((c.name || '').toLowerCase()))
 
   if (!commander || !deckCards) {
     return (
@@ -119,11 +126,24 @@ export default function DeckAuditPage() {
         </div>
       )}
 
-      {audit?.cardsToAdd?.length > 0 && (
+      {ownedCardsToAdd.length > 0 && (
         <div className="mb-8">
-          <h3 className="text-lg font-bold mb-3" style={{ color: 'var(--g)' }}>✅ Cards to Add</h3>
+          <h3 className="text-lg font-bold mb-3" style={{ color: 'var(--g)' }}>✅ Aus deiner Sammlung</h3>
+          <p className="text-xs text-cmd-muted mb-3">Besitzt du bereits — nichts zu kaufen.</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-            {audit.cardsToAdd.map(card => (
+            {ownedCardsToAdd.map(card => (
+              <CardTile key={card.name} card={card} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {toBuyCardsToAdd.length > 0 && (
+        <div className="mb-8">
+          <h3 className="text-lg font-bold mb-3" style={{ color: 'var(--r)' }}>🛒 Zusätzliche Vorschläge (Zukauf nötig)</h3>
+          <p className="text-xs text-cmd-muted mb-3">Nicht in deiner Sammlung — die KI hält sie trotzdem für eine gute Ergänzung.</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+            {toBuyCardsToAdd.map(card => (
               <CardTile key={card.name} card={card} />
             ))}
           </div>
