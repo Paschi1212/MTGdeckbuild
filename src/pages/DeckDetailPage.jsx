@@ -3,8 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom'
 import CardTile from '../components/CardTile'
 import { loadCollection, getCardsForBinder, getAvailableCardNames } from '../lib/collection'
 import { getCommanderOverride, setCommanderOverride } from '../lib/commanderOverrides'
+import { getDeckPreferences, setDeckPreferences } from '../lib/deckPreferences'
 
 const SAMPLE_CARD_LIMIT = 150
+const POWER_LEVELS = ['Casual', 'Semi-Casual', 'Semi-Competitive', 'Competitive']
 
 function guessCommander(cards, imageMap) {
   let best = null
@@ -32,6 +34,14 @@ export default function DeckDetailPage() {
   // A saved override is authoritative — skip the auto-guess entirely once one exists.
   const [commanderInitialized, setCommanderInitialized] = useState(!!initialOverride)
   const [savedOverride, setSavedOverride] = useState(initialOverride)
+  // "Weak card" means something different in a Casual precon upgrade than in a
+  // Competitive/cEDH list — remembered per deck so it's set once, not re-picked every audit.
+  const [powerLevel, setPowerLevel] = useState(() => getDeckPreferences(deckName).powerLevel || 'Semi-Casual')
+
+  const handlePowerLevelChange = (value) => {
+    setPowerLevel(value)
+    setDeckPreferences(deckName, { powerLevel: value })
+  }
 
   const deckCards = useMemo(() => getCardsForBinder(collection, deckName), [collection, deckName])
 
@@ -85,7 +95,8 @@ export default function DeckDetailPage() {
         commander: commander.trim(),
         deckName,
         deckCards: deckCards.map(c => ({ name: c.name, quantity: c.quantity })),
-        collectionSampleNames
+        collectionSampleNames,
+        powerLevel
       }
     })
   }
@@ -144,6 +155,29 @@ export default function DeckDetailPage() {
             Dies ist nur eine Schätzung (teuerste legendäre Kreatur/Planeswalker im Deck). Falls falsch: korrigieren und auf "Merken" klicken.
           </p>
         )}
+
+        <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--border)' }}>
+          <label className="text-sm text-cmd-muted block mb-2">Power Level (für die Analyse)</label>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {POWER_LEVELS.map(level => (
+              <button
+                key={level}
+                onClick={() => handlePowerLevelChange(level)}
+                className={`p-2 text-sm transition ${
+                  powerLevel === level
+                    ? 'text-white'
+                    : 'text-cmd-muted hover:text-white bg-[color:var(--surface)] border border-[color:var(--border)]'
+                }`}
+                style={powerLevel === level ? { backgroundImage: 'linear-gradient(135deg, var(--u), var(--b))' } : undefined}
+              >
+                {level}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-cmd-muted mt-2">
+            Bestimmt, was "schwache Karte" bei der Analyse bedeutet — wird gespeichert.
+          </p>
+        </div>
       </div>
 
       {loadingImages && (

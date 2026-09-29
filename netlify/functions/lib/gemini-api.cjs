@@ -9,6 +9,12 @@ const { getBulkPrices, getBudgetAlternatives } = require('./scryfall-api.cjs')
 const { getCommanderData, extractRecommendations, extractSynergyCommanders } = require('./edhrec-api.cjs')
 
 const GEMINI_MODEL = 'gemini-3.5-flash-lite'
+// The deck audit's strategy-read + cut/add judgment is the one call in this codebase where
+// reasoning QUALITY matters more than raw speed/cost — it runs once per "Analysieren" click,
+// not on every keystroke like chat, and not multiple rounds like the full-deck builder.
+// Same model family/generation as the lite tier (verified available for this API key), so
+// latency should stay in a similar ballpark rather than jumping to a much heavier "pro" tier.
+const GEMINI_MODEL_AUDIT = 'gemini-3.5-flash'
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
 
@@ -132,7 +138,7 @@ const AUDIT_SCHEMA = {
 /**
  * Audit an existing, already-built deck (real decklist) using Gemini
  */
-async function auditDeck({ commander, deckCards, collectionSampleNames, budget, edhecData, strategyOverride }) {
+async function auditDeck({ commander, deckCards, collectionSampleNames, budget, edhecData, strategyOverride, powerLevel }) {
   // The model previously only ever saw a bare list of card NAMES — every judgment about a
   // card's role (ramp? removal? win-con?) relied purely on the model's own memorized
   // knowledge of that exact name, with zero grounding for anything it doesn't recall well.
@@ -183,13 +189,21 @@ async function auditDeck({ commander, deckCards, collectionSampleNames, budget, 
     ? `\nVOM NUTZER BESTÄTIGTE/KORRIGIERTE STRATEGIE (verbindlich — übernimm das exakt als "strategy" in deiner Antwort, erfinde keine eigene, abweichende Strategie): ${strategyOverride}\n`
     : ''
 
+  // "Weak" is relative — a card that's a clear cut in a cEDH list can be a perfectly fine
+  // include in a casual precon upgrade. Without this, the model has to guess the target
+  // power level from the decklist alone, which skews toward judging everything by a
+  // generic/competitive standard.
+  const powerLevelContext = powerLevel
+    ? `\nZIEL-POWER-LEVEL DES SPIELERS: ${powerLevel} — bewerte "schwach"/"stark" relativ zu DIESEM Niveau, nicht absolut. Schlage bei Competitive/Semi-Competitive eher Effizienz/Konsistenz vor, bei Casual eher Spaß/Thematik über reine Power.\n`
+    : ''
+
   const prompt = `Du bist ein Magic: The Gathering Commander Deck Expert — arbeite wie ein erfahrener Deckbuilder: zuerst verstehen, was das Deck WILL, dann erst bewerten, was nicht passt.
 
 COMMANDER: ${commander}
 
 AKTUELLE DECKLISTE (${deckCards.length} Karten, [Typ, Manawert] wo bekannt):
 ${deckListText}
-${collectionContext}${edhecContext}${edhecCutSignal}${budgetContext}${strategyContext}
+${collectionContext}${edhecContext}${edhecCutSignal}${budgetContext}${strategyContext}${powerLevelContext}
 AUFGABE:
 Bewerte dieses BEREITS GEBAUTE Deck. Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
 - "strategy": ${strategyOverride ? 'übernimm die vom Nutzer bestätigte Strategie oben unverändert in winCondition/gamePlan/weaknesses.' : 'lies aus der Deckliste (Kartentypen, Manawerte, Commander-Fähigkeiten) das TATSÄCHLICHE Spielplan des Decks heraus, BEVOR du irgendeine Karte bewertest — "winCondition" (wie gewinnt dieses Deck konkret), "gamePlan" (Früh-/Mittel-/Spätspiel-Ablauf, Kernrollen: Ramp, Kartenvorteil, Removal/Interaktion, Payoffs — mit welchen Karten sie abgedeckt sind), "weaknesses" (welche dieser Rollen fehlen oder sind unterbesetzt). Das ist die Grundlage für ALLES danach.'}
@@ -203,10 +217,10 @@ Für "cardsToAdd" und "cardsToBuy" gilt gemeinsam: dürfen NICHT bereits in der 
 Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
 
   try {
-    console.log('[Gemini] Auditing deck:', commander)
+    console.log('[Gemini] Auditing deck:', commander, `(model: ${GEMINI_MODEL_AUDIT})`)
 
     const result = await ai.models.generateContent({
-      model: GEMINI_MODEL,
+      model: GEMINI_MODEL_AUDIT,
       contents: prompt,
       config: {
         // Lowered from 0.7 — this is an analytical/evaluative task (judge against a stated

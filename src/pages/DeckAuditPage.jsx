@@ -3,12 +3,16 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import CardTile from '../components/CardTile'
 import { readApiError } from '../lib/apiError'
 import ChatWidget from '../components/ChatWidget'
+import { getDeckPreferences, setDeckPreferences } from '../lib/deckPreferences'
 
 export default function DeckAuditPage() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  const { commander, deckName, deckCards, collectionSampleNames } = location.state || {}
+  const { commander, deckName, deckCards, collectionSampleNames, powerLevel } = location.state || {}
+  // A strategy the user already confirmed/corrected on a previous visit is remembered — no
+  // reason to make them re-teach the tool their deck's game plan every single time.
+  const rememberedStrategy = getDeckPreferences(deckName).strategyOverride || ''
 
   const [audit, setAudit] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -16,7 +20,7 @@ export default function DeckAuditPage() {
   // Once the AI's own read of the deck's strategy comes back, this holds the editable text
   // version of it — the user can correct it before asking for a re-evaluation, instead of
   // the cuts/adds being anchored to a strategy read they never got to see or fix.
-  const [strategyDraft, setStrategyDraft] = useState('')
+  const [strategyDraft, setStrategyDraft] = useState(rememberedStrategy)
   const [editingStrategy, setEditingStrategy] = useState(false)
   // React 18 StrictMode (dev only) intentionally double-invokes a mount effect — without
   // this guard, that fired two full audit requests (EDHREC + Gemini) on every page load,
@@ -34,7 +38,7 @@ export default function DeckAuditPage() {
       return
     }
 
-    runAudit()
+    runAudit(rememberedStrategy || undefined)
   }, [])
 
   const formatStrategy = (strategy) => strategy
@@ -48,7 +52,7 @@ export default function DeckAuditPage() {
 
       const response = await fetch('/.netlify/functions/audit-deck', {
         method: 'POST',
-        body: JSON.stringify({ commander, deckName, deckCards, collectionSampleNames, strategyOverride })
+        body: JSON.stringify({ commander, deckName, deckCards, collectionSampleNames, strategyOverride, powerLevel })
       })
 
       if (response.ok) {
@@ -139,7 +143,10 @@ export default function DeckAuditPage() {
                 style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
               />
               <div className="flex gap-2 mt-3">
-                <button onClick={() => runAudit(strategyDraft)} className="btn-primary text-sm flex-1">
+                <button
+                  onClick={() => { setDeckPreferences(deckName, { strategyOverride: strategyDraft }); runAudit(strategyDraft) }}
+                  className="btn-primary text-sm flex-1"
+                >
                   🔄 Neu bewerten mit dieser Strategie
                 </button>
                 <button onClick={() => { setEditingStrategy(false); setStrategyDraft(formatStrategy(audit.strategy)) }} className="btn-secondary text-sm px-4">
@@ -152,6 +159,14 @@ export default function DeckAuditPage() {
               <p><strong>Win Condition:</strong> {audit.strategy.winCondition}</p>
               <p><strong>Spielplan:</strong> {audit.strategy.gamePlan}</p>
               <p><strong>Schwächen:</strong> {audit.strategy.weaknesses}</p>
+              {rememberedStrategy && (
+                <button
+                  onClick={() => { setDeckPreferences(deckName, { strategyOverride: '' }); runAudit() }}
+                  className="text-xs text-cmd-muted underline"
+                >
+                  Gemerkte Korrektur verwerfen & KI neu raten lassen
+                </button>
+              )}
             </div>
           )}
         </div>
