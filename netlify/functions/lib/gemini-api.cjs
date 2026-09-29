@@ -32,6 +32,14 @@ async function enrichWithImages(cards) {
   }))
 }
 
+// Plain lowercase-only comparison let real duplicates slip through: a trailing space, a
+// double-faced card named with just its front face on one side and "Front // Back" on the
+// other (Gemini isn't consistent about which form it uses), or stray whitespace from the
+// model's own formatting. Normalizing to the front-face name catches all of these.
+function normalizeCardName(name) {
+  return (name || '').trim().toLowerCase().split('//')[0].trim()
+}
+
 function parseJson(text) {
   try {
     // Gemini can wrap JSON in markdown fences even with responseMimeType set; strip defensively
@@ -169,9 +177,9 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
     // Gemini occasionally hallucinates a "cut" suggestion that isn't actually in the
     // decklist (small/fast models like flash-lite do this more than larger ones) —
     // rather than trust the prompt alone, hard-filter against the real deck here.
-    const deckCardNames = new Set(deckCards.map(c => c.name.toLowerCase()))
+    const deckCardNames = new Set(deckCards.map(c => normalizeCardName(c.name)))
     const rawCardsToCut = parsed.cardsToCut || []
-    const validCardsToCut = rawCardsToCut.filter(c => deckCardNames.has((c.name || '').toLowerCase()))
+    const validCardsToCut = rawCardsToCut.filter(c => deckCardNames.has(normalizeCardName(c.name)))
     if (validCardsToCut.length !== rawCardsToCut.length) {
       console.warn(
         `[Gemini] auditDeck: dropped ${rawCardsToCut.length - validCardsToCut.length} hallucinated cardsToCut ` +
@@ -181,10 +189,10 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
 
     // cardsToAdd is meant to be collection-only ("you already own this, nothing to buy") —
     // enforce that in code rather than trust the prompt alone, same as the other guards.
-    const collectionNames = new Set((collectionSampleNames || []).map(n => n.toLowerCase()))
+    const collectionNames = new Set((collectionSampleNames || []).map(n => normalizeCardName(n)))
     const rawCardsToAdd = parsed.cardsToAdd || []
     const validCardsToAdd = rawCardsToAdd.filter(c =>
-      !deckCardNames.has((c.name || '').toLowerCase()) && collectionNames.has((c.name || '').toLowerCase())
+      !deckCardNames.has(normalizeCardName(c.name)) && collectionNames.has(normalizeCardName(c.name))
     )
     if (validCardsToAdd.length !== rawCardsToAdd.length) {
       console.warn(
@@ -196,7 +204,7 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
     // cardsToBuy is the deliberately collection-independent list — only needs to not
     // already be in the deck.
     const rawCardsToBuy = parsed.cardsToBuy || []
-    const validCardsToBuy = rawCardsToBuy.filter(c => !deckCardNames.has((c.name || '').toLowerCase()))
+    const validCardsToBuy = rawCardsToBuy.filter(c => !deckCardNames.has(normalizeCardName(c.name)))
     if (validCardsToBuy.length !== rawCardsToBuy.length) {
       console.warn(
         `[Gemini] auditDeck: dropped ${rawCardsToBuy.length - validCardsToBuy.length} cardsToBuy ` +
