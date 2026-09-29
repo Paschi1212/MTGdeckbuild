@@ -76,6 +76,14 @@ const AUDIT_SCHEMA = {
         required: ['name', 'reason']
       }
     },
+    cardsToBuy: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { name: { type: 'string' }, reason: { type: 'string' } },
+        required: ['name', 'reason']
+      }
+    },
     cardsToCut: {
       type: 'array',
       items: {
@@ -85,7 +93,7 @@ const AUDIT_SCHEMA = {
       }
     }
   },
-  required: ['summary', 'cardsToAdd', 'cardsToCut']
+  required: ['summary', 'cardsToAdd', 'cardsToBuy', 'cardsToCut']
 }
 
 /**
@@ -121,7 +129,10 @@ AUFGABE:
 Bewerte dieses BEREITS GEBAUTE Deck. Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
 - "summary": kurze deutsche Fließtext-Bewertung (Mana-Kurve, Synergie mit dem Commander, Schwachstellen), 3-5 Sätze
 - "cardsToCut": Schwächste Karten AUS DER OBIGEN DECKLISTE mit Begründung, warum sie raus sollten — bezogen auf DIESEN Commander und DIESE Deckliste, keine generischen "das ist eine schwache Karte"-Begründungen. Üblicherweise 3-6 Karten, aber KEINE feste Obergrenze — wenn das Deck wirklich viele Schwachstellen hat, nenne mehr; wenn es schon stark ist, nenne weniger oder auch gar keine. KRITISCH: "name" muss EXAKT und WORTWÖRTLICH einem Eintrag aus der Deckliste oben entsprechen — erfinde niemals eine Karte, die dort nicht steht, und ändere keine Namen.
-- "cardsToAdd": Karten, die das Deck verbessern würden. KRITISCH: dürfen NICHT bereits in der Deckliste oben stehen — prüfe das aktiv, bevor du eine Karte nennst. Üblicherweise 3-6 Karten, aber KEINE feste Obergrenze — nenne mehr, wenn das Deck wirklich mehrere echte Lücken hat (z.B. fehlendes Removal UND fehlender Kartenvorteil UND fehlende Wincons), weniger wenn nicht.${edhecData?.allCards?.length ? ' Nutze die EDHREC-Daten oben als echtes Signal, welche Karten in der Community wirklich mit diesem Commander funktionieren — bevorzuge insbesondere die High Synergy Cards, wenn sie zur bestehenden Deckliste passen.' : ''} Bevorzuge Karten aus der Sammlungs-Liste oben, sofern strategisch passend — der Nutzer besitzt sie bereits und muss nichts kaufen. Jede Begründung muss konkret erklären, WAS sie in DIESEM Deck bewirkt (Synergie mit einer bestehenden Karte oder Commander-Fähigkeit, geschlossene Lücke wie fehlendes Removal/Kartenvorteil/Ramp) statt nur "ist eine gute Karte".
+- "cardsToAdd": Karten AUSSCHLIESSLICH aus der Sammlungs-Liste oben ("WEITERE KARTEN IN DER SAMMLUNG..."), die das Deck verbessern würden — der Nutzer besitzt sie bereits, nichts davon muss gekauft werden. KRITISCH: jeder "name" muss WORTWÖRTLICH in dieser Sammlungs-Liste stehen; wenn die Liste leer ist oder nichts davon wirklich passt, gib ein leeres Array zurück statt eine Karte zu erfinden oder eine zu nennen, die nicht dort steht.
+- "cardsToBuy": UNABHÄNGIG von der Sammlung — 2-5 starke Kartenvorschläge, die das Deck spürbar verbessern würden, auch wenn der Nutzer sie nicht besitzt (z.B. bekannte starke Staples/Upgrades für diesen Commander bzw. diese Strategie, die weder im Deck noch in der Sammlung sind). Das ist eine eigene, separate Liste — nenne hier ruhig auch Karten, die es in der Sammlungs-Liste nicht gibt.
+
+Für "cardsToAdd" und "cardsToBuy" gilt gemeinsam: dürfen NICHT bereits in der Deckliste oben stehen — prüfe das aktiv, bevor du eine Karte nennst.${edhecData?.allCards?.length ? ' Nutze die EDHREC-Daten oben als echtes Signal, welche Karten in der Community wirklich mit diesem Commander funktionieren — bevorzuge insbesondere die High Synergy Cards, wenn sie zur bestehenden Deckliste passen.' : ''} Jede Begründung muss konkret erklären, WAS sie in DIESEM Deck bewirkt (Synergie mit einer bestehenden Karte oder Commander-Fähigkeit, geschlossene Lücke wie fehlendes Removal/Kartenvorteil/Ramp) statt nur "ist eine gute Karte".
 
 Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
 
@@ -148,6 +159,7 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
       return {
         summary: result.text,
         cardsToAdd: [],
+        cardsToBuy: [],
         cardsToCut: [],
         parseError: true,
         usage: mapUsage(result)
@@ -167,25 +179,41 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
       )
     }
 
-    // Mirror the same guard for cardsToAdd — the prompt says "must not already be in the
-    // deck" but that's advisory only; observed live suggesting cards already present.
+    // cardsToAdd is meant to be collection-only ("you already own this, nothing to buy") —
+    // enforce that in code rather than trust the prompt alone, same as the other guards.
+    const collectionNames = new Set((collectionSampleNames || []).map(n => n.toLowerCase()))
     const rawCardsToAdd = parsed.cardsToAdd || []
-    const validCardsToAdd = rawCardsToAdd.filter(c => !deckCardNames.has((c.name || '').toLowerCase()))
+    const validCardsToAdd = rawCardsToAdd.filter(c =>
+      !deckCardNames.has((c.name || '').toLowerCase()) && collectionNames.has((c.name || '').toLowerCase())
+    )
     if (validCardsToAdd.length !== rawCardsToAdd.length) {
       console.warn(
         `[Gemini] auditDeck: dropped ${rawCardsToAdd.length - validCardsToAdd.length} cardsToAdd ` +
-        `entr${rawCardsToAdd.length - validCardsToAdd.length === 1 ? 'y' : 'ies'} already present in the decklist`
+        `entr${rawCardsToAdd.length - validCardsToAdd.length === 1 ? 'y' : 'ies'} already in the decklist or not actually in the collection sample`
       )
     }
 
-    const [cardsToAdd, cardsToCut] = await Promise.all([
+    // cardsToBuy is the deliberately collection-independent list — only needs to not
+    // already be in the deck.
+    const rawCardsToBuy = parsed.cardsToBuy || []
+    const validCardsToBuy = rawCardsToBuy.filter(c => !deckCardNames.has((c.name || '').toLowerCase()))
+    if (validCardsToBuy.length !== rawCardsToBuy.length) {
+      console.warn(
+        `[Gemini] auditDeck: dropped ${rawCardsToBuy.length - validCardsToBuy.length} cardsToBuy ` +
+        `entr${rawCardsToBuy.length - validCardsToBuy.length === 1 ? 'y' : 'ies'} already present in the decklist`
+      )
+    }
+
+    const [cardsToAdd, cardsToBuy, cardsToCut] = await Promise.all([
       enrichWithImages(validCardsToAdd),
+      enrichWithImages(validCardsToBuy),
       enrichWithImages(validCardsToCut)
     ])
 
     return {
       summary: parsed.summary,
       cardsToAdd,
+      cardsToBuy,
       cardsToCut,
       usage: mapUsage(result)
     }

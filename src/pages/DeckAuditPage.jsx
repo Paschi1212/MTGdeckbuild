@@ -1,31 +1,28 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import CardTile from '../components/CardTile'
 import { readApiError } from '../lib/apiError'
 import ChatWidget from '../components/ChatWidget'
-import { loadCollection, getAvailableCardNames } from '../lib/collection'
 
 export default function DeckAuditPage() {
   const location = useLocation()
   const navigate = useNavigate()
 
   const { commander, deckName, deckCards, collectionSampleNames } = location.state || {}
-  // collectionSampleNames is capped (~150 names) to keep the AI prompt a reasonable size —
-  // fine for that, but using the same capped list to decide "do I own this suggestion" was
-  // wrong: with a bigger collection, most owned cards simply aren't in that slice and got
-  // misclassified as "needs buying". Ownership classification costs nothing to compute
-  // locally, so it uses the full collection instead.
-  const [collection] = useState(loadCollection)
-  const fullAvailableNames = useMemo(
-    () => getAvailableCardNames(collection, deckName),
-    [collection, deckName]
-  )
 
   const [audit, setAudit] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  // React 18 StrictMode (dev only) intentionally double-invokes a mount effect — without
+  // this guard, that fired two full audit requests (EDHREC + Gemini) on every page load,
+  // competing for the same rate limits and making a 30s timeout much more likely. Also
+  // guards against a real double-click firing this same initial request twice.
+  const hasStartedRef = useRef(false)
 
   useEffect(() => {
+    if (hasStartedRef.current) return
+    hasStartedRef.current = true
+
     if (!commander || !deckCards) {
       setError('Ungültige Eingaben')
       setLoading(false)
@@ -60,13 +57,6 @@ export default function DeckAuditPage() {
   }
 
   const backToDeck = () => navigate(`/decks/${encodeURIComponent(deckName || '')}`)
-
-  // Split "cards to add" into what's already owned vs. what would need buying — audit-deck
-  // is allowed to suggest either (it only prefers owned cards when they strategically fit,
-  // never restricted to them), but the single flat grid didn't make that distinction visible.
-  const ownedNames = useMemo(() => new Set(fullAvailableNames.map(n => n.toLowerCase())), [fullAvailableNames])
-  const ownedCardsToAdd = (audit?.cardsToAdd || []).filter(c => ownedNames.has((c.name || '').toLowerCase()))
-  const toBuyCardsToAdd = (audit?.cardsToAdd || []).filter(c => !ownedNames.has((c.name || '').toLowerCase()))
 
   if (!commander || !deckCards) {
     return (
@@ -137,24 +127,24 @@ export default function DeckAuditPage() {
         </div>
       )}
 
-      {ownedCardsToAdd.length > 0 && (
+      {audit?.cardsToAdd?.length > 0 && (
         <div className="mb-8">
           <h3 className="text-lg font-bold mb-3" style={{ color: 'var(--g)' }}>✅ Aus deiner Sammlung</h3>
           <p className="text-xs text-cmd-muted mb-3">Besitzt du bereits — nichts zu kaufen.</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-            {ownedCardsToAdd.map(card => (
+            {audit.cardsToAdd.map(card => (
               <CardTile key={card.name} card={card} />
             ))}
           </div>
         </div>
       )}
 
-      {toBuyCardsToAdd.length > 0 && (
+      {audit?.cardsToBuy?.length > 0 && (
         <div className="mb-8">
-          <h3 className="text-lg font-bold mb-3" style={{ color: 'var(--r)' }}>🛒 Zusätzliche Vorschläge (Zukauf nötig)</h3>
-          <p className="text-xs text-cmd-muted mb-3">Nicht in deiner Sammlung — die KI hält sie trotzdem für eine gute Ergänzung.</p>
+          <h3 className="text-lg font-bold mb-3" style={{ color: 'var(--r)' }}>🛒 Zusätzliche Kaufvorschläge</h3>
+          <p className="text-xs text-cmd-muted mb-3">Nicht in deiner Sammlung — unabhängig davon starke Verbesserungen für dieses Deck.</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-            {toBuyCardsToAdd.map(card => (
+            {audit.cardsToBuy.map(card => (
               <CardTile key={card.name} card={card} />
             ))}
           </div>
@@ -167,7 +157,7 @@ export default function DeckAuditPage() {
             state: {
               deckName,
               commander,
-              cardsToAdd: audit?.cardsToAdd,
+              cardsToAdd: [...(audit?.cardsToAdd || []), ...(audit?.cardsToBuy || [])],
               cardsToCut: audit?.cardsToCut
             }
           })}

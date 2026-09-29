@@ -49,6 +49,7 @@ exports.handler = async (event) => {
         deckName,
         summary: audit.summary,
         cardsToAdd: audit.cardsToAdd,
+        cardsToBuy: audit.cardsToBuy,
         cardsToCut: audit.cardsToCut,
         parseError: audit.parseError || false,
         usage: audit.usage
