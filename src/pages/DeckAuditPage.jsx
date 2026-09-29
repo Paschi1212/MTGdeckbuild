@@ -3,12 +3,23 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import CardTile from '../components/CardTile'
 import { readApiError } from '../lib/apiError'
 import ChatWidget from '../components/ChatWidget'
+import { loadCollection, getAvailableCardNames } from '../lib/collection'
 
 export default function DeckAuditPage() {
   const location = useLocation()
   const navigate = useNavigate()
 
   const { commander, deckName, deckCards, collectionSampleNames } = location.state || {}
+  // collectionSampleNames is capped (~150 names) to keep the AI prompt a reasonable size —
+  // fine for that, but using the same capped list to decide "do I own this suggestion" was
+  // wrong: with a bigger collection, most owned cards simply aren't in that slice and got
+  // misclassified as "needs buying". Ownership classification costs nothing to compute
+  // locally, so it uses the full collection instead.
+  const [collection] = useState(loadCollection)
+  const fullAvailableNames = useMemo(
+    () => getAvailableCardNames(collection, deckName),
+    [collection, deckName]
+  )
 
   const [audit, setAudit] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -53,7 +64,7 @@ export default function DeckAuditPage() {
   // Split "cards to add" into what's already owned vs. what would need buying — audit-deck
   // is allowed to suggest either (it only prefers owned cards when they strategically fit,
   // never restricted to them), but the single flat grid didn't make that distinction visible.
-  const ownedNames = useMemo(() => new Set((collectionSampleNames || []).map(n => n.toLowerCase())), [collectionSampleNames])
+  const ownedNames = useMemo(() => new Set(fullAvailableNames.map(n => n.toLowerCase())), [fullAvailableNames])
   const ownedCardsToAdd = (audit?.cardsToAdd || []).filter(c => ownedNames.has((c.name || '').toLowerCase()))
   const toBuyCardsToAdd = (audit?.cardsToAdd || []).filter(c => !ownedNames.has((c.name || '').toLowerCase()))
 
