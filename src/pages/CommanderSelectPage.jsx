@@ -5,6 +5,15 @@ import { readApiError } from '../lib/apiError'
 import ChatWidget from '../components/ChatWidget'
 import ChatBuilderPage from './ChatBuilderPage'
 import AnalyzePage from './AnalyzePage'
+import { loadCollection } from '../lib/collection'
+
+// ManaBox exports don't include a card's type line, so this can't be narrowed down to
+// "legendary creatures only" without a per-card Scryfall lookup — every owned card name
+// is offered, which is still far better than no suggestions at all.
+function useCollectionCardNames() {
+  const collection = loadCollection()
+  return collection?.uniqueCardNames || []
+}
 
 const HUB_TABS = [
   { id: 'find', label: '🔍 Commander finden' },
@@ -36,6 +45,7 @@ export default function CommanderSelectPage() {
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [selectedCommander, setSelectedCommander] = useState(null)
+  const collectionCardNames = useCollectionCardNames()
 
   const contextNote = buildCommanderSearchContextNote(preferences)
 
@@ -288,6 +298,7 @@ export default function CommanderSelectPage() {
             <h2 className="text-xl font-bold mb-4">Oder gib einen Commander direkt ein:</h2>
             <input
               type="text"
+              list="collection-commander-names"
               placeholder="z.B. Magus Lucea Kane"
               onKeyPress={(e) => {
                 if (e.key === 'Enter') {
@@ -298,7 +309,7 @@ export default function CommanderSelectPage() {
               style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
             />
             <p className="text-sm text-gray-400 mt-2">
-              Enter zum Bestätigen
+              Enter zum Bestätigen{collectionCardNames.length > 0 ? ' — Vorschläge aus deiner Sammlung beim Tippen' : ''}
             </p>
           </div>
 
@@ -321,6 +332,7 @@ export default function CommanderSelectPage() {
           <div className="card mb-6">
             <input
               type="text"
+              list="collection-commander-names"
               placeholder="z.B. Magus Lucea Kane, Marisi Goat, etc."
               id="commander-input"
               className="w-full text-white rounded-xl p-3 text-lg mb-4"
@@ -337,6 +349,11 @@ export default function CommanderSelectPage() {
             >
               Wählen →
             </button>
+            {collectionCardNames.length > 0 && (
+              <p className="text-sm text-gray-400 mt-2">
+                Vorschläge aus deiner Sammlung beim Tippen
+              </p>
+            )}
           </div>
 
           <button
@@ -357,6 +374,10 @@ export default function CommanderSelectPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <h1>🧙 Commander</h1>
+
+      <datalist id="collection-commander-names">
+        {collectionCardNames.map(name => <option key={name} value={name} />)}
+      </datalist>
 
       <div className="flex gap-2 mb-6 flex-wrap">
         {HUB_TABS.map(tab => (
