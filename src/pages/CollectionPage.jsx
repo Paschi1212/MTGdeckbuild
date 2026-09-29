@@ -108,9 +108,12 @@ export default function CollectionPage() {
 
     if (selectedColors.length > 0) {
       result = result.filter(c => {
-        const cardColors = imageMap[c.scryfallId]?.colors || ''
-        if (selectedColors.includes('C') && cardColors.trim() === '') return true
-        return selectedColors.some(sel => sel !== 'C' && cardColors.includes(sel))
+        // Subset match, not overlap: a card must not contain any color OUTSIDE the
+        // selection (picking Blue+White was showing Red/White cards too, since they
+        // do contain White — just not exclusively).
+        const cardColorList = (imageMap[c.scryfallId]?.colors || '').split(' ').filter(Boolean)
+        if (cardColorList.length === 0) return selectedColors.includes('C')
+        return cardColorList.every(cc => selectedColors.includes(cc))
       })
     }
 

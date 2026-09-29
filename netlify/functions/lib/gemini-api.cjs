@@ -659,16 +659,22 @@ async function buildFullDeckFromChat({ commander, strategyHint, collectionSample
   }
 }
 
-// Bounded — each swap risks 1-2 extra Scryfall calls, and this already runs after up to 3
-// full-deck generation rounds inside the same 30s function invocation.
-const MAX_BUDGET_CORRECTION_CANDIDATES = 8
+// Kept small on purpose — each candidate still costs 1-2 Scryfall round-trips (fetched in
+// parallel below, but a slow/rate-limited response is still a risk), and this whole step
+// runs AFTER up to 3 full-deck generation rounds inside the same 30s function invocation —
+// the exact timeout this codebase has already fought hard to avoid elsewhere.
+const MAX_BUDGET_CORRECTION_CANDIDATES = 5
+// Leaves headroom under Netlify's 30s hard limit for the rest of the response to serialize.
+const BUDGET_CORRECTION_DEADLINE_MS = 25000
 
 // A "max €X to buy" instruction handed to Gemini as free text is exactly the kind of
 // numeric constraint it has proven unreliable at self-enforcing across a 99-card build
 // (see the land-count reliability work above) — so it's verified here against REAL
 // Scryfall prices after generation, same pattern: trust the AI for a first attempt, then
 // deterministically correct against ground truth instead of hoping it got it right.
-async function enforcePurchaseBudget(cards, collectionSampleNames, maxPurchaseBudgetEur) {
+// `requestStartedAt` lets it bail out (reporting the real total but skipping swaps) if the
+// full-deck generation above already ate most of the 30s budget.
+async function enforcePurchaseBudget(cards, collectionSampleNames, maxPurchaseBudgetEur, requestStartedAt) {
   if (!maxPurchaseBudgetEur || maxPurchaseBudgetEur <= 0) {
     return { cards, budgetNote: '' }
   }
@@ -686,6 +692,14 @@ async function enforcePurchaseBudget(cards, collectionSampleNames, maxPurchaseBu
     return { cards: result, budgetNote: `\n\n🛒 Zukaufswert: ca. €${purchaseTotal.toFixed(2)} (innerhalb deines Budgets von €${maxPurchaseBudgetEur}).` }
   }
 
+  if (Date.now() - requestStartedAt > BUDGET_CORRECTION_DEADLINE_MS) {
+    console.warn('[Gemini] enforcePurchaseBudget: skipping correction, too close to the function timeout')
+    return {
+      cards: result,
+      budgetNote: `\n\n⚠️ Zukaufswert: ca. €${purchaseTotal.toFixed(2)} — über deinem Budget von €${maxPurchaseBudgetEur}. Für eine automatische Ersetzung teurer Karten war keine Zeit mehr übrig (Deckbau hat schon lange gedauert) — frag im Chat gezielt nach günstigeren Alternativen für einzelne teure Karten.`
+    }
+  }
+
   // Worst (priciest) non-owned, non-land offenders first — lands are left alone since
   // swapping one risks breaking the manabase, and budget overruns are almost always
   // expensive nonland staples/tutors anyway.
@@ -696,35 +710,46 @@ async function enforcePurchaseBudget(cards, collectionSampleNames, maxPurchaseBu
 
   const existingNamesLower = new Set(result.map(c => c.name.toLowerCase()))
 
-  for (const offender of offenders) {
+  // Fetched in parallel — sequentially, up to 5 candidates x 2 Scryfall calls each risked
+  // 10+ seconds of pure network wait on top of an already-tight budget (this timed out
+  // in testing). Running them concurrently bounds the wait to roughly the slowest single
+  // lookup instead of the sum of all of them; the tradeoff is a few now-unused alternative
+  // lookups when an early swap would otherwise have already closed the gap — an acceptable
+  // cost against blowing the 30s deadline entirely.
+  const alternativesByOffender = await Promise.all(
+    offenders.map(offender => {
+      const overBudgetBy = purchaseTotal - maxPurchaseBudgetEur
+      const priceCeiling = Math.max(1, offender.eur - overBudgetBy / offender.quantity)
+      return getBudgetAlternatives(offender.name, priceCeiling)
+        .then(alternatives => ({ offender, alternatives }))
+        .catch(error => {
+          console.warn('[Gemini] enforcePurchaseBudget: alternative lookup failed for', offender.name, error.message)
+          return { offender, alternatives: [] }
+        })
+    })
+  )
+
+  for (const { offender, alternatives } of alternativesByOffender) {
     if (purchaseTotal <= maxPurchaseBudgetEur) break
 
-    const overBudgetBy = purchaseTotal - maxPurchaseBudgetEur
-    const priceCeiling = Math.max(1, offender.eur - overBudgetBy / offender.quantity)
+    const pick = alternatives.find(a => a.eur > 0 && !existingNamesLower.has(a.name.toLowerCase()))
+    if (!pick) continue
 
-    try {
-      const alternatives = await getBudgetAlternatives(offender.name, priceCeiling)
-      const pick = alternatives.find(a => a.eur > 0 && !existingNamesLower.has(a.name.toLowerCase()))
-      if (!pick) continue
+    const idx = result.findIndex(c => c.name === offender.name)
+    if (idx === -1) continue
 
-      const idx = result.findIndex(c => c.name === offender.name)
-      if (idx === -1) continue
-
-      const savedPerCopy = offender.eur - pick.eur
-      result[idx] = {
-        ...result[idx],
-        name: pick.name,
-        eur: pick.eur,
-        image: pick.image,
-        reason: `Günstiger ersetzt für dein Budget (war ${offender.name}, €${offender.eur.toFixed(2)}).`
-      }
-      existingNamesLower.delete(offender.name.toLowerCase())
-      existingNamesLower.add(pick.name.toLowerCase())
-      purchaseTotal -= savedPerCopy * offender.quantity
-      console.log(`[Gemini] enforcePurchaseBudget: swapped ${offender.name} (€${offender.eur.toFixed(2)}) -> ${pick.name} (€${pick.eur.toFixed(2)})`)
-    } catch (error) {
-      console.warn('[Gemini] enforcePurchaseBudget: alternative lookup failed for', offender.name, error.message)
+    const savedPerCopy = offender.eur - pick.eur
+    result[idx] = {
+      ...result[idx],
+      name: pick.name,
+      eur: pick.eur,
+      image: pick.image,
+      reason: `Günstiger ersetzt für dein Budget (war ${offender.name}, €${offender.eur.toFixed(2)}).`
     }
+    existingNamesLower.delete(offender.name.toLowerCase())
+    existingNamesLower.add(pick.name.toLowerCase())
+    purchaseTotal -= savedPerCopy * offender.quantity
+    console.log(`[Gemini] enforcePurchaseBudget: swapped ${offender.name} (€${offender.eur.toFixed(2)}) -> ${pick.name} (€${pick.eur.toFixed(2)})`)
   }
 
   const budgetNote = purchaseTotal <= maxPurchaseBudgetEur
@@ -740,6 +765,7 @@ async function enforcePurchaseBudget(cards, collectionSampleNames, maxPurchaseBu
  * With enableActions, it can also directly add/remove/adjust cards via function calling.
  */
 async function chatAssistant({ commander, cards, message, history, enableActions, contextNote, collectionSampleNames, bulkBuild }) {
+  const requestStartedAt = Date.now()
   const totalCount = (cards || []).reduce((sum, c) => sum + (c.count || 1), 0)
 
   const deckContext = commander
@@ -836,7 +862,7 @@ Antworte auf Deutsch, knapp und konkret (max. ca. 150 Wörter, außer der Nutzer
         let finalCards = built.cards
         let budgetNote = ''
         if (maxPurchaseBudgetEur) {
-          const budgetResult = await enforcePurchaseBudget(built.cards, collectionSampleNames, maxPurchaseBudgetEur)
+          const budgetResult = await enforcePurchaseBudget(built.cards, collectionSampleNames, maxPurchaseBudgetEur, requestStartedAt)
           finalCards = budgetResult.cards
           budgetNote = budgetResult.budgetNote
         }
