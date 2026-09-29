@@ -32,12 +32,22 @@ async function enrichWithImages(cards) {
   }))
 }
 
-// Plain lowercase-only comparison let real duplicates slip through: a trailing space, a
-// double-faced card named with just its front face on one side and "Front // Back" on the
-// other (Gemini isn't consistent about which form it uses), or stray whitespace from the
-// model's own formatting. Normalizing to the front-face name catches all of these.
+// Plain lowercase-only comparison let real duplicates slip through: a double-faced card
+// named with just its front face on one side and "Front // Back" on the other (Gemini isn't
+// consistent about which form it uses), stray/doubled whitespace, or — very common in
+// Gemini's own JSON output for names like "Sram's Expertise" — a typographic/"smart" quote
+// (’) where the deck data has a plain ASCII apostrophe ('), which a naive comparison treats
+// as two different card names entirely. Normalizing all of these to one canonical form is
+// what actually makes the dedup checks below reliable.
 function normalizeCardName(name) {
-  return (name || '').trim().toLowerCase().split('//')[0].trim()
+  return (name || '')
+    .split('//')[0]
+    .toLowerCase()
+    .replace(/[‘’ʼ´`]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[–—]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function parseJson(text) {
@@ -211,6 +221,11 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
         `entr${rawCardsToBuy.length - validCardsToBuy.length === 1 ? 'y' : 'ies'} already present in the decklist`
       )
     }
+    // Diagnostic for the case this filter STILL misses something — prints exactly what each
+    // suggested name normalizes to, so a real remaining mismatch is visible in the logs
+    // instead of requiring another guess.
+    console.log('[Gemini] auditDeck: cardsToBuy after filter:', validCardsToBuy.map(c => `${c.name} -> "${normalizeCardName(c.name)}"`))
+    console.log('[Gemini] auditDeck: deck card names (normalized):', [...deckCardNames])
 
     const [cardsToAdd, cardsToBuy, cardsToCut] = await Promise.all([
       enrichWithImages(validCardsToAdd),
