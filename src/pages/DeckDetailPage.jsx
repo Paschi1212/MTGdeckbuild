@@ -43,6 +43,10 @@ export default function DeckDetailPage() {
     setDeckPreferences(deckName, { powerLevel: value })
   }
 
+  // Set once a user has corrected/confirmed the AI's strategy read on the Deck-Analyse page
+  // (DeckAuditPage) — surfaced here too so it's visible without re-running a full analysis.
+  const rememberedStrategy = getDeckPreferences(deckName).strategyOverride || ''
+
   const deckCards = useMemo(() => getCardsForBinder(collection, deckName), [collection, deckName])
 
   useEffect(() => {
@@ -179,6 +183,17 @@ export default function DeckDetailPage() {
           </p>
         </div>
       </div>
+
+      {rememberedStrategy && (
+        <div className="card mb-6" style={{ borderColor: 'var(--u)' }}>
+          <h2 className="text-lg font-bold mb-2" style={{ color: 'var(--u)' }}>🎯 Strategie</h2>
+          <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed mb-3">{rememberedStrategy}</p>
+          <p className="text-xs text-cmd-muted">
+            Von dir bestätigt/korrigiert — wird bei jeder Analyse als Grundlage verwendet. Zum Ändern:
+            "📊 Analysieren" ausführen und dort auf "✏️ Korrigieren" klicken.
+          </p>
+        </div>
+      )}
 
       {loadingImages && (
         <p className="text-cmd-muted text-sm mb-4">Lade Kartenbilder…</p>
