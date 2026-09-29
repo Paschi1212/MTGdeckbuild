@@ -4,6 +4,7 @@
  */
 
 const { auditDeck } = require('./lib/gemini-api.cjs')
+const { getCommanderData, extractRecommendations } = require('./lib/edhrec-api.cjs')
 
 exports.handler = async (event) => {
   try {
@@ -25,7 +26,18 @@ exports.handler = async (event) => {
 
     console.log(`[API] Auditing deck "${deckName}" for ${commander}`)
 
-    const audit = await auditDeck({ commander, deckCards, collectionSampleNames, budget })
+    // Best-effort — a broken/rate-limited EDHREC fetch shouldn't block the audit, it just
+    // loses the community-data grounding for cardsToAdd (falls back to Gemini's own
+    // unaided suggestions, same as before this fix).
+    let edhecData = null
+    try {
+      const rawData = await getCommanderData(commander)
+      edhecData = extractRecommendations(rawData)
+    } catch (error) {
+      console.warn('[API] Could not fetch EDHREC data for audit:', error.message)
+    }
+
+    const audit = await auditDeck({ commander, deckCards, collectionSampleNames, budget, edhecData })
 
     return {
       statusCode: 200,

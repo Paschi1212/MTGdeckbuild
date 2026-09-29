@@ -91,7 +91,7 @@ const AUDIT_SCHEMA = {
 /**
  * Audit an existing, already-built deck (real decklist) using Gemini
  */
-async function auditDeck({ commander, deckCards, collectionSampleNames, budget }) {
+async function auditDeck({ commander, deckCards, collectionSampleNames, budget, edhecData }) {
   const deckListText = deckCards
     .map(c => (c.quantity > 1 ? `${c.quantity}x ${c.name}` : c.name))
     .join(', ')
@@ -100,18 +100,28 @@ async function auditDeck({ commander, deckCards, collectionSampleNames, budget }
     ? `\nWEITERE KARTEN IN DER SAMMLUNG DES SPIELERS (nicht in diesem Deck, mögliche Tauschkandidaten):\n${collectionSampleNames.join(', ')}\n`
     : ''
 
+  // Same EDHREC grounding the full-deck builder uses — without it, "cardsToAdd" is just
+  // Gemini's own unaided guess at what's good for this commander, with no check against
+  // what actually works in real decks. That's exactly the kind of ungrounded suggestion
+  // that reads as "doesn't really make sense" for anyone who knows the commander well.
+  const edhecContext = edhecData?.allCards?.length
+    ? `\nEDHREC-DATEN (echte Decks mit ${commander}):\n- High Synergy Cards (überdurchschnittlich oft speziell mit diesem Commander gespielt — starkes Synergie-/Combo-Signal): ${(edhecData.highSynergyCards || []).slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n- Meistgespielte Karten insgesamt: ${edhecData.topCards?.slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n`
+    : ''
+
+  const budgetContext = budget ? `\nBUDGET: Bevorzuge bei "cardsToAdd" Karten bis max. ca. €${budget} pro Stück (Basisländer ausgenommen).\n` : ''
+
   const prompt = `Du bist ein Magic: The Gathering Commander Deck Expert.
 
 COMMANDER: ${commander}
 
 AKTUELLE DECKLISTE (${deckCards.length} Karten):
 ${deckListText}
-${collectionContext}
+${collectionContext}${edhecContext}${budgetContext}
 AUFGABE:
 Bewerte dieses BEREITS GEBAUTE Deck. Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
 - "summary": kurze deutsche Fließtext-Bewertung (Mana-Kurve, Synergie mit dem Commander, Schwachstellen), 3-5 Sätze
-- "cardsToCut": Top 5 schwächste Karten AUS DER OBIGEN DECKLISTE mit Begründung, warum sie raus sollten. KRITISCH: "name" muss EXAKT und WORTWÖRTLICH einem Eintrag aus der Deckliste oben entsprechen — erfinde niemals eine Karte, die dort nicht steht, und ändere keine Namen.
-- "cardsToAdd": Top 5 Karten, die das Deck verbessern würden (dürfen NICHT bereits in der Deckliste oben stehen). Bevorzuge Karten aus der Sammlungs-Liste oben, sofern strategisch passend — der Nutzer besitzt sie bereits und muss nichts kaufen.
+- "cardsToCut": Top 5 schwächste Karten AUS DER OBIGEN DECKLISTE mit Begründung, warum sie raus sollten — bezogen auf DIESEN Commander und DIESE Deckliste, keine generischen "das ist eine schwache Karte"-Begründungen. KRITISCH: "name" muss EXAKT und WORTWÖRTLICH einem Eintrag aus der Deckliste oben entsprechen — erfinde niemals eine Karte, die dort nicht steht, und ändere keine Namen.
+- "cardsToAdd": Top 5 Karten, die das Deck verbessern würden (dürfen NICHT bereits in der Deckliste oben stehen).${edhecData?.allCards?.length ? ' Nutze die EDHREC-Daten oben als echtes Signal, welche Karten in der Community wirklich mit diesem Commander funktionieren — bevorzuge insbesondere die High Synergy Cards, wenn sie zur bestehenden Deckliste passen.' : ''} Bevorzuge Karten aus der Sammlungs-Liste oben, sofern strategisch passend — der Nutzer besitzt sie bereits und muss nichts kaufen. Jede Begründung muss konkret erklären, WAS sie in DIESEM Deck bewirkt (Synergie mit einer bestehenden Karte oder Commander-Fähigkeit, geschlossene Lücke wie fehlendes Removal/Kartenvorteil/Ramp) statt nur "ist eine gute Karte".
 
 Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
 
