@@ -55,7 +55,11 @@ export const handler = async (event) => {
 
       return {
         statusCode: 500,
-        body: JSON.stringify({ error: 'Authentication failed', message: error.message })
+        body: JSON.stringify({
+          error: 'Authentication failed',
+          message: error.message,
+          details: error.response?.data || null
+        })
       }
     }
   }
