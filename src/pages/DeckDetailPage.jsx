@@ -102,7 +102,9 @@ export default function DeckDetailPage() {
   return (
     <div className="max-w-6xl mx-auto">
       <h1>🃏 {deckName}</h1>
-      <p className="text-cmd-muted mb-6">{deckCards.length} Karten</p>
+      {/* deckCards.length counts distinct rows, not physical copies — a row for "7x Forest"
+          is one row but 7 cards, so the displayed size undercounted decks with stacked basics. */}
+      <p className="text-cmd-muted mb-6">{deckCards.reduce((sum, c) => sum + c.quantity, 0)} Karten</p>
 
       <div className="card mb-6">
         <label className="text-sm text-cmd-muted block mb-2">Commander (zur Analyse)</label>

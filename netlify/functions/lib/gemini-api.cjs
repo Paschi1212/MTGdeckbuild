@@ -120,8 +120,8 @@ ${collectionContext}${edhecContext}${budgetContext}
 AUFGABE:
 Bewerte dieses BEREITS GEBAUTE Deck. Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
 - "summary": kurze deutsche Fließtext-Bewertung (Mana-Kurve, Synergie mit dem Commander, Schwachstellen), 3-5 Sätze
-- "cardsToCut": Top 5 schwächste Karten AUS DER OBIGEN DECKLISTE mit Begründung, warum sie raus sollten — bezogen auf DIESEN Commander und DIESE Deckliste, keine generischen "das ist eine schwache Karte"-Begründungen. KRITISCH: "name" muss EXAKT und WORTWÖRTLICH einem Eintrag aus der Deckliste oben entsprechen — erfinde niemals eine Karte, die dort nicht steht, und ändere keine Namen.
-- "cardsToAdd": Top 5 Karten, die das Deck verbessern würden (dürfen NICHT bereits in der Deckliste oben stehen).${edhecData?.allCards?.length ? ' Nutze die EDHREC-Daten oben als echtes Signal, welche Karten in der Community wirklich mit diesem Commander funktionieren — bevorzuge insbesondere die High Synergy Cards, wenn sie zur bestehenden Deckliste passen.' : ''} Bevorzuge Karten aus der Sammlungs-Liste oben, sofern strategisch passend — der Nutzer besitzt sie bereits und muss nichts kaufen. Jede Begründung muss konkret erklären, WAS sie in DIESEM Deck bewirkt (Synergie mit einer bestehenden Karte oder Commander-Fähigkeit, geschlossene Lücke wie fehlendes Removal/Kartenvorteil/Ramp) statt nur "ist eine gute Karte".
+- "cardsToCut": Schwächste Karten AUS DER OBIGEN DECKLISTE mit Begründung, warum sie raus sollten — bezogen auf DIESEN Commander und DIESE Deckliste, keine generischen "das ist eine schwache Karte"-Begründungen. Üblicherweise 3-6 Karten, aber KEINE feste Obergrenze — wenn das Deck wirklich viele Schwachstellen hat, nenne mehr; wenn es schon stark ist, nenne weniger oder auch gar keine. KRITISCH: "name" muss EXAKT und WORTWÖRTLICH einem Eintrag aus der Deckliste oben entsprechen — erfinde niemals eine Karte, die dort nicht steht, und ändere keine Namen.
+- "cardsToAdd": Karten, die das Deck verbessern würden. KRITISCH: dürfen NICHT bereits in der Deckliste oben stehen — prüfe das aktiv, bevor du eine Karte nennst. Üblicherweise 3-6 Karten, aber KEINE feste Obergrenze — nenne mehr, wenn das Deck wirklich mehrere echte Lücken hat (z.B. fehlendes Removal UND fehlender Kartenvorteil UND fehlende Wincons), weniger wenn nicht.${edhecData?.allCards?.length ? ' Nutze die EDHREC-Daten oben als echtes Signal, welche Karten in der Community wirklich mit diesem Commander funktionieren — bevorzuge insbesondere die High Synergy Cards, wenn sie zur bestehenden Deckliste passen.' : ''} Bevorzuge Karten aus der Sammlungs-Liste oben, sofern strategisch passend — der Nutzer besitzt sie bereits und muss nichts kaufen. Jede Begründung muss konkret erklären, WAS sie in DIESEM Deck bewirkt (Synergie mit einer bestehenden Karte oder Commander-Fähigkeit, geschlossene Lücke wie fehlendes Removal/Kartenvorteil/Ramp) statt nur "ist eine gute Karte".
 
 Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
 
@@ -135,9 +135,9 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
         temperature: 0.7,
         responseMimeType: 'application/json',
         responseSchema: AUDIT_SCHEMA,
-        // Unbounded generation has occasionally run long enough to blow past the
-        // function's hard timeout — cap it (5+5 cards with reasons + a summary fits well within this).
-        maxOutputTokens: 1500
+        // Raised from 1500 now that cardsToAdd/cardsToCut are no longer hard-capped at 5
+        // each — a deck with genuinely many weaknesses can return more, each with a reason.
+        maxOutputTokens: 3000
       }
     })
 
@@ -167,8 +167,19 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
       )
     }
 
+    // Mirror the same guard for cardsToAdd — the prompt says "must not already be in the
+    // deck" but that's advisory only; observed live suggesting cards already present.
+    const rawCardsToAdd = parsed.cardsToAdd || []
+    const validCardsToAdd = rawCardsToAdd.filter(c => !deckCardNames.has((c.name || '').toLowerCase()))
+    if (validCardsToAdd.length !== rawCardsToAdd.length) {
+      console.warn(
+        `[Gemini] auditDeck: dropped ${rawCardsToAdd.length - validCardsToAdd.length} cardsToAdd ` +
+        `entr${rawCardsToAdd.length - validCardsToAdd.length === 1 ? 'y' : 'ies'} already present in the decklist`
+      )
+    }
+
     const [cardsToAdd, cardsToCut] = await Promise.all([
-      enrichWithImages(parsed.cardsToAdd || []),
+      enrichWithImages(validCardsToAdd),
       enrichWithImages(validCardsToCut)
     ])
 
