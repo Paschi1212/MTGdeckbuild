@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts'
 import { loadCollection, getCardsForBinder, getAvailableQuantities, getAvailableCardNames } from '../lib/collection'
 import { saveDraftDeck } from '../lib/draftDecks'
 import { classifyType, BASIC_LAND_NAMES } from '../lib/cardType'
@@ -8,6 +8,23 @@ import { CardZoomModal } from '../components/CardTile'
 import ChatWidget from '../components/ChatWidget'
 
 const CMC_BUCKETS = ['0', '1', '2', '3', '4', '5', '6', '7+']
+
+// Same hex set CollectionPage's color filter already uses — keeps color meaning consistent
+// across the app instead of inventing a second palette.
+const COLOR_PIE_COLORS = { W: '#F8F6D8', U: '#4FA8F5', B: '#1A1A1A', R: '#E8524A', G: '#4ED689', Multicolor: '#c9a6f0', Colorless: '#9CA3AF' }
+const COLOR_NAMES = { W: 'Weiß', U: 'Blau', B: 'Schwarz', R: 'Rot', G: 'Grün', Multicolor: 'Mehrfarbig', Colorless: 'Farblos' }
+
+// Fixed, always-rendered set (deckstats-style) when grouping by type — cards can be dragged
+// into an empty category, so every category needs a visible drop target, not just ones that
+// already happen to have a card in them.
+const TYPE_GROUP_ORDER = ['Creature', 'Planeswalker', 'Battle', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Land', 'Sonstige']
+
+function colorGroupKey(colors) {
+  const list = (colors || '').split(' ').filter(Boolean)
+  if (list.length === 0) return 'Colorless'
+  if (list.length > 1) return 'Multicolor'
+  return list[0]
+}
 
 function loadInitialCards(deckName, commanderName, proposedCards) {
   if (deckName) {
@@ -26,14 +43,17 @@ function loadInitialCards(deckName, commanderName, proposedCards) {
   return proposedCards || []
 }
 
-function CardRow({ card, compact, onUpdateCount, onRemove, cutReason, onZoom }) {
+function CardRow({ card, compact, onUpdateCount, onRemove, cutReason, onZoom, draggable, onDragStart }) {
   const cutStyle = cutReason
     ? { backgroundColor: 'rgba(239,106,99,0.08)', border: '1px solid rgba(239,106,99,0.35)' }
     : { backgroundColor: 'var(--surface)' }
+  const dragProps = draggable
+    ? { draggable: true, onDragStart: (e) => onDragStart(e, card.index), style: { ...cutStyle, cursor: 'grab' } }
+    : { style: cutStyle }
 
   if (compact) {
     return (
-      <div className="rounded-lg p-2" style={cutStyle}>
+      <div className="rounded-lg p-2" {...dragProps}>
         <div className="flex items-center gap-2">
           <div
             className="w-8 h-11 rounded overflow-hidden bg-black/30 flex-shrink-0 cursor-pointer"
@@ -72,7 +92,7 @@ function CardRow({ card, compact, onUpdateCount, onRemove, cutReason, onZoom }) 
   }
 
   return (
-    <div className="rounded-xl p-3" style={cutStyle}>
+    <div className="rounded-xl p-3" {...dragProps}>
       <div className="flex items-center justify-between gap-3">
         <div
           className="w-10 h-14 rounded overflow-hidden bg-black/30 flex-shrink-0 cursor-pointer"
@@ -166,7 +186,9 @@ export default function EditDeckPage() {
 
   const [filter, setFilter] = useState('all')
   const [sortBy, setSortBy] = useState('price')
+  const [groupBy, setGroupBy] = useState('type')
   const [viewMode, setViewMode] = useState('columns')
+  const [dragOverGroup, setDragOverGroup] = useState(null)
   const [showManualAdd, setShowManualAdd] = useState(false)
   const [newCard, setNewCard] = useState({ name: '', count: 1, price: 0 })
   const [searchQuery, setSearchQuery] = useState('')
@@ -236,8 +258,10 @@ export default function EditDeckPage() {
         // If this card came from the chat full-deck builder, the backend already knows
         // for certain whether it's a land (built as a separate, verified list) — trust
         // that over Scryfall type_line, which arrives async and can lag for a big batch.
-        type: card.isLand === true ? 'Land' : classifyType(byId?.typeLine ?? byName?.typeLine),
+        // A manual drag-drop recategorization (categoryOverride) wins over both.
+        type: card.categoryOverride || (card.isLand === true ? 'Land' : classifyType(byId?.typeLine ?? byName?.typeLine)),
         cmc: byId?.cmc ?? byName?.cmc ?? 0,
+        colors: byId?.colors ?? '',
         // Only meaningful for a non-real deck (AI proposal/chat build) — a real ManaBox
         // deck's cards are inherently already owned, no point marking that.
         missingCount: deckName ? undefined : Math.max(card.count - (availableQuantities.get(card.name)?.available || 0), 0)
@@ -247,6 +271,31 @@ export default function EditDeckPage() {
 
   const deckTotal = enrichedCards.reduce((sum, c) => sum + c.count * c.price, 0)
   const deckSize = enrichedCards.reduce((sum, c) => sum + c.count, 0)
+
+  const shoppingList = useMemo(
+    () => enrichedCards.filter(c => c.missingCount > 0).sort((a, b) => a.name.localeCompare(b.name)),
+    [enrichedCards]
+  )
+  const shoppingTotal = shoppingList.reduce((sum, c) => sum + c.missingCount * c.price, 0)
+
+  const handleExportShoppingList = () => {
+    const title = commanderCard?.name || commanderName || 'Deck'
+    const lines = [
+      `Einkaufsliste – ${title}`,
+      `Stand: ${new Date().toLocaleDateString('de-DE')}`,
+      '',
+      ...shoppingList.map(c => `${c.missingCount}x ${c.name} — €${(c.missingCount * c.price).toFixed(2)}`),
+      '',
+      `Gesamt: €${shoppingTotal.toFixed(2)}`
+    ]
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `einkaufsliste-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const manaCurveData = useMemo(() => {
     const buckets = CMC_BUCKETS.map(label => ({ cmc: label, count: 0 }))
@@ -258,23 +307,62 @@ export default function EditDeckPage() {
     return buckets
   }, [enrichedCards])
 
-  const categories = [...new Set(enrichedCards.map(c => c.type))]
+  const colorPieData = useMemo(() => {
+    const totals = {}
+    for (const card of enrichedCards) {
+      if (card.type === 'Land') continue
+      const key = colorGroupKey(card.colors)
+      totals[key] = (totals[key] || 0) + card.count
+    }
+    return Object.entries(totals)
+      .filter(([, count]) => count > 0)
+      .map(([key, count]) => ({ key, name: COLOR_NAMES[key] || key, count }))
+  }, [enrichedCards])
+
+  // "type" grouping always shows every standard category (even empty ones) so there's
+  // always a drop target to drag a card into — matches deckstats' "Drop cards here" columns.
+  // Other groupings only make sense to show buckets that actually have cards in them.
+  const categoryKeyFor = (card) => {
+    if (groupBy === 'color') return colorGroupKey(card.colors)
+    if (groupBy === 'cmc') {
+      if (card.type === 'Land') return 'Land'
+      const rounded = Math.round(card.cmc)
+      return rounded >= 7 ? '7+' : String(rounded)
+    }
+    return card.type
+  }
+
+  const groupOrder = groupBy === 'color'
+    ? ['W', 'U', 'B', 'R', 'G', 'Multicolor', 'Colorless']
+    : groupBy === 'cmc'
+      ? [...CMC_BUCKETS, 'Land']
+      : TYPE_GROUP_ORDER
+
+  const groupLabel = (key) => (groupBy === 'color' ? (COLOR_NAMES[key] || key) : key)
+
   const cardsByCategory = {}
-  categories.forEach(cat => {
-    cardsByCategory[cat] = enrichedCards.filter(c => c.type === cat)
-  })
+  for (const card of enrichedCards) {
+    const key = categoryKeyFor(card)
+    if (!cardsByCategory[key]) cardsByCategory[key] = []
+    cardsByCategory[key].push(card)
+  }
+
+  const categories = groupBy === 'type'
+    ? groupOrder.filter(cat => cat !== 'Sonstige' || cardsByCategory[cat]?.length)
+    : groupOrder.filter(cat => cardsByCategory[cat]?.length)
 
   const filteredCards = filter === 'all' ? enrichedCards : (cardsByCategory[filter] || [])
 
   const sortWithin = (list) => [...list].sort((a, b) => {
     if (sortBy === 'price') return (b.price * b.count) - (a.price * a.count)
     if (sortBy === 'name') return a.name.localeCompare(b.name)
+    if (sortBy === 'cmc') return a.cmc - b.cmc
     return 0
   })
 
   const displayGroups = filter === 'all'
-    ? categories.map(cat => ({ name: cat, cards: sortWithin(cardsByCategory[cat]) }))
-    : [{ name: filter, cards: sortWithin(filteredCards) }]
+    ? categories.map(cat => ({ name: cat, label: groupLabel(cat), cards: sortWithin(cardsByCategory[cat] || []) }))
+    : [{ name: filter, label: groupLabel(filter), cards: sortWithin(filteredCards) }]
 
   const existingNames = new Set(cards.map(c => c.name))
 
@@ -366,6 +454,25 @@ export default function EditDeckPage() {
     setCards(updated)
   }
 
+  // Drag-and-drop recategorization (type grouping only — color/CMC are facts about the
+  // real card, not something to override). Storing an explicit override on the card itself
+  // means it survives re-sorting/re-filtering instead of living in separate UI state.
+  const handleDragStart = (e, index) => {
+    e.dataTransfer.setData('text/plain', String(index))
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDropOnCategory = (index, categoryName) => {
+    setDragOverGroup(null)
+    setCards(prev => {
+      const updated = [...prev]
+      const current = updated[index]
+      if (!current) return prev
+      updated[index] = { ...current, categoryOverride: categoryName }
+      return updated
+    })
+  }
+
   const handleAddManualCard = () => {
     if (newCard.name && newCard.count > 0) {
       setCards([...cards, newCard])
@@ -448,20 +555,65 @@ export default function EditDeckPage() {
         </div>
       </div>
 
-      <div className="card mb-6">
-        <h2 className="text-lg font-bold mb-3">Mana-Kurve</h2>
-        <div style={{ width: '100%', height: 160 }}>
-          <ResponsiveContainer>
-            <BarChart data={manaCurveData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="cmc" tick={{ fill: '#a99fc4', fontSize: 12 }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} />
-              <YAxis allowDecimals={false} tick={{ fill: '#a99fc4', fontSize: 12 }} axisLine={false} tickLine={false} width={28} />
-              <Tooltip contentStyle={{ backgroundColor: '#171129', border: '1px solid var(--border)', borderRadius: 8 }} labelStyle={{ color: '#f3eefc' }} />
-              <Bar dataKey="count" fill="#4fa8f5" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div className="card">
+          <h2 className="text-lg font-bold mb-3">Mana-Kurve</h2>
+          <div style={{ width: '100%', height: 160 }}>
+            <ResponsiveContainer>
+              <BarChart data={manaCurveData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="cmc" tick={{ fill: '#a99fc4', fontSize: 12 }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} />
+                <YAxis allowDecimals={false} tick={{ fill: '#a99fc4', fontSize: 12 }} axisLine={false} tickLine={false} width={28} />
+                <Tooltip contentStyle={{ backgroundColor: '#171129', border: '1px solid var(--border)', borderRadius: 8 }} labelStyle={{ color: '#f3eefc' }} />
+                <Bar dataKey="count" fill="#4fa8f5" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="card">
+          <h2 className="text-lg font-bold mb-3">Farbverteilung</h2>
+          {colorPieData.length === 0 ? (
+            <p className="text-sm text-cmd-muted py-8 text-center">Noch keine Farbdaten geladen</p>
+          ) : (
+            <div style={{ width: '100%', height: 160 }}>
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie data={colorPieData} dataKey="count" nameKey="name" innerRadius={35} outerRadius={65} paddingAngle={2}>
+                    {colorPieData.map(entry => (
+                      <Cell key={entry.key} fill={COLOR_PIE_COLORS[entry.key] || '#9CA3AF'} stroke="var(--surface-solid)" />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ backgroundColor: '#171129', border: '1px solid var(--border)', borderRadius: 8 }} labelStyle={{ color: '#f3eefc' }} />
+                  <Legend wrapperStyle={{ fontSize: 12, color: '#a99fc4' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
       </div>
+
+      {shoppingList.length > 0 && (
+        <div className="card mb-6" style={{ borderColor: 'var(--r)' }}>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-lg font-bold" style={{ color: 'var(--r)' }}>🛒 Einkaufsliste</h2>
+            <button onClick={handleExportShoppingList} className="btn-secondary text-xs px-3 py-1.5">
+              ⬇️ Exportieren (.txt)
+            </button>
+          </div>
+          <p className="text-xs text-cmd-muted mb-3">
+            {shoppingList.reduce((sum, c) => sum + c.missingCount, 0)} Karte(n) nicht in deiner Sammlung — geschätzt €{shoppingTotal.toFixed(2)}
+          </p>
+          <div className="space-y-1 max-h-[220px] overflow-y-auto pr-1">
+            {shoppingList.map(c => (
+              <div key={c.name} className="flex justify-between text-sm text-gray-300">
+                <span>{c.missingCount}x {c.name}</span>
+                <span className="text-cmd-muted">€{(c.missingCount * c.price).toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {pendingSuggestions.length > 0 && (
         <div className="card mb-6">
@@ -589,16 +741,30 @@ export default function EditDeckPage() {
           </div>
 
           <div className="flex-1">
-            <label className="text-sm text-gray-400 block mb-2">Typ</label>
+            <label className="text-sm text-gray-400 block mb-2">Gruppieren</label>
+            <select
+              value={groupBy}
+              onChange={(e) => { setGroupBy(e.target.value); setFilter('all') }}
+              className="w-full text-white rounded-xl p-2"
+              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+            >
+              <option value="type">Nach Typ</option>
+              <option value="color">Nach Farbe</option>
+              <option value="cmc">Nach Mana-Wert</option>
+            </select>
+          </div>
+
+          <div className="flex-1">
+            <label className="text-sm text-gray-400 block mb-2">Filter</label>
             <select
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               className="w-full text-white rounded-xl p-2"
               style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
             >
-              <option value="all">Alle Typen</option>
+              <option value="all">Alle</option>
               {categories.map(cat => (
-                <option key={cat} value={cat}>{cat} ({cardsByCategory[cat].length})</option>
+                <option key={cat} value={cat}>{groupLabel(cat)} ({cardsByCategory[cat]?.length || 0})</option>
               ))}
             </select>
           </div>
@@ -613,6 +779,7 @@ export default function EditDeckPage() {
             >
               <option value="price">Nach Preis (Höchste zuerst)</option>
               <option value="name">Nach Name</option>
+              <option value="cmc">Nach Mana-Wert</option>
             </select>
           </div>
         </div>
@@ -628,26 +795,54 @@ export default function EditDeckPage() {
           style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', alignItems: 'start' }}
         >
           {displayGroups.map(group => (
-            <div key={group.name} className="card">
+            <div
+              key={group.name}
+              className="card"
+              style={groupBy === 'type' && dragOverGroup === group.name ? { borderColor: 'var(--u)', backgroundColor: 'rgba(79,168,245,0.08)' } : undefined}
+              onDragOver={(e) => { if (groupBy === 'type') { e.preventDefault(); setDragOverGroup(group.name) } }}
+              onDragLeave={() => setDragOverGroup(null)}
+              onDrop={(e) => {
+                if (groupBy !== 'type') return
+                e.preventDefault()
+                handleDropOnCategory(Number(e.dataTransfer.getData('text/plain')), group.name)
+              }}
+            >
               <h2 className="text-sm font-bold mb-3 text-cmd-muted uppercase tracking-wide">
-                {group.name} <span className="font-normal">({group.cards.length})</span>
+                {group.label} <span className="font-normal">({group.cards.length})</span>
               </h2>
               <div className="space-y-2">
                 {group.cards.map(card => (
-                  <CardRow key={card.index} card={card} compact onUpdateCount={handleUpdateCount} onRemove={handleRemoveCard} cutReason={cutReasonMap.get(card.name)} onZoom={setZoomedCard} />
+                  <CardRow key={card.index} card={card} compact onUpdateCount={handleUpdateCount} onRemove={handleRemoveCard} cutReason={cutReasonMap.get(card.name)} onZoom={setZoomedCard} draggable={groupBy === 'type'} onDragStart={handleDragStart} />
                 ))}
+                {group.cards.length === 0 && groupBy === 'type' && (
+                  <p className="text-xs text-cmd-muted italic py-2 text-center">Karten hierher ziehen</p>
+                )}
               </div>
             </div>
           ))}
         </div>
       ) : (
         displayGroups.map(group => (
-          <div key={group.name} className="card mb-6">
-            <h2 className="text-lg font-bold mb-4">{group.name} <span className="text-cmd-muted text-sm font-normal">({group.cards.length})</span></h2>
+          <div
+            key={group.name}
+            className="card mb-6"
+            style={groupBy === 'type' && dragOverGroup === group.name ? { borderColor: 'var(--u)', backgroundColor: 'rgba(79,168,245,0.08)' } : undefined}
+            onDragOver={(e) => { if (groupBy === 'type') { e.preventDefault(); setDragOverGroup(group.name) } }}
+            onDragLeave={() => setDragOverGroup(null)}
+            onDrop={(e) => {
+              if (groupBy !== 'type') return
+              e.preventDefault()
+              handleDropOnCategory(Number(e.dataTransfer.getData('text/plain')), group.name)
+            }}
+          >
+            <h2 className="text-lg font-bold mb-4">{group.label} <span className="text-cmd-muted text-sm font-normal">({group.cards.length})</span></h2>
             <div className="space-y-2">
               {group.cards.map(card => (
-                <CardRow key={card.index} card={card} onUpdateCount={handleUpdateCount} onRemove={handleRemoveCard} cutReason={cutReasonMap.get(card.name)} onZoom={setZoomedCard} />
+                <CardRow key={card.index} card={card} onUpdateCount={handleUpdateCount} onRemove={handleRemoveCard} cutReason={cutReasonMap.get(card.name)} onZoom={setZoomedCard} draggable={groupBy === 'type'} onDragStart={handleDragStart} />
               ))}
+              {group.cards.length === 0 && groupBy === 'type' && (
+                <p className="text-xs text-cmd-muted italic py-2 text-center">Karten hierher ziehen</p>
+              )}
             </div>
           </div>
         ))
