@@ -21,13 +21,32 @@ const PRICE_SORTS = {
   nameAsc: { label: 'Name A-Z', fn: (a, b) => a.name.localeCompare(b.name) }
 }
 
-function CardModal({ card, resolved, onClose }) {
+function CardModal({ card, resolved, onClose, onPrev, onNext }) {
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowLeft') onPrev()
+      if (e.key === 'ArrowRight') onNext()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose, onPrev, onNext])
+
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}
       onClick={onClose}
     >
+      <button
+        onClick={(e) => { e.stopPropagation(); onPrev() }}
+        className="hidden sm:flex absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full items-center justify-center text-2xl text-white"
+        style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
+        aria-label="Vorherige Karte"
+      >
+        ‹
+      </button>
+
       <div
         className="rounded-2xl overflow-hidden max-w-sm w-full"
         style={{ backgroundColor: 'var(--surface-solid)', border: '1px solid var(--border)' }}
@@ -47,9 +66,22 @@ function CardModal({ card, resolved, onClose }) {
             <span className="text-sm text-cmd-muted">Anzahl: {card.quantity}</span>
             <span className="font-semibold" style={{ color: 'var(--g)' }}>€{card.purchasePrice.toFixed(2)}</span>
           </div>
-          <button onClick={onClose} className="btn-secondary w-full mt-4 text-sm">Schließen</button>
+          <div className="flex gap-2 mt-4 sm:hidden">
+            <button onClick={onPrev} className="btn-secondary flex-1 text-sm">‹ Zurück</button>
+            <button onClick={onNext} className="btn-secondary flex-1 text-sm">Weiter ›</button>
+          </div>
+          <button onClick={onClose} className="btn-secondary w-full mt-2 text-sm">Schließen</button>
         </div>
       </div>
+
+      <button
+        onClick={(e) => { e.stopPropagation(); onNext() }}
+        className="hidden sm:flex absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full items-center justify-center text-2xl text-white"
+        style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
+        aria-label="Nächste Karte"
+      >
+        ›
+      </button>
     </div>
   )
 }
@@ -67,7 +99,7 @@ export default function CollectionPage() {
   const [minQuantity, setMinQuantity] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [sortBy, setSortBy] = useState('none')
-  const [modalCard, setModalCard] = useState(null)
+  const [modalIndex, setModalIndex] = useState(null)
 
   useEffect(() => {
     if (!collection?.cards?.length) {
@@ -298,7 +330,7 @@ export default function CollectionPage() {
             <CardTile
               key={`${card.scryfallId || card.name}-${index}`}
               size="small"
-              onClick={() => setModalCard(card)}
+              onClick={() => setModalIndex(index)}
               card={{
                 name: card.name,
                 image: resolved?.image,
@@ -311,11 +343,13 @@ export default function CollectionPage() {
         })}
       </div>
 
-      {modalCard && (
+      {modalIndex !== null && visibleCards[modalIndex] && (
         <CardModal
-          card={modalCard}
-          resolved={imageMap[modalCard.scryfallId]}
-          onClose={() => setModalCard(null)}
+          card={visibleCards[modalIndex]}
+          resolved={imageMap[visibleCards[modalIndex].scryfallId]}
+          onClose={() => setModalIndex(null)}
+          onPrev={() => setModalIndex(i => (i - 1 + visibleCards.length) % visibleCards.length)}
+          onNext={() => setModalIndex(i => (i + 1) % visibleCards.length)}
         />
       )}
     </div>
