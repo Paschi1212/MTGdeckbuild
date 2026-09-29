@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import CardTile from '../components/CardTile'
 import { readApiError } from '../lib/apiError'
@@ -13,6 +13,56 @@ import { loadCollection } from '../lib/collection'
 function useCollectionCardNames() {
   const collection = loadCollection()
   return collection?.uniqueCardNames || []
+}
+
+// A native <input list="..."> datalist looked like the simplest fix, but browsers filter
+// it inconsistently (prefix-only in some, ignored entirely in others) and its popup can't
+// be themed to match the app's dark UI — reports were "suggestions don't show up at all".
+// A small controlled dropdown guarantees consistent, substring, case-insensitive matching.
+function CommanderAutocompleteInput({ value, onChange, onSubmit, cardNames, placeholder, className }) {
+  const [open, setOpen] = useState(false)
+
+  const matches = useMemo(() => {
+    const q = value.trim().toLowerCase()
+    if (!q) return []
+    return cardNames.filter(name => name.toLowerCase().includes(q)).slice(0, 8)
+  }, [value, cardNames])
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { setOpen(false); onSubmit?.(value) }
+          if (e.key === 'Escape') setOpen(false)
+        }}
+        placeholder={placeholder}
+        className={className}
+        style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+      />
+      {open && matches.length > 0 && (
+        <div
+          className="absolute z-10 left-0 right-0 mt-1 rounded-lg overflow-hidden max-h-56 overflow-y-auto"
+          style={{ backgroundColor: '#171129', border: '1px solid var(--border)' }}
+        >
+          {matches.map(name => (
+            <button
+              key={name}
+              type="button"
+              onMouseDown={() => { onChange(name); setOpen(false) }}
+              className="block w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-white/5"
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 const HUB_TABS = [
@@ -45,6 +95,8 @@ export default function CommanderSelectPage() {
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [selectedCommander, setSelectedCommander] = useState(null)
+  const [searchCommanderInput, setSearchCommanderInput] = useState('')
+  const [directCommanderInput, setDirectCommanderInput] = useState('')
   const collectionCardNames = useCollectionCardNames()
 
   const contextNote = buildCommanderSearchContextNote(preferences)
@@ -296,17 +348,13 @@ export default function CommanderSelectPage() {
 
           <div className="card mb-6">
             <h2 className="text-xl font-bold mb-4">Oder gib einen Commander direkt ein:</h2>
-            <input
-              type="text"
-              list="collection-commander-names"
+            <CommanderAutocompleteInput
+              value={directCommanderInput}
+              onChange={setDirectCommanderInput}
+              onSubmit={handleSelectCommander}
+              cardNames={collectionCardNames}
               placeholder="z.B. Magus Lucea Kane"
-              onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  handleSelectCommander(e.target.value)
-                }
-              }}
               className="w-full text-white rounded-xl p-3"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
             />
             <p className="text-sm text-gray-400 mt-2">
               Enter zum Bestätigen{collectionCardNames.length > 0 ? ' — Vorschläge aus deiner Sammlung beim Tippen' : ''}
@@ -330,19 +378,18 @@ export default function CommanderSelectPage() {
       return (
         <div className="max-w-2xl mx-auto">
           <div className="card mb-6">
-            <input
-              type="text"
-              list="collection-commander-names"
+            <CommanderAutocompleteInput
+              value={searchCommanderInput}
+              onChange={setSearchCommanderInput}
+              onSubmit={handleSelectCommander}
+              cardNames={collectionCardNames}
               placeholder="z.B. Magus Lucea Kane, Marisi Goat, etc."
-              id="commander-input"
               className="w-full text-white rounded-xl p-3 text-lg mb-4"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
             />
             <button
               onClick={() => {
-                const input = document.getElementById('commander-input')
-                if (input.value) {
-                  handleSelectCommander(input.value)
+                if (searchCommanderInput) {
+                  handleSelectCommander(searchCommanderInput)
                 }
               }}
               className="btn-primary w-full"
@@ -374,10 +421,6 @@ export default function CommanderSelectPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <h1>🧙 Commander</h1>
-
-      <datalist id="collection-commander-names">
-        {collectionCardNames.map(name => <option key={name} value={name} />)}
-      </datalist>
 
       <div className="flex gap-2 mb-6 flex-wrap">
         {HUB_TABS.map(tab => (

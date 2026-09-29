@@ -5,7 +5,7 @@
  */
 
 const { GoogleGenAI } = require('@google/genai')
-const { getBulkPrices } = require('./scryfall-api.cjs')
+const { getBulkPrices, getBudgetAlternatives } = require('./scryfall-api.cjs')
 const { getCommanderData, extractRecommendations, extractSynergyCommanders } = require('./edhrec-api.cjs')
 
 const GEMINI_MODEL = 'gemini-3.5-flash-lite'
@@ -354,7 +354,8 @@ function buildDeckActionTools(bulkBuild) {
       parameters: {
         type: 'object',
         properties: {
-          strategyHint: { type: 'string', description: 'Kurze Zusammenfassung (1-2 Sätze) der gewünschten Strategie/des Spielstils basierend auf dem bisherigen Gespräch, z.B. "aggressiv, Token-fokussiert, wenig Budget"' }
+          strategyHint: { type: 'string', description: 'Kurze Zusammenfassung (1-2 Sätze) der gewünschten Strategie/des Spielstils basierend auf dem bisherigen Gespräch, z.B. "aggressiv, Token-fokussiert, wenig Budget"' },
+          maxPurchaseBudgetEur: { type: 'number', description: 'NUR wenn der Nutzer explizit einen maximalen Zukaufswert in Euro für Karten genannt hat, die er NICHT bereits besitzt (z.B. "maximal 60€ zukaufen", "Budget für neue Karten: 100€") — reine Zahl in Euro, sonst weglassen.' }
         },
         required: []
       }
@@ -658,6 +659,81 @@ async function buildFullDeckFromChat({ commander, strategyHint, collectionSample
   }
 }
 
+// Bounded — each swap risks 1-2 extra Scryfall calls, and this already runs after up to 3
+// full-deck generation rounds inside the same 30s function invocation.
+const MAX_BUDGET_CORRECTION_CANDIDATES = 8
+
+// A "max €X to buy" instruction handed to Gemini as free text is exactly the kind of
+// numeric constraint it has proven unreliable at self-enforcing across a 99-card build
+// (see the land-count reliability work above) — so it's verified here against REAL
+// Scryfall prices after generation, same pattern: trust the AI for a first attempt, then
+// deterministically correct against ground truth instead of hoping it got it right.
+async function enforcePurchaseBudget(cards, collectionSampleNames, maxPurchaseBudgetEur) {
+  if (!maxPurchaseBudgetEur || maxPurchaseBudgetEur <= 0) {
+    return { cards, budgetNote: '' }
+  }
+
+  const owned = new Set((collectionSampleNames || []).map(n => n.toLowerCase()))
+  const isOwned = (card) => owned.has(card.name.toLowerCase())
+
+  const prices = await getBulkPrices(cards.map(c => c.name).filter(Boolean))
+  let result = cards.map(c => ({ ...c, eur: prices[c.name]?.eur || 0, image: prices[c.name]?.image }))
+
+  let purchaseTotal = result.filter(c => !isOwned(c)).reduce((sum, c) => sum + c.eur * c.quantity, 0)
+  console.log(`[Gemini] enforcePurchaseBudget: initial purchase total €${purchaseTotal.toFixed(2)} vs budget €${maxPurchaseBudgetEur}`)
+
+  if (purchaseTotal <= maxPurchaseBudgetEur) {
+    return { cards: result, budgetNote: `\n\n🛒 Zukaufswert: ca. €${purchaseTotal.toFixed(2)} (innerhalb deines Budgets von €${maxPurchaseBudgetEur}).` }
+  }
+
+  // Worst (priciest) non-owned, non-land offenders first — lands are left alone since
+  // swapping one risks breaking the manabase, and budget overruns are almost always
+  // expensive nonland staples/tutors anyway.
+  const offenders = result
+    .filter(c => !isOwned(c) && !c.isLand && c.eur > 0)
+    .sort((a, b) => b.eur - a.eur)
+    .slice(0, MAX_BUDGET_CORRECTION_CANDIDATES)
+
+  const existingNamesLower = new Set(result.map(c => c.name.toLowerCase()))
+
+  for (const offender of offenders) {
+    if (purchaseTotal <= maxPurchaseBudgetEur) break
+
+    const overBudgetBy = purchaseTotal - maxPurchaseBudgetEur
+    const priceCeiling = Math.max(1, offender.eur - overBudgetBy / offender.quantity)
+
+    try {
+      const alternatives = await getBudgetAlternatives(offender.name, priceCeiling)
+      const pick = alternatives.find(a => a.eur > 0 && !existingNamesLower.has(a.name.toLowerCase()))
+      if (!pick) continue
+
+      const idx = result.findIndex(c => c.name === offender.name)
+      if (idx === -1) continue
+
+      const savedPerCopy = offender.eur - pick.eur
+      result[idx] = {
+        ...result[idx],
+        name: pick.name,
+        eur: pick.eur,
+        image: pick.image,
+        reason: `Günstiger ersetzt für dein Budget (war ${offender.name}, €${offender.eur.toFixed(2)}).`
+      }
+      existingNamesLower.delete(offender.name.toLowerCase())
+      existingNamesLower.add(pick.name.toLowerCase())
+      purchaseTotal -= savedPerCopy * offender.quantity
+      console.log(`[Gemini] enforcePurchaseBudget: swapped ${offender.name} (€${offender.eur.toFixed(2)}) -> ${pick.name} (€${pick.eur.toFixed(2)})`)
+    } catch (error) {
+      console.warn('[Gemini] enforcePurchaseBudget: alternative lookup failed for', offender.name, error.message)
+    }
+  }
+
+  const budgetNote = purchaseTotal <= maxPurchaseBudgetEur
+    ? `\n\n🛒 Zukaufswert nach automatischer Anpassung: ca. €${purchaseTotal.toFixed(2)} (innerhalb deines Budgets von €${maxPurchaseBudgetEur}).`
+    : `\n\n⚠️ Zukaufswert: ca. €${purchaseTotal.toFixed(2)} — liegt trotz automatischer Ersetzungen noch über deinem Budget von €${maxPurchaseBudgetEur}. Für die verbleibenden teuren Karten wurde keine passende günstigere Alternative gefunden.`
+
+  return { cards: result, budgetNote }
+}
+
 /**
  * Conversational deck-building assistant — answers questions and gives
  * optimization suggestions about the deck currently open in the builder.
@@ -744,15 +820,28 @@ Antworte auf Deutsch, knapp und konkret (max. ca. 150 Wörter, außer der Nutzer
         console.warn('[Gemini] chatAssistant: EDHREC fetch failed, continuing without it:', error.message)
       }
 
+      const maxPurchaseBudgetEur = buildFullDeckCall.args?.maxPurchaseBudgetEur
+      const strategyHint = buildFullDeckCall.args?.strategyHint || message
+
       const built = await buildFullDeckFromChat({
         commander: effectiveCommander,
-        strategyHint: buildFullDeckCall.args?.strategyHint || message,
+        strategyHint: maxPurchaseBudgetEur
+          ? `${strategyHint} (Zukaufsbudget für Karten außerhalb der Sammlung: max. €${maxPurchaseBudgetEur} — bevorzuge besessene oder günstige Karten.)`
+          : strategyHint,
         collectionSampleNames,
         edhecData
       })
 
       if (built) {
-        const fullDeckActions = built.cards
+        let finalCards = built.cards
+        let budgetNote = ''
+        if (maxPurchaseBudgetEur) {
+          const budgetResult = await enforcePurchaseBudget(built.cards, collectionSampleNames, maxPurchaseBudgetEur)
+          finalCards = budgetResult.cards
+          budgetNote = budgetResult.budgetNote
+        }
+
+        const fullDeckActions = finalCards
           .filter(c => c.name && c.quantity)
           .map(c => ({ type: 'add', name: c.name, quantity: c.quantity, isLand: c.isLand }))
 
@@ -763,7 +852,7 @@ Antworte auf Deutsch, knapp und konkret (max. ca. 150 Wörter, außer der Nutzer
         }
 
         return {
-          reply: built.summary || synthesizeFallbackReply(fullDeckActions),
+          reply: (built.summary || synthesizeFallbackReply(fullDeckActions)) + budgetNote,
           actions: fullDeckActions,
           usage: built.usage
         }
