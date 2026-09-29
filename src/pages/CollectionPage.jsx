@@ -63,6 +63,7 @@ export default function CollectionPage() {
   const [loadingImages, setLoadingImages] = useState(true)
   const [selectedColors, setSelectedColors] = useState([])
   const [selectedType, setSelectedType] = useState('')
+  const [availability, setAvailability] = useState('all') // all | free | built
   const [minQuantity, setMinQuantity] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [sortBy, setSortBy] = useState('none')
@@ -121,6 +122,12 @@ export default function CollectionPage() {
       result = result.filter(c => imageMap[c.scryfallId]?.typeLine?.includes(selectedType))
     }
 
+    if (availability === 'free') {
+      result = result.filter(c => c.binderType !== 'deck')
+    } else if (availability === 'built') {
+      result = result.filter(c => c.binderType === 'deck')
+    }
+
     if (minQuantity) {
       result = result.filter(c => c.quantity >= Number(minQuantity))
     }
@@ -135,7 +142,7 @@ export default function CollectionPage() {
     }
 
     return result
-  }, [collection, search, selectedColors, selectedType, minQuantity, maxPrice, sortBy, imageMap])
+  }, [collection, search, selectedColors, selectedType, availability, minQuantity, maxPrice, sortBy, imageMap])
 
   if (!collection) {
     return (
@@ -205,6 +212,20 @@ export default function CollectionPage() {
           </div>
 
           <div>
+            <label className="text-xs text-cmd-muted block mb-2">Verfügbarkeit</label>
+            <select
+              value={availability}
+              onChange={(e) => setAvailability(e.target.value)}
+              className="text-white rounded-xl p-2 text-sm"
+              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+            >
+              <option value="all">Alle</option>
+              <option value="free">Frei verfügbar</option>
+              <option value="built">Eingebaut (in Deck)</option>
+            </select>
+          </div>
+
+          <div>
             <label className="text-xs text-cmd-muted block mb-2">Min. Anzahl</label>
             <input
               type="number"
@@ -245,12 +266,13 @@ export default function CollectionPage() {
             </select>
           </div>
 
-          {(selectedColors.length > 0 || selectedType || minQuantity || maxPrice || sortBy !== 'none' || search) && (
+          {(selectedColors.length > 0 || selectedType || availability !== 'all' || minQuantity || maxPrice || sortBy !== 'none' || search) && (
             <button
               onClick={() => {
                 setSearch('')
                 setSelectedColors([])
                 setSelectedType('')
+                setAvailability('all')
                 setMinQuantity('')
                 setMaxPrice('')
                 setSortBy('none')
