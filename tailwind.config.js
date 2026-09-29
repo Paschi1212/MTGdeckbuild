@@ -37,8 +37,8 @@ export default {
       },
       fontFamily: {
         'mtg': ['Beleren', 'serif'],
-        'display': ['"Bricolage Grotesque"', 'sans-serif'],
-        'body': ['"Plus Jakarta Sans"', 'sans-serif']
+        'display': ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', '"Helvetica Neue"', 'Helvetica', 'Arial', 'sans-serif'],
+        'body': ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', '"Helvetica Neue"', 'Helvetica', 'Arial', 'sans-serif']
       }
     },
   },

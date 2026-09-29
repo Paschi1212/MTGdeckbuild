@@ -65,9 +65,9 @@ function App() {
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-gray-950">
+      <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
         <Navigation user={user} onLogout={handleLogout} />
-        <main className="container mx-auto px-4 pt-24 md:pt-28 pb-8">
+        <main className="container mx-auto px-4 md:px-12 py-8">
           <Routes>
             <Route path="/" element={<HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/upload" element={user ? <UploadPage /> : <HomePage user={user} onLogin={handleLogin} />} />

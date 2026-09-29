@@ -3,132 +3,268 @@
 @tailwind utilities;
 
 :root {
-  /* Tells the browser to render native form controls (select dropdowns, etc.)
-     with dark UI chrome — without this, some browsers paint select boxes with
-     a white background regardless of our CSS, causing white-on-white text. */
+  color-scheme: light;
+
+  /* Typography Scale */
+  --font-display: 3.2rem;
+  --font-h2: 1.5rem;
+  --font-h3: 1rem;
+  --font-body: 1rem;
+  --font-small: 0.875rem;
+  --font-caption: 0.75rem;
+
+  /* Colors - Light Mode (default) */
+  --color-bg: #ffffff;
+  --color-surface: #f9f9f7;
+  --color-border: #e5e5e0;
+  --color-text: #1a1a1a;
+  --color-text-secondary: #666666;
+  --color-text-muted: #999999;
+  --color-accent: #1a1a1a;
+  --color-accent-light: #f0f0f0;
+
+  /* Spacing System (8pt grid) */
+  --spacing-xs: 0.5rem;
+  --spacing-sm: 1rem;
+  --spacing-md: 1.5rem;
+  --spacing-lg: 2rem;
+  --spacing-xl: 3rem;
+  --spacing-2xl: 4rem;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+
+  /* Border Radius — subtle, minimal corners, no pill shapes */
+  --radius-none: 0;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Legacy variable names — most of the app already reads colors exclusively through
+     these (var(--surface), var(--border), text-cmd-muted -> var(--text-muted) via
+     tailwind.config.js, ...) instead of hardcoded hex. Aliasing them onto the new
+     design-system tokens re-themes the whole app from this one file, without having
+     to touch every page's className/style individually. */
+  --bg: var(--color-bg);
+  --surface: var(--color-surface);
+  --surface-solid: var(--color-surface);
+  --border: var(--color-border);
+  --text: var(--color-text);
+  --text-muted: var(--color-text-muted);
+
+  /* Magic color-identity accents (mana curve bars, color-pip badges, W/U/B/R/G
+     indicators) — kept as their own tokens since they carry real domain meaning,
+     not decoration, so they stay constant across light/dark rather than inverting. */
+  --w: #d4af37;
+  --u: #0e68ab;
+  --b: #2b2b2b;
+  --r: #c13832;
+  --g: #00a651;
+}
+
+[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #0e0b1a;
-  --surface: rgba(255, 255, 255, 0.045);
-  --surface-solid: #171129;
-  --border: rgba(255, 255, 255, 0.09);
-  --text: #f3eefc;
-  --text-muted: #a99fc4;
-  --w: #f4e9c0;
-  --u: #4fa8f5;
-  --b: #8b6fd6;
-  --r: #ef6a63;
-  --g: #4ed689;
+  --color-bg: #0f0f0f;
+  --color-surface: #1a1a1a;
+  --color-border: #2a2a2a;
+  --color-text: #f5f5f5;
+  --color-text-secondary: #b0b0b0;
+  --color-text-muted: #808080;
+  --color-accent: #f5f5f5;
+  --color-accent-light: #2a2a2a;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
 }
 
 @layer base {
   body {
-    background-color: var(--bg);
-    background-image:
-      radial-gradient(720px 480px at 12% -8%, rgba(79, 168, 245, 0.2), transparent 60%),
-      radial-gradient(680px 460px at 92% 8%, rgba(139, 111, 214, 0.22), transparent 60%),
-      radial-gradient(600px 500px at 50% 105%, rgba(78, 214, 137, 0.14), transparent 60%);
-    background-attachment: fixed;
-    color: var(--text);
-    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: var(--font-body);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background var(--transition-base), color var(--transition-base);
   }
 
   h1, h2, h3 {
-    font-family: 'Bricolage Grotesque', system-ui, sans-serif;
-  }
-
-  /* color-scheme: dark on :root doesn't reliably reach a <select>'s native
-     dropdown list in every browser — explicitly style <option> so the list
-     itself doesn't fall back to white-on-white. */
-  select {
-    color-scheme: dark;
-  }
-  option {
-    background-color: #1c1730;
-    color: var(--text);
+    font-family: inherit;
+    color: var(--color-text);
   }
 
   h1 {
-    @apply text-4xl font-extrabold mb-4;
+    font-size: var(--font-display);
+    font-weight: 400;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin-bottom: var(--spacing-md);
   }
 
   h2 {
-    @apply text-2xl font-bold mb-3;
+    font-size: var(--font-h2);
+    font-weight: 600;
+    line-height: 1.3;
+    margin-bottom: var(--spacing-sm);
+  }
+
+  h3 {
+    font-size: var(--font-h3);
+    font-weight: 600;
+    line-height: 1.4;
+    margin-bottom: 0;
   }
 
   button {
     @apply transition-all duration-200;
   }
 
-  /* Chrome/Edge paint autofilled or autofill-suggested inputs with their own
-     light background via this pseudo-class, ignoring our background-color —
-     that's what causes "white text on white background" on text inputs even
-     though our own CSS sets a dark background. The box-shadow inset trick is
-     the standard workaround (background-color alone doesn't override it). */
+  select {
+    color-scheme: inherit;
+  }
+  option {
+    background-color: var(--color-surface);
+    color: var(--color-text);
+  }
+
+  /* Chrome/Edge paint autofilled inputs with their own background via this
+     pseudo-class, ignoring our background-color — the box-shadow inset is the
+     standard workaround. */
   input:-webkit-autofill,
   input:-webkit-autofill:hover,
   input:-webkit-autofill:focus {
-    -webkit-text-fill-color: var(--text);
-    -webkit-box-shadow: 0 0 0px 1000px #1c1730 inset;
-    box-shadow: 0 0 0px 1000px #1c1730 inset;
-    caret-color: var(--text);
+    -webkit-text-fill-color: var(--color-text);
+    -webkit-box-shadow: 0 0 0px 1000px var(--color-surface) inset;
+    box-shadow: 0 0 0px 1000px var(--color-surface) inset;
+    caret-color: var(--color-text);
     transition: background-color 5000s ease-in-out 0s;
+  }
+
+  /* Design-system-wide corner rule: "subtle, minimal corners, no rounded pill
+     buttons" (spec). Many existing pages use Tailwind's rounded-xl/2xl/full
+     utility classes directly rather than a shared component class — overriding
+     them here applies the new radius scale everywhere at once instead of
+     requiring a rewrite of every page's className strings. */
+  .rounded-full, .rounded-2xl, .rounded-xl, .rounded-lg {
+    border-radius: var(--radius-md) !important;
+  }
+  .rounded, .rounded-md, .rounded-sm {
+    border-radius: var(--radius-sm) !important;
   }
 }
 
 @layer components {
   .btn {
-    @apply px-6 py-2.5 rounded-full font-semibold transition-all duration-200;
+    @apply px-6 py-2.5 font-semibold;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-base);
   }
 
   .btn-primary {
-    @apply btn text-white;
-    background-image: linear-gradient(135deg, var(--u), var(--b));
+    @apply btn;
+    background: var(--color-accent);
+    color: var(--color-bg);
+    border: 1px solid var(--color-accent);
+    box-shadow: var(--shadow-sm);
   }
   .btn-primary:hover {
-    filter: brightness(1.1);
+    background: var(--color-bg);
+    color: var(--color-accent);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+    transform: translateY(-1px);
+  }
+  .btn-primary:active {
+    transform: scale(0.98);
   }
 
   .btn-secondary {
-    @apply btn text-white;
-    background-color: var(--surface);
-    border: 1px solid var(--border);
-    backdrop-filter: blur(6px);
+    @apply btn;
+    background: var(--color-surface);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
   }
   .btn-secondary:hover {
-    background-color: rgba(255, 255, 255, 0.08);
+    background: var(--color-accent-light);
   }
 
   .btn-success {
-    @apply btn text-[#0e0b1a] font-bold;
-    background-color: var(--g);
+    @apply btn font-bold;
+    background: var(--g);
+    color: #ffffff;
+    border: 1px solid var(--g);
   }
   .btn-success:hover {
     filter: brightness(1.08);
   }
 
   .btn-danger {
-    @apply btn text-white;
-    background-color: var(--r);
+    @apply btn;
+    background: var(--r);
+    color: #ffffff;
+    border: 1px solid var(--r);
   }
   .btn-danger:hover {
-    filter: brightness(1.1);
+    filter: brightness(1.08);
   }
 
   .card {
-    @apply rounded-2xl p-6;
-    background-color: var(--surface);
-    border: 1px solid var(--border);
-    backdrop-filter: blur(8px);
+    padding: var(--spacing-lg);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
   }
 
   .card-hover {
     @apply card cursor-pointer;
-    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    transition: all var(--transition-base);
   }
   .card-hover:hover {
-    border-color: var(--u);
-    box-shadow: 0 16px 32px -18px rgba(79, 168, 245, 0.35);
+    border-color: var(--color-accent);
+    box-shadow: var(--shadow-md);
     transform: translateY(-2px);
   }
+
+  .nav-link {
+    position: relative;
+    text-decoration: none;
+    transition: color var(--transition-fast);
+  }
+  .nav-link::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background: var(--color-accent);
+    transition: width var(--transition-fast);
+  }
+  .nav-link:hover {
+    color: var(--color-accent) !important;
+  }
+  .nav-link:hover::after, .nav-link-active::after {
+    width: 100%;
+  }
+  .nav-link-active {
+    color: var(--color-accent) !important;
+    font-weight: 600;
+  }
+}
+
+@media (max-width: 1024px) {
+  h1 { font-size: 2.4rem; }
+}
+@media (max-width: 768px) {
+  h1 { font-size: 1.8rem; }
+}
+@media (max-width: 480px) {
+  h1 { font-size: 1.5rem; }
 }
