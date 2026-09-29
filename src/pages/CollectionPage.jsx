@@ -98,6 +98,8 @@ export default function CollectionPage() {
   const [availability, setAvailability] = useState('all') // all | free | built
   const [minQuantity, setMinQuantity] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
+  const [minCmc, setMinCmc] = useState('')
+  const [maxCmc, setMaxCmc] = useState('')
   const [sortBy, setSortBy] = useState('none')
   const [modalIndex, setModalIndex] = useState(null)
 
@@ -168,13 +170,21 @@ export default function CollectionPage() {
       result = result.filter(c => c.purchasePrice <= Number(maxPrice))
     }
 
+    if (minCmc) {
+      result = result.filter(c => (imageMap[c.scryfallId]?.cmc ?? 0) >= Number(minCmc))
+    }
+
+    if (maxCmc) {
+      result = result.filter(c => (imageMap[c.scryfallId]?.cmc ?? 0) <= Number(maxCmc))
+    }
+
     const sortFn = PRICE_SORTS[sortBy]?.fn
     if (sortFn) {
       result = [...result].sort(sortFn)
     }
 
     return result
-  }, [collection, search, selectedColors, selectedType, availability, minQuantity, maxPrice, sortBy, imageMap])
+  }, [collection, search, selectedColors, selectedType, availability, minQuantity, maxPrice, minCmc, maxCmc, sortBy, imageMap])
 
   if (!collection) {
     return (
@@ -285,6 +295,31 @@ export default function CollectionPage() {
           </div>
 
           <div>
+            <label className="text-xs text-cmd-muted block mb-2">CMC</label>
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                min="0"
+                placeholder="min"
+                value={minCmc}
+                onChange={(e) => setMinCmc(e.target.value)}
+                className="w-16 text-white rounded-xl p-2 text-sm"
+                style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+              />
+              <span className="text-cmd-muted text-xs">–</span>
+              <input
+                type="number"
+                min="0"
+                placeholder="max"
+                value={maxCmc}
+                onChange={(e) => setMaxCmc(e.target.value)}
+                className="w-16 text-white rounded-xl p-2 text-sm"
+                style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+              />
+            </div>
+          </div>
+
+          <div>
             <label className="text-xs text-cmd-muted block mb-2">Sortieren</label>
             <select
               value={sortBy}
@@ -298,7 +333,7 @@ export default function CollectionPage() {
             </select>
           </div>
 
-          {(selectedColors.length > 0 || selectedType || availability !== 'all' || minQuantity || maxPrice || sortBy !== 'none' || search) && (
+          {(selectedColors.length > 0 || selectedType || availability !== 'all' || minQuantity || maxPrice || minCmc || maxCmc || sortBy !== 'none' || search) && (
             <button
               onClick={() => {
                 setSearch('')
@@ -307,6 +342,8 @@ export default function CollectionPage() {
                 setAvailability('all')
                 setMinQuantity('')
                 setMaxPrice('')
+                setMinCmc('')
+                setMaxCmc('')
                 setSortBy('none')
               }}
               className="btn-secondary text-xs px-4 py-2"
