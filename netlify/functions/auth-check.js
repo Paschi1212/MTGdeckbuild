@@ -1,22 +1,21 @@
-export const handler = async (event) => {
-  // Check if user has valid session
-  const token = event.headers.authorization
+import { parseSessionCookie } from './lib/session.js'
 
-  if (!token) {
+export const handler = async (event) => {
+  const session = parseSessionCookie(event.headers.cookie)
+
+  if (!session) {
     return {
       statusCode: 401,
       body: JSON.stringify({ error: 'Not authenticated' })
     }
   }
 
-  // TODO: Verify token with Google
-
   return {
     statusCode: 200,
     body: JSON.stringify({
       user: {
-        email: 'user@example.com',
-        name: 'User Name'
+        email: session.email,
+        name: session.name
       }
     })
   }

@@ -3,7 +3,7 @@
  * Suggests commanders based on user preferences
  */
 
-const { suggestCommanders } = require('./lib/claude-api')
+const { suggestCommanders } = require('./lib/gemini-api.cjs')
 
 exports.handler = async (event) => {
   try {
@@ -33,7 +33,9 @@ exports.handler = async (event) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
+        intro: suggestions.intro,
         suggestions: suggestions.suggestions,
+        parseError: suggestions.parseError || false,
         usage: suggestions.usage
       })
     }

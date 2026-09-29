@@ -1,10 +1,10 @@
 /**
  * POST /.netlify/functions/analyze-deck
- * Analyzes a deck using Claude AI
+ * Analyzes a deck using Gemini AI
  */
 
-const { analyzeDeck } = require('./lib/claude-api')
-const { getCommanderData, extractRecommendations, extractSynergyCommanders } = require('./lib/edhrec-api')
+const { analyzeDeck } = require('./lib/gemini-api.cjs')
+const { getCommanderData, extractRecommendations, extractSynergyCommanders } = require('./lib/edhrec-api.cjs')
 
 exports.handler = async (event) => {
   try {
@@ -15,7 +15,7 @@ exports.handler = async (event) => {
       }
     }
 
-    const { commander, strategy, collection, userFeedback, budget } = JSON.parse(event.body)
+    const { commander, strategy, collection, budget } = JSON.parse(event.body)
 
     if (!commander || !strategy || !collection) {
       return {
@@ -26,15 +26,14 @@ exports.handler = async (event) => {
 
     console.log(`[API] Analyzing deck for ${commander}`)
 
-    // Fetch EDHREC data
+    // Fetch EDHREC data — same shape chatAssistant()'s build_full_deck path uses
+    // (highSynergyCards/topCards/synergyCommanders), since analyzeDeck() now shares its
+    // actual generation logic with that flow.
     let edhecData = null
     try {
       const rawData = await getCommanderData(commander)
-      edhecData = {
-        allCards: extractRecommendations(rawData).allCards,
-        synergyCommanders: extractSynergyCommanders(rawData),
-        salt: rawData.salt
-      }
+      edhecData = extractRecommendations(rawData)
+      edhecData.synergyCommanders = extractSynergyCommanders(rawData)
     } catch (error) {
       console.warn('[API] Could not fetch EDHREC data:', error.message)
     }
@@ -45,7 +44,6 @@ exports.handler = async (event) => {
       strategy,
       collection,
       edhecData,
-      userFeedback,
       budget
     })
 
@@ -56,7 +54,9 @@ exports.handler = async (event) => {
       },
       body: JSON.stringify({
         commander,
-        analysis: analysis.analysis,
+        summary: analysis.summary,
+        cards: analysis.cards,
+        parseError: analysis.parseError || false,
         usage: analysis.usage
       })
     }

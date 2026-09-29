@@ -3,7 +3,7 @@
  * Returns EDHREC data for a commander
  */
 
-const { getCommanderData, extractRecommendations, extractSynergyCommanders } = require('./lib/edhrec-api')
+const { getCommanderData, extractRecommendations, extractSynergyCommanders } = require('./lib/edhrec-api.cjs')
 
 exports.handler = async (event) => {
   try {

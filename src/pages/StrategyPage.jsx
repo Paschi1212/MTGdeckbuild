@@ -107,7 +107,8 @@ export default function StrategyPage() {
         <select
           value={strategy.primaryWinCon}
           onChange={(e) => setStrategy(prev => ({ ...prev, primaryWinCon: e.target.value }))}
-          className="w-full bg-gray-800 text-white rounded-lg p-3 border border-gray-700"
+          className="w-full text-white rounded-xl p-3"
+            style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
         >
           <option value="">Wähle eine Win Condition</option>
           {winConditions.map(wc => (
@@ -123,11 +124,12 @@ export default function StrategyPage() {
             <button
               key={mechanic}
               onClick={() => toggleMechanic(mechanic)}
-              className={`p-3 rounded-lg transition text-sm font-semibold ${
+              className={`p-3 rounded-xl transition text-sm font-semibold ${
                 strategy.keyMechanics.includes(mechanic)
-                  ? 'bg-mtg-green text-white'
-                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                  ? 'text-white'
+                  : 'text-cmd-muted hover:text-white bg-[color:var(--surface)] border border-[color:var(--border)]'
               }`}
+              style={strategy.keyMechanics.includes(mechanic) ? { backgroundColor: 'var(--g)' } : undefined}
             >
               {mechanic}
             </button>
@@ -145,11 +147,12 @@ export default function StrategyPage() {
             <button
               key={style}
               onClick={() => setStrategy(prev => ({ ...prev, playStyle: style }))}
-              className={`p-3 rounded-lg transition ${
+              className={`p-3 rounded-xl transition ${
                 strategy.playStyle === style
-                  ? 'bg-mtg-blue text-white'
-                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                  ? 'text-white'
+                  : 'text-cmd-muted hover:text-white bg-[color:var(--surface)] border border-[color:var(--border)]'
               }`}
+              style={strategy.playStyle === style ? { backgroundImage: 'linear-gradient(135deg, var(--u), var(--b))' } : undefined}
             >
               {style}
             </button>
@@ -158,7 +161,7 @@ export default function StrategyPage() {
       </div>
 
       <div className="card mb-6">
-        <h2 className="text-xl font-bold mb-4">💰 Budget</h2>
+        <h2 className="text-xl font-bold mb-4">💰 Budget pro Karte (max.)</h2>
         <div className="flex items-center gap-4">
           <input
             type="range"
@@ -170,6 +173,9 @@ export default function StrategyPage() {
           />
           <span className="text-lg font-bold">€{strategy.budget}</span>
         </div>
+        <p className="text-sm text-gray-400 mt-2">
+          Gilt pro Einzelkarte (nicht fürs ganze Deck) — Basisländer ausgenommen. Anders als das "Deck-Budget insgesamt" vom vorherigen Schritt.
+        </p>
       </div>
 
       <div className="card mb-6">
@@ -179,7 +185,8 @@ export default function StrategyPage() {
             id="combo-input"
             type="text"
             placeholder="z.B. Card A + Card B = Effect"
-            className="w-full bg-gray-800 text-white rounded-lg p-3 border border-gray-700"
+            className="w-full text-white rounded-xl p-3"
+            style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
           />
           <button onClick={handleAddCombo} className="btn-secondary w-full mt-2">
             + Hinzufügen
@@ -188,8 +195,8 @@ export default function StrategyPage() {
         {strategy.combos.length > 0 && (
           <div className="space-y-2">
             {strategy.combos.map((combo, index) => (
-              <div key={index} className="flex justify-between items-center bg-gray-800 p-2 rounded">
-                <span className="text-gray-300">{combo}</span>
+              <div key={index} className="flex justify-between items-center p-2 rounded-lg" style={{ backgroundColor: 'var(--surface)' }}>
+                <span className="text-cmd-muted">{combo}</span>
                 <button
                   onClick={() => handleRemoveCombo(index)}
                   className="text-red-400 hover:text-red-300"
@@ -208,7 +215,8 @@ export default function StrategyPage() {
           value={strategy.notes}
           onChange={(e) => setStrategy(prev => ({ ...prev, notes: e.target.value }))}
           placeholder="Zusätzliche Infos zur Strategie (optional)"
-          className="w-full bg-gray-800 text-white rounded-lg p-3 border border-gray-700 h-20 resize-none"
+          className="w-full text-white rounded-xl p-3 h-20 resize-none"
+          style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
         />
       </div>
 

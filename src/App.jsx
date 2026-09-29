@@ -3,10 +3,15 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Navigation from './components/Navigation'
 import HomePage from './pages/HomePage'
 import UploadPage from './pages/UploadPage'
+import CollectionPage from './pages/CollectionPage'
+import DecksPage from './pages/DecksPage'
+import DeckDetailPage from './pages/DeckDetailPage'
+import DeckAuditPage from './pages/DeckAuditPage'
 import CommanderSelectPage from './pages/CommanderSelectPage'
 import StrategyPage from './pages/StrategyPage'
 import AnalyzePage from './pages/AnalyzePage'
 import EditDeckPage from './pages/EditDeckPage'
+import ChatBuilderPage from './pages/ChatBuilderPage'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -37,8 +42,14 @@ function App() {
     setUser(userData)
   }
 
-  const handleLogout = () => {
-    setUser(null)
+  const handleLogout = async () => {
+    try {
+      await fetch('/.netlify/functions/logout', { credentials: 'include' })
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      setUser(null)
+    }
   }
 
   if (loading) {
@@ -56,14 +67,19 @@ function App() {
     <BrowserRouter>
       <div className="min-h-screen bg-gray-950">
         <Navigation user={user} onLogout={handleLogout} />
-        <main className="container mx-auto px-4 py-8">
+        <main className="container mx-auto px-4 pt-24 md:pt-28 pb-8">
           <Routes>
             <Route path="/" element={<HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/upload" element={user ? <UploadPage /> : <HomePage user={user} onLogin={handleLogin} />} />
+            <Route path="/collection" element={user ? <CollectionPage /> : <HomePage user={user} onLogin={handleLogin} />} />
+            <Route path="/decks" element={user ? <DecksPage /> : <HomePage user={user} onLogin={handleLogin} />} />
+            <Route path="/decks/:deckName" element={user ? <DeckDetailPage /> : <HomePage user={user} onLogin={handleLogin} />} />
+            <Route path="/deck-audit" element={user ? <DeckAuditPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/select-commander" element={user ? <CommanderSelectPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/strategy" element={user ? <StrategyPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/analyze" element={user ? <AnalyzePage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/edit-deck" element={user ? <EditDeckPage /> : <HomePage user={user} onLogin={handleLogin} />} />
+            <Route path="/chat-builder" element={user ? <ChatBuilderPage /> : <HomePage user={user} onLogin={handleLogin} />} />
           </Routes>
         </main>
       </div>

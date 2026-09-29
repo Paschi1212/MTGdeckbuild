@@ -2,13 +2,54 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Tells the browser to render native form controls (select dropdowns, etc.)
+     with dark UI chrome — without this, some browsers paint select boxes with
+     a white background regardless of our CSS, causing white-on-white text. */
+  color-scheme: dark;
+
+  --bg: #0e0b1a;
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-solid: #171129;
+  --border: rgba(255, 255, 255, 0.09);
+  --text: #f3eefc;
+  --text-muted: #a99fc4;
+  --w: #f4e9c0;
+  --u: #4fa8f5;
+  --b: #8b6fd6;
+  --r: #ef6a63;
+  --g: #4ed689;
+}
+
 @layer base {
   body {
-    @apply bg-gray-950 text-gray-100;
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(720px 480px at 12% -8%, rgba(79, 168, 245, 0.2), transparent 60%),
+      radial-gradient(680px 460px at 92% 8%, rgba(139, 111, 214, 0.22), transparent 60%),
+      radial-gradient(600px 500px at 50% 105%, rgba(78, 214, 137, 0.14), transparent 60%);
+    background-attachment: fixed;
+    color: var(--text);
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  }
+
+  h1, h2, h3 {
+    font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+  }
+
+  /* color-scheme: dark on :root doesn't reliably reach a <select>'s native
+     dropdown list in every browser — explicitly style <option> so the list
+     itself doesn't fall back to white-on-white. */
+  select {
+    color-scheme: dark;
+  }
+  option {
+    background-color: #1c1730;
+    color: var(--text);
   }
 
   h1 {
-    @apply text-4xl font-bold mb-4;
+    @apply text-4xl font-extrabold mb-4;
   }
 
   h2 {
@@ -18,34 +59,76 @@
   button {
     @apply transition-all duration-200;
   }
+
+  /* Chrome/Edge paint autofilled or autofill-suggested inputs with their own
+     light background via this pseudo-class, ignoring our background-color —
+     that's what causes "white text on white background" on text inputs even
+     though our own CSS sets a dark background. The box-shadow inset trick is
+     the standard workaround (background-color alone doesn't override it). */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--text);
+    -webkit-box-shadow: 0 0 0px 1000px #1c1730 inset;
+    box-shadow: 0 0 0px 1000px #1c1730 inset;
+    caret-color: var(--text);
+    transition: background-color 5000s ease-in-out 0s;
+  }
 }
 
 @layer components {
   .btn {
-    @apply px-4 py-2 rounded-lg font-semibold transition-all duration-200;
+    @apply px-6 py-2.5 rounded-full font-semibold transition-all duration-200;
   }
 
   .btn-primary {
-    @apply btn bg-mtg-blue hover:bg-blue-700 text-white;
+    @apply btn text-white;
+    background-image: linear-gradient(135deg, var(--u), var(--b));
+  }
+  .btn-primary:hover {
+    filter: brightness(1.1);
   }
 
   .btn-secondary {
-    @apply btn bg-gray-700 hover:bg-gray-600 text-white;
+    @apply btn text-white;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(6px);
+  }
+  .btn-secondary:hover {
+    background-color: rgba(255, 255, 255, 0.08);
   }
 
   .btn-success {
-    @apply btn bg-mtg-green hover:bg-green-700 text-white;
+    @apply btn text-[#0e0b1a] font-bold;
+    background-color: var(--g);
+  }
+  .btn-success:hover {
+    filter: brightness(1.08);
   }
 
   .btn-danger {
-    @apply btn bg-mtg-red hover:bg-red-700 text-white;
+    @apply btn text-white;
+    background-color: var(--r);
+  }
+  .btn-danger:hover {
+    filter: brightness(1.1);
   }
 
   .card {
-    @apply bg-gray-900 border border-gray-800 rounded-lg p-6 shadow-lg;
+    @apply rounded-2xl p-6;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(8px);
   }
 
   .card-hover {
-    @apply card hover:border-mtg-blue hover:shadow-blue-500/20 cursor-pointer;
+    @apply card cursor-pointer;
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .card-hover:hover {
+    border-color: var(--u);
+    box-shadow: 0 16px 32px -18px rgba(79, 168, 245, 0.35);
+    transform: translateY(-2px);
   }
 }
