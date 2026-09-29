@@ -13,6 +13,11 @@ export default function DeckAuditPage() {
   const [audit, setAudit] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  // Once the AI's own read of the deck's strategy comes back, this holds the editable text
+  // version of it — the user can correct it before asking for a re-evaluation, instead of
+  // the cuts/adds being anchored to a strategy read they never got to see or fix.
+  const [strategyDraft, setStrategyDraft] = useState('')
+  const [editingStrategy, setEditingStrategy] = useState(false)
   // React 18 StrictMode (dev only) intentionally double-invokes a mount effect — without
   // this guard, that fired two full audit requests (EDHREC + Gemini) on every page load,
   // competing for the same rate limits and making a 30s timeout much more likely. Also
@@ -32,19 +37,27 @@ export default function DeckAuditPage() {
     runAudit()
   }, [])
 
-  const runAudit = async () => {
+  const formatStrategy = (strategy) => strategy
+    ? `Win Condition: ${strategy.winCondition}\n\nSpielplan: ${strategy.gamePlan}\n\nSchwächen: ${strategy.weaknesses}`
+    : ''
+
+  const runAudit = async (strategyOverride) => {
     try {
       setLoading(true)
       setError(null)
 
       const response = await fetch('/.netlify/functions/audit-deck', {
         method: 'POST',
-        body: JSON.stringify({ commander, deckName, deckCards, collectionSampleNames })
+        body: JSON.stringify({ commander, deckName, deckCards, collectionSampleNames, strategyOverride })
       })
 
       if (response.ok) {
         const data = await response.json()
         setAudit(data)
+        // Only seed the draft from a fresh AI read — a re-run using the user's own
+        // (possibly edited) override shouldn't silently overwrite what they just typed.
+        if (!strategyOverride) setStrategyDraft(formatStrategy(data.strategy))
+        setEditingStrategy(false)
       } else {
         setError(await readApiError(response))
       }
@@ -87,7 +100,7 @@ export default function DeckAuditPage() {
         <div className="card bg-red-900/20 border-red-700 mb-6">
           <p className="text-red-300">❌ {error}</p>
         </div>
-        <button onClick={runAudit} className="btn-primary w-full mb-3">
+        <button onClick={() => runAudit()} className="btn-primary w-full mb-3">
           Erneut versuchen
         </button>
         <button onClick={backToDeck} className="btn-secondary w-full">
@@ -101,6 +114,48 @@ export default function DeckAuditPage() {
     <div className="max-w-4xl mx-auto">
       <h1>📊 Deck-Analyse: {deckName}</h1>
       <p className="text-cmd-muted mb-6">Commander: {commander}</p>
+
+      {audit?.strategy && (
+        <div className="card mb-6" style={{ borderColor: 'var(--u)' }}>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-bold" style={{ color: 'var(--u)' }}>🎯 Erkannte Strategie</h2>
+            {!editingStrategy && (
+              <button onClick={() => setEditingStrategy(true)} className="btn-secondary text-xs px-3 py-1.5">
+                ✏️ Korrigieren
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-cmd-muted mb-3">
+            Alle Cuts/Adds unten sind gegen genau diese Strategie bewertet. Falls sie danebenliegt, korrigiere sie —
+            die Bewertung wird dann strikt an deiner Version ausgerichtet, statt neu zu raten.
+          </p>
+
+          {editingStrategy ? (
+            <>
+              <textarea
+                value={strategyDraft}
+                onChange={(e) => setStrategyDraft(e.target.value)}
+                className="w-full text-white rounded-xl p-3 h-40 resize-y text-sm"
+                style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+              />
+              <div className="flex gap-2 mt-3">
+                <button onClick={() => runAudit(strategyDraft)} className="btn-primary text-sm flex-1">
+                  🔄 Neu bewerten mit dieser Strategie
+                </button>
+                <button onClick={() => { setEditingStrategy(false); setStrategyDraft(formatStrategy(audit.strategy)) }} className="btn-secondary text-sm px-4">
+                  Abbrechen
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="text-sm text-gray-300 space-y-2 whitespace-pre-wrap leading-relaxed">
+              <p><strong>Win Condition:</strong> {audit.strategy.winCondition}</p>
+              <p><strong>Spielplan:</strong> {audit.strategy.gamePlan}</p>
+              <p><strong>Schwächen:</strong> {audit.strategy.weaknesses}</p>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="card mb-6">
         <h2 className="text-2xl font-bold mb-4 text-mtg-gold">Analyse-Ergebnis</h2>

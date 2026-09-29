@@ -85,6 +85,21 @@ const SUGGEST_SCHEMA = {
 const AUDIT_SCHEMA = {
   type: 'object',
   properties: {
+    // Forced to come FIRST in the schema — Gemini generates structured output field by
+    // field, so committing to an explicit read of the deck's game plan before judging any
+    // individual card is what actually makes the judgments below consistent with each
+    // other, the same way a human deckbuilder wouldn't start cutting cards before deciding
+    // what the deck is trying to do. Skipping straight to cardsToCut let the model judge
+    // each card in a vacuum, with no fixed strategy to check consistency against.
+    strategy: {
+      type: 'object',
+      properties: {
+        winCondition: { type: 'string' },
+        gamePlan: { type: 'string' },
+        weaknesses: { type: 'string' }
+      },
+      required: ['winCondition', 'gamePlan', 'weaknesses']
+    },
     summary: { type: 'string' },
     cardsToAdd: {
       type: 'array',
@@ -111,15 +126,26 @@ const AUDIT_SCHEMA = {
       }
     }
   },
-  required: ['summary', 'cardsToAdd', 'cardsToBuy', 'cardsToCut']
+  required: ['strategy', 'summary', 'cardsToAdd', 'cardsToBuy', 'cardsToCut']
 }
 
 /**
  * Audit an existing, already-built deck (real decklist) using Gemini
  */
-async function auditDeck({ commander, deckCards, collectionSampleNames, budget, edhecData }) {
+async function auditDeck({ commander, deckCards, collectionSampleNames, budget, edhecData, strategyOverride }) {
+  // The model previously only ever saw a bare list of card NAMES — every judgment about a
+  // card's role (ramp? removal? win-con?) relied purely on the model's own memorized
+  // knowledge of that exact name, with zero grounding for anything it doesn't recall well.
+  // Attaching real type/CMC data (already fetched everywhere else in this codebase via
+  // Scryfall) turns "guess what this card does from its name" into "here's what it
+  // actually is" for the structural read, without the token cost of full oracle text.
+  const cardInfo = await getBulkPrices(deckCards.map(c => c.name))
   const deckListText = deckCards
-    .map(c => (c.quantity > 1 ? `${c.quantity}x ${c.name}` : c.name))
+    .map(c => {
+      const info = cardInfo[c.name]
+      const typeInfo = info?.typeLine ? ` [${info.typeLine}${info.cmc != null ? `, CMC ${info.cmc}` : ''}]` : ''
+      return `${c.quantity > 1 ? `${c.quantity}x ` : ''}${c.name}${typeInfo}`
+    })
     .join(', ')
 
   const collectionContext = collectionSampleNames?.length
@@ -134,23 +160,45 @@ async function auditDeck({ commander, deckCards, collectionSampleNames, budget, 
     ? `\nEDHREC-DATEN (echte Decks mit ${commander}):\n- High Synergy Cards (überdurchschnittlich oft speziell mit diesem Commander gespielt — starkes Synergie-/Combo-Signal): ${(edhecData.highSynergyCards || []).slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n- Meistgespielte Karten insgesamt: ${edhecData.topCards?.slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n`
     : ''
 
+  // Cut candidates get a real, code-computed data point too, not just the model's unaided
+  // opinion: a card that doesn't show up in ANY of EDHREC's lists for this commander at all
+  // (not even the generic "played" lists, let alone high-synergy) is genuinely
+  // underrepresented in real decks with this commander — a concrete signal, not a guess.
+  // Never a hard rule (plenty of good cards are off-meta or a personal build choice), just
+  // a real fact to weigh instead of vibes.
+  let edhecCutSignal = ''
+  if (edhecData?.allCards?.length) {
+    const edhecNameSet = new Set(edhecData.allCards.map(c => normalizeCardName(c.name)))
+    const unlisted = deckCards
+      .filter(c => !FULL_DECK_BASIC_LAND_NAMES.has(c.name.toLowerCase()) && !edhecNameSet.has(normalizeCardName(c.name)))
+      .map(c => c.name)
+    if (unlisted.length) {
+      edhecCutSignal = `\nDIESE KARTEN AUS DER DECKLISTE TAUCHEN IN KEINER EDHREC-LISTE FÜR ${commander} AUF (weder Top-Karten noch High-Synergy — reales Signal für unterdurchschnittliche Verbreitung, aber KEIN Automatismus, wäge strategisch ab): ${unlisted.join(', ')}\n`
+    }
+  }
+
   const budgetContext = budget ? `\nBUDGET: Bevorzuge bei "cardsToAdd" Karten bis max. ca. €${budget} pro Stück (Basisländer ausgenommen).\n` : ''
 
-  const prompt = `Du bist ein Magic: The Gathering Commander Deck Expert.
+  const strategyContext = strategyOverride
+    ? `\nVOM NUTZER BESTÄTIGTE/KORRIGIERTE STRATEGIE (verbindlich — übernimm das exakt als "strategy" in deiner Antwort, erfinde keine eigene, abweichende Strategie): ${strategyOverride}\n`
+    : ''
+
+  const prompt = `Du bist ein Magic: The Gathering Commander Deck Expert — arbeite wie ein erfahrener Deckbuilder: zuerst verstehen, was das Deck WILL, dann erst bewerten, was nicht passt.
 
 COMMANDER: ${commander}
 
-AKTUELLE DECKLISTE (${deckCards.length} Karten):
+AKTUELLE DECKLISTE (${deckCards.length} Karten, [Typ, Manawert] wo bekannt):
 ${deckListText}
-${collectionContext}${edhecContext}${budgetContext}
+${collectionContext}${edhecContext}${edhecCutSignal}${budgetContext}${strategyContext}
 AUFGABE:
 Bewerte dieses BEREITS GEBAUTE Deck. Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
-- "summary": kurze deutsche Fließtext-Bewertung (Mana-Kurve, Synergie mit dem Commander, Schwachstellen), 3-5 Sätze
-- "cardsToCut": Schwächste Karten AUS DER OBIGEN DECKLISTE mit Begründung, warum sie raus sollten — bezogen auf DIESEN Commander und DIESE Deckliste, keine generischen "das ist eine schwache Karte"-Begründungen. Üblicherweise 3-6 Karten, aber KEINE feste Obergrenze — wenn das Deck wirklich viele Schwachstellen hat, nenne mehr; wenn es schon stark ist, nenne weniger oder auch gar keine. KRITISCH: "name" muss EXAKT und WORTWÖRTLICH einem Eintrag aus der Deckliste oben entsprechen — erfinde niemals eine Karte, die dort nicht steht, und ändere keine Namen.
-- "cardsToAdd": Karten AUSSCHLIESSLICH aus der Sammlungs-Liste oben ("WEITERE KARTEN IN DER SAMMLUNG..."), die das Deck verbessern würden — der Nutzer besitzt sie bereits, nichts davon muss gekauft werden. KRITISCH: jeder "name" muss WORTWÖRTLICH in dieser Sammlungs-Liste stehen; wenn die Liste leer ist oder nichts davon wirklich passt, gib ein leeres Array zurück statt eine Karte zu erfinden oder eine zu nennen, die nicht dort steht.
-- "cardsToBuy": UNABHÄNGIG von der Sammlung — 2-5 starke Kartenvorschläge, die das Deck spürbar verbessern würden, auch wenn der Nutzer sie nicht besitzt (z.B. bekannte starke Staples/Upgrades für diesen Commander bzw. diese Strategie, die weder im Deck noch in der Sammlung sind). Das ist eine eigene, separate Liste — nenne hier ruhig auch Karten, die es in der Sammlungs-Liste nicht gibt.
+- "strategy": ${strategyOverride ? 'übernimm die vom Nutzer bestätigte Strategie oben unverändert in winCondition/gamePlan/weaknesses.' : 'lies aus der Deckliste (Kartentypen, Manawerte, Commander-Fähigkeiten) das TATSÄCHLICHE Spielplan des Decks heraus, BEVOR du irgendeine Karte bewertest — "winCondition" (wie gewinnt dieses Deck konkret), "gamePlan" (Früh-/Mittel-/Spätspiel-Ablauf, Kernrollen: Ramp, Kartenvorteil, Removal/Interaktion, Payoffs — mit welchen Karten sie abgedeckt sind), "weaknesses" (welche dieser Rollen fehlen oder sind unterbesetzt). Das ist die Grundlage für ALLES danach.'}
+- "summary": kurze deutsche Fließtext-Bewertung basierend auf der obigen Strategie-Einschätzung, 3-5 Sätze
+- "cardsToCut": Schwächste Karten AUS DER OBIGEN DECKLISTE mit Begründung, warum sie raus sollten. KRITISCH: jede Begründung muss sich auf die oben festgelegte "strategy" beziehen (z.B. "trägt nichts zu [winCondition] bei" oder "redundant zu [andere Karte], die dieselbe Rolle besser erfüllt") — keine generischen "das ist eine schwache Karte"-Begründungen ohne Bezug zu DIESEM Deck.${edhecCutSignal ? ' Die oben genannten, bei EDHREC nicht gelisteten Karten sind bevorzugte (aber nicht zwingende) Kandidaten — nenne bei Bedarf auch andere.' : ''} Üblicherweise 3-6 Karten, aber KEINE feste Obergrenze — wenn das Deck wirklich viele Schwachstellen hat, nenne mehr; wenn es schon stark ist, nenne weniger oder auch gar keine. "name" muss EXAKT und WORTWÖRTLICH einem Eintrag aus der Deckliste oben entsprechen (ohne den [Typ, Manawert]-Zusatz) — erfinde niemals eine Karte, die dort nicht steht, und ändere keine Namen.
+- "cardsToAdd": Karten AUSSCHLIESSLICH aus der Sammlungs-Liste oben ("WEITERE KARTEN IN DER SAMMLUNG..."), die eine der oben in "weaknesses" identifizierten Lücken schließen würden — der Nutzer besitzt sie bereits, nichts davon muss gekauft werden. KRITISCH: jeder "name" muss WORTWÖRTLICH in dieser Sammlungs-Liste stehen; wenn die Liste leer ist oder nichts davon wirklich passt, gib ein leeres Array zurück statt eine Karte zu erfinden oder eine zu nennen, die nicht dort steht.
+- "cardsToBuy": UNABHÄNGIG von der Sammlung — 2-5 starke Kartenvorschläge, die konkret eine der "weaknesses" schließen oder die "winCondition" verstärken, auch wenn der Nutzer sie nicht besitzt. Das ist eine eigene, separate Liste — nenne hier ruhig auch Karten, die es in der Sammlungs-Liste nicht gibt.
 
-Für "cardsToAdd" und "cardsToBuy" gilt gemeinsam: dürfen NICHT bereits in der Deckliste oben stehen — prüfe das aktiv, bevor du eine Karte nennst.${edhecData?.allCards?.length ? ' Nutze die EDHREC-Daten oben als echtes Signal, welche Karten in der Community wirklich mit diesem Commander funktionieren — bevorzuge insbesondere die High Synergy Cards, wenn sie zur bestehenden Deckliste passen.' : ''} Jede Begründung muss konkret erklären, WAS sie in DIESEM Deck bewirkt (Synergie mit einer bestehenden Karte oder Commander-Fähigkeit, geschlossene Lücke wie fehlendes Removal/Kartenvorteil/Ramp) statt nur "ist eine gute Karte".
+Für "cardsToAdd" und "cardsToBuy" gilt gemeinsam: dürfen NICHT bereits in der Deckliste oben stehen — prüfe das aktiv, bevor du eine Karte nennst.${edhecData?.allCards?.length ? ' Nutze die EDHREC-Daten oben als echtes Signal, welche Karten in der Community wirklich mit diesem Commander funktionieren — bevorzuge insbesondere die High Synergy Cards, wenn sie zur "strategy" oben passen.' : ''} Jede Begründung muss konkret erklären, WAS sie in DIESEM Deck bewirkt (Bezug zur "strategy" oben, Synergie mit einer bestehenden Karte oder Commander-Fähigkeit) statt nur "ist eine gute Karte".
 
 Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
 
@@ -161,12 +209,13 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
       model: GEMINI_MODEL,
       contents: prompt,
       config: {
-        temperature: 0.7,
+        // Lowered from 0.7 — this is an analytical/evaluative task (judge against a stated
+        // strategy), not a creative one; consistency matters more than variety here.
+        temperature: 0.35,
         responseMimeType: 'application/json',
         responseSchema: AUDIT_SCHEMA,
-        // Raised from 1500 now that cardsToAdd/cardsToCut are no longer hard-capped at 5
-        // each — a deck with genuinely many weaknesses can return more, each with a reason.
-        maxOutputTokens: 3000
+        // Raised again for the added strategy fields on top of the no-longer-capped lists.
+        maxOutputTokens: 3500
       }
     })
 
@@ -175,6 +224,7 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
     if (!parsed) {
       console.warn('[Gemini] auditDeck: could not parse structured JSON, falling back to raw text')
       return {
+        strategy: null,
         summary: result.text,
         cardsToAdd: [],
         cardsToBuy: [],
@@ -234,6 +284,7 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
     ])
 
     return {
+      strategy: parsed.strategy,
       summary: parsed.summary,
       cardsToAdd,
       cardsToBuy,

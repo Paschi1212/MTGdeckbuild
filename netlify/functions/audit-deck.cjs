@@ -15,7 +15,7 @@ exports.handler = async (event) => {
       }
     }
 
-    const { commander, deckName, deckCards, collectionSampleNames, budget } = JSON.parse(event.body)
+    const { commander, deckName, deckCards, collectionSampleNames, budget, strategyOverride } = JSON.parse(event.body)
 
     if (!commander || !Array.isArray(deckCards) || deckCards.length === 0) {
       return {
@@ -37,7 +37,7 @@ exports.handler = async (event) => {
       console.warn('[API] Could not fetch EDHREC data for audit:', error.message)
     }
 
-    const audit = await auditDeck({ commander, deckCards, collectionSampleNames, budget, edhecData })
+    const audit = await auditDeck({ commander, deckCards, collectionSampleNames, budget, edhecData, strategyOverride })
 
     return {
       statusCode: 200,
@@ -47,6 +47,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         commander,
         deckName,
+        strategy: audit.strategy,
         summary: audit.summary,
         cardsToAdd: audit.cardsToAdd,
         cardsToBuy: audit.cardsToBuy,
