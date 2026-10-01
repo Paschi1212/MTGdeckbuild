@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { loadCollection } from '../lib/collection'
-import { loadDraftDecks, deleteDraftDeck } from '../lib/draftDecks'
+import { loadDraftDecks, deleteDraftDeck, saveDraftDeck } from '../lib/draftDecks'
+import { parseDeckListText } from '../lib/deckListImport'
 
 function formatDate(iso) {
   try {
@@ -31,6 +32,36 @@ export default function DecksPage() {
   const [tab, setTab] = useState(location.state?.tab === 'drafts' ? 'drafts' : 'decks')
   const [collection] = useState(loadCollection)
   const [drafts, setDrafts] = useState(loadDraftDecks)
+
+  const [showImport, setShowImport] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [importCommander, setImportCommander] = useState('')
+  const [importError, setImportError] = useState('')
+
+  // Importing an externally-built deck (Moxfield, Archidekt, EDHREC export, ...) as a draft
+  // lets the Editor's existing "🛒 kaufen" / "📦 bei <Freund>" badges check it against the
+  // user's own and friends' collections — the whole point of this feature, not just storage.
+  const handleImport = () => {
+    const parsed = parseDeckListText(importText)
+    if (parsed.cards.length === 0) {
+      setImportError('Keine Karten erkannt — bitte eine gültige Decklist einfügen (z.B. "1 Sol Ring" pro Zeile).')
+      return
+    }
+    const commander = importCommander.trim() || parsed.commander || ''
+    const saved = saveDraftDeck({
+      name: commander || 'Importiertes Deck',
+      commander,
+      cards: parsed.cards.map(c => ({ name: c.name, count: c.count, price: 0 })),
+      strategyNote: ''
+    })
+    setShowImport(false)
+    setImportText('')
+    setImportCommander('')
+    setImportError('')
+    navigate('/edit-deck', {
+      state: { draftId: saved.id, commander: saved.commander, cards: saved.cards, strategyNote: saved.strategyNote }
+    })
+  }
 
   const handleDeleteDraft = (id, name) => {
     if (!window.confirm(`Entwurf "${name || 'Unbenannt'}" wirklich löschen?`)) return
@@ -94,10 +125,51 @@ export default function DecksPage() {
       )}
 
       {tab === 'drafts' && (
+        <div className="card mb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold mb-1">📋 Decklist importieren</h2>
+              <p className="text-xs text-cmd-muted">
+                Ein extern gebautes Deck (Moxfield, Archidekt, EDHREC, ...) als .txt einfügen — landet als Entwurf,
+                den du im Editor gegen deine Sammlung und Freundes-Sammlungen abgleichen kannst.
+              </p>
+            </div>
+            <button onClick={() => setShowImport(v => !v)} className="btn-secondary text-xs px-3 py-2 whitespace-nowrap flex-shrink-0 ml-4">
+              {showImport ? '✕ Abbrechen' : '+ Importieren'}
+            </button>
+          </div>
+
+          {showImport && (
+            <div className="mt-4 space-y-3">
+              <input
+                type="text"
+                placeholder="Commander (optional, wird aus der Liste erkannt wenn markiert)"
+                value={importCommander}
+                onChange={(e) => setImportCommander(e.target.value)}
+                className="w-full text-white rounded-xl p-3 text-sm"
+                style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+              />
+              <textarea
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                placeholder={'1 Sol Ring\n1 Isshin, Two Heavens as One *CMDR*\n4x Island\n...'}
+                className="w-full text-white rounded-xl p-3 text-sm font-mono h-48 resize-y"
+                style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+              />
+              {importError && <p className="text-xs" style={{ color: 'var(--r)' }}>{importError}</p>}
+              <button onClick={handleImport} disabled={!importText.trim()} className="btn-primary w-full text-sm">
+                Importieren & im Editor öffnen
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'drafts' && (
         drafts.length === 0 ? (
           <div className="card">
             <p className="text-cmd-muted mb-4">
-              Noch keine gespeicherten Entwürfe. Bau ein Deck über "Commander" → Chat-Aufbau und klick auf "Speichern" — es landet dann hier.
+              Noch keine gespeicherten Entwürfe. Bau ein Deck über "Commander" → Chat-Aufbau und klick auf "Speichern", oder importiere oben eine Decklist.
             </p>
             <button onClick={() => navigate('/select-commander')} className="btn-primary">
               🧙 Zu Commander
