@@ -11,6 +11,7 @@ import StrategyPage from './pages/StrategyPage'
 import AnalyzePage from './pages/AnalyzePage'
 import EditDeckPage from './pages/EditDeckPage'
 import ChatBuilderPage from './pages/ChatBuilderPage'
+import PrivacyPage from './pages/PrivacyPage'
 import { pullFromCloud, scheduleCloudPush } from './lib/cloudSync'
 
 function App() {
@@ -82,6 +83,7 @@ function App() {
         <main className="container mx-auto px-4 md:px-12 py-8">
           <Routes>
             <Route path="/" element={<HomePage user={user} onLogin={handleLogin} />} />
+            <Route path="/privacy" element={<PrivacyPage />} />
             <Route path="/upload" element={user ? <UploadPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/collection" element={user ? <CollectionPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/decks" element={user ? <DecksPage /> : <HomePage user={user} onLogin={handleLogin} />} />

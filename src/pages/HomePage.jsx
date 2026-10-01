@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { loadCollection, getPricedCardNames } from '../lib/collection'
 import { loadDraftDecks } from '../lib/draftDecks'
 import CardTile from '../components/CardTile'
@@ -31,6 +31,9 @@ function LoginGate({ onLogin }) {
       <button onClick={handleGoogleLogin} className="btn-primary inline-flex items-center gap-2">
         <span>🔐</span> Mit Google anmelden
       </button>
+      <Link to="/privacy" className="text-xs mt-6 underline" style={{ color: 'var(--color-text-muted)' }}>
+        Datenschutzerklärung
+      </Link>
     </div>
   )
 }
