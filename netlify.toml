@@ -8,6 +8,22 @@
   port = 3000
   targetPort = 9000
 
+# MCP connector endpoint (Scryfall + EDHREC tools for Claude) — must come before the SPA
+# catch-all below, which would otherwise answer it with index.html.
+[[redirects]]
+  from = "/mcp"
+  to = "/.netlify/functions/mcp"
+  status = 200
+  force = true
+
+# OAuth discovery probes from MCP clients: answer "nothing here" (the connector needs no
+# login) instead of letting the SPA catch-all return index.html with a 200.
+[[redirects]]
+  from = "/.well-known/*"
+  to = "/.netlify/functions/mcp"
+  status = 200
+  force = true
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

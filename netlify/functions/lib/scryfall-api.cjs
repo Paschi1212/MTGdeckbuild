@@ -362,6 +362,9 @@ async function searchCardNames(query) {
 }
 
 module.exports = {
+  SCRYFALL_BASE,
+  SCRYFALL_HEADERS,
+  fetchWithRetry,
   getCardData,
   getCardPrice,
   searchAlternativeCards,

@@ -158,7 +158,13 @@ function extractRecommendations(commanderData) {
   const planeswalkers = getCardlistCards(commanderData, 'planeswalkers')
   const lands = [...getCardlistCards(commanderData, 'lands'), ...getCardlistCards(commanderData, 'utilitylands')]
   const topCards = getCardlistCards(commanderData, 'topcards')
-  const highSynergyCards = getCardlistCards(commanderData, 'highsynergycards')
+  // EDHREC renamed this list from "highsynergycards" to "highliftcards" (same cards, now with
+  // an extra `lift` score) — reading only the old tag left this signal silently empty. Read
+  // both so a rename back (or an older cached page) still works.
+  const highSynergyCards = [
+    ...getCardlistCards(commanderData, 'highliftcards'),
+    ...getCardlistCards(commanderData, 'highsynergycards')
+  ]
   const gameChangers = getCardlistCards(commanderData, 'gamechangers')
 
   // Dedup by name across categories, most-relevant-signal-first (game changers and high
