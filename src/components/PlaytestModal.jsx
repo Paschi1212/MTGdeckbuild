@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 function shuffle(array) {
   const result = [...array]
@@ -23,17 +23,24 @@ function buildLibrary(cards) {
   return library
 }
 
+const CARD_W = 110
+const CARD_H = 172 // ~110 * 5/7 image + the name label strip below it
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value))
+}
+
 // On the battlefield, clicking a card taps/untaps it (the actual in-game action you do most
-// often) — moving between zones is drag-and-drop, with a small arrow button as a
-// touch-friendly fallback where dragging is awkward.
-function MiniCard({ card, onDragStart, onMove, moveLabel, onToggleTap }) {
+// often) — moving between zones (and around the battlefield itself) is drag-and-drop, with a
+// small action button as a touch-friendly fallback where dragging is awkward.
+function MiniCard({ card, onDragStart, style, extraActions }) {
   return (
     <div
       draggable
       onDragStart={(e) => onDragStart(e, card)}
-      onClick={onToggleTap ? () => onToggleTap(card) : undefined}
+      onClick={extraActions?.onToggleTap ? () => extraActions.onToggleTap(card) : undefined}
       className="relative rounded-lg overflow-hidden bg-black/30 flex-shrink-0"
-      style={{ width: 110, cursor: onToggleTap ? 'pointer' : 'grab' }}
+      style={{ width: CARD_W, cursor: extraActions?.onToggleTap ? 'pointer' : 'grab', ...style }}
       title={card.name}
     >
       <div
@@ -43,19 +50,24 @@ function MiniCard({ card, onDragStart, onMove, moveLabel, onToggleTap }) {
         {card.image && <img src={card.image} alt={card.name} className="w-full h-full object-cover" loading="lazy" draggable={false} />}
       </div>
       <div className="text-[10px] text-cmd-muted text-center py-0.5 truncate px-1">{card.name}</div>
-      <button
-        onClick={(e) => { e.stopPropagation(); onMove(card) }}
-        className="absolute top-1 right-1 w-5 h-5 rounded-full text-xs flex items-center justify-center"
-        style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#fff' }}
-        title={moveLabel}
-      >
-        {moveLabel}
-      </button>
+      {extraActions?.buttons?.map((btn) => (
+        <button
+          key={btn.label}
+          onClick={(e) => { e.stopPropagation(); btn.onClick(card) }}
+          className="absolute w-5 h-5 rounded-full text-xs flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#fff', top: 2, ...btn.position }}
+          title={btn.title}
+        >
+          {btn.label}
+        </button>
+      ))}
     </div>
   )
 }
 
-function DropZone({ title, cards, onDrop, onDragStartCard, onMoveCard, moveLabel, onToggleTap, emptyText, isOver, onDragOver, onDragLeave }) {
+// Hand / Friedhof / Exil stay simple flex-wrap lists — only the battlefield itself needs free
+// positioning, these are just "piles" where exact placement doesn't matter.
+function ListZone({ title, cards, onDrop, onDragStartCard, buttons, emptyText, isOver, onDragOver, onDragLeave }) {
   return (
     <div
       className="mb-4 flex-shrink-0 rounded-xl p-2 transition"
@@ -70,7 +82,7 @@ function DropZone({ title, cards, onDrop, onDragStartCard, onMoveCard, moveLabel
       ) : (
         <div className="flex flex-wrap gap-2">
           {cards.map(card => (
-            <MiniCard key={card.id} card={card} onDragStart={onDragStartCard} onMove={onMoveCard} moveLabel={moveLabel} onToggleTap={onToggleTap} />
+            <MiniCard key={card.id} card={card} onDragStart={onDragStartCard} extraActions={{ buttons }} />
           ))}
         </div>
       )}
@@ -80,17 +92,16 @@ function DropZone({ title, cards, onDrop, onDragStartCard, onMoveCard, moveLabel
 
 export default function PlaytestModal({ cards, commanderCard, onClose }) {
   const [library, setLibrary] = useState([])
-  const [hand, setHand] = useState([])
-  const [battlefield, setBattlefield] = useState([])
+  const [zones, setZones] = useState({ hand: [], battlefield: [], graveyard: [], exile: [] })
   const [mulligans, setMulligans] = useState(0)
   const [dragOverZone, setDragOverZone] = useState(null)
+  const battlefieldRef = useRef(null)
 
   const dealOpeningHand = (newLibrary) => {
     const lib = [...newLibrary]
     const newHand = lib.splice(0, 7)
     setLibrary(lib)
-    setHand(newHand)
-    setBattlefield([])
+    setZones({ hand: newHand, battlefield: [], graveyard: [], exile: [] })
   }
 
   const handleNewGame = () => {
@@ -116,39 +127,92 @@ export default function PlaytestModal({ cards, commanderCard, onClose }) {
     if (library.length === 0) return
     const [drawn, ...rest] = library
     setLibrary(rest)
-    setHand(h => [...h, drawn])
+    setZones(prev => ({ ...prev, hand: [...prev.hand, drawn] }))
   }
 
-  const moveCard = (card, fromZone, toZone) => {
-    if (fromZone === toZone) return
-    const setFrom = fromZone === 'hand' ? setHand : setBattlefield
-    const setTo = toZone === 'hand' ? setHand : setBattlefield
-    setFrom(prev => prev.filter(c => c.id !== card.id))
-    // Untap on the way back to hand — a card never stays "tapped" once it leaves play.
-    setTo(prev => [...prev, toZone === 'hand' ? { ...card, tapped: false } : card])
+  // `position` ({x, y}) only applies when entering/moving within the battlefield — every
+  // other zone is still just a pile, placement doesn't matter there.
+  const moveCard = (card, fromZone, toZone, position) => {
+    if (fromZone === toZone && toZone !== 'battlefield') return
+    setZones(prev => {
+      const next = { ...prev, [fromZone]: prev[fromZone].filter(c => c.id !== card.id) }
+      if (toZone === 'battlefield') {
+        // Repositioning on the battlefield keeps its tapped state; actually entering the
+        // battlefield from anywhere else always starts untapped.
+        const tapped = fromZone === 'battlefield' ? card.tapped : false
+        const fallbackIndex = prev.battlefield.length
+        const x = position?.x ?? card.x ?? clamp(20 + (fallbackIndex % 6) * 24, 0, 2000)
+        const y = position?.y ?? card.y ?? clamp(20 + (fallbackIndex % 6) * 24, 0, 2000)
+        next.battlefield = [...prev.battlefield, { ...card, tapped, x, y }]
+      } else {
+        // A card never stays "tapped" or keeps a battlefield position once it leaves play.
+        const { x, y, ...rest } = card
+        next[toZone] = [...prev[toZone], { ...rest, tapped: false }]
+      }
+      return next
+    })
   }
 
   const handleToggleTap = (card) => {
-    setBattlefield(prev => prev.map(c => (c.id === card.id ? { ...c, tapped: !c.tapped } : c)))
+    setZones(prev => ({
+      ...prev,
+      battlefield: prev.battlefield.map(c => (c.id === card.id ? { ...c, tapped: !c.tapped } : c))
+    }))
   }
 
   const handleDragStart = (e, card, zone) => {
-    e.dataTransfer.setData('text/plain', JSON.stringify({ id: card.id, zone }))
+    // Capture where on the card the user actually grabbed it, so dropping lands the card
+    // under the cursor instead of snapping its top-left corner there.
+    const rect = e.currentTarget.getBoundingClientRect()
+    const offsetX = e.clientX - rect.left
+    const offsetY = e.clientY - rect.top
+    e.dataTransfer.setData('text/plain', JSON.stringify({ id: card.id, zone, offsetX, offsetY }))
     e.dataTransfer.effectAllowed = 'move'
   }
 
-  const handleDrop = (e, targetZone) => {
-    setDragOverZone(null)
-    let payload
+  const readDragPayload = (e) => {
     try {
-      payload = JSON.parse(e.dataTransfer.getData('text/plain'))
+      return JSON.parse(e.dataTransfer.getData('text/plain'))
     } catch {
-      return
+      return null
     }
-    const source = payload.zone === 'hand' ? hand : battlefield
-    const card = source.find(c => c.id === payload.id)
+  }
+
+  const findCard = (id) => {
+    for (const zoneCards of Object.values(zones)) {
+      const found = zoneCards.find(c => c.id === id)
+      if (found) return found
+    }
+    return null
+  }
+
+  const handleListDrop = (e, targetZone) => {
+    setDragOverZone(null)
+    const payload = readDragPayload(e)
+    if (!payload) return
+    const card = findCard(payload.id)
     if (card) moveCard(card, payload.zone, targetZone)
   }
+
+  const handleBattlefieldDrop = (e) => {
+    setDragOverZone(null)
+    const payload = readDragPayload(e)
+    if (!payload || !battlefieldRef.current) return
+    const card = findCard(payload.id)
+    if (!card) return
+
+    const rect = battlefieldRef.current.getBoundingClientRect()
+    const x = clamp(e.clientX - rect.left - payload.offsetX, 0, Math.max(0, rect.width - CARD_W))
+    const y = clamp(e.clientY - rect.top - payload.offsetY, 0, Math.max(0, rect.height - CARD_H))
+    moveCard(card, payload.zone, 'battlefield', { x, y })
+  }
+
+  const playToBattlefield = { label: '▶', title: 'Ausspielen', position: { right: 2 }, onClick: (card) => moveCard(card, 'hand', 'battlefield') }
+  const sendToHand = { label: '◀', title: 'Zurück auf die Hand', position: { right: 2 }, onClick: (card) => moveCard(card, 'battlefield', 'hand') }
+  const sendToGraveyard = { label: '💀', title: 'Auf den Friedhof', position: { right: 26 }, onClick: (card) => moveCard(card, 'battlefield', 'graveyard') }
+  const sendToExile = { label: '🚫', title: 'Ins Exil', position: { right: 50 }, onClick: (card) => moveCard(card, 'battlefield', 'exile') }
+  const returnFromGraveyard = { label: '◀', title: 'Zurück auf die Hand', position: { right: 2 }, onClick: (card) => moveCard(card, 'graveyard', 'hand') }
+  const returnFromExile = { label: '◀', title: 'Zurück auf die Hand', position: { right: 2 }, onClick: (card) => moveCard(card, 'exile', 'hand') }
 
   return (
     <div
@@ -174,7 +238,7 @@ export default function PlaytestModal({ cards, commanderCard, onClose }) {
       {commanderCard && (
         <div className="mb-4 flex-shrink-0">
           <div className="text-xs text-cmd-muted uppercase tracking-wide mb-1">Commander</div>
-          <div className="rounded-lg overflow-hidden bg-black/30" style={{ width: 110 }}>
+          <div className="rounded-lg overflow-hidden bg-black/30" style={{ width: CARD_W }}>
             <div className="aspect-[5/7] w-full bg-black/40">
               {commanderCard.image && <img src={commanderCard.image} alt={commanderCard.name} className="w-full h-full object-cover" loading="lazy" />}
             </div>
@@ -183,35 +247,79 @@ export default function PlaytestModal({ cards, commanderCard, onClose }) {
       )}
 
       <p className="text-xs text-cmd-muted mb-2 flex-shrink-0">
-        Auf das Spielfeld ziehen zum Ausspielen (oder den kleinen Pfeil nutzen) · auf dem Spielfeld anklicken zum Tappen/Untappen
+        Auf das Spielfeld ziehen zum Ausspielen und dort frei verschieben · anklicken zum Tappen/Untappen ·
+        💀/🚫/◀ schicken eine Karte auf den Friedhof, ins Exil oder zurück auf die Hand.
       </p>
 
-      <DropZone
+      <ListZone
         title="Hand"
-        cards={hand}
+        cards={zones.hand}
         emptyText="Keine Karten auf der Hand."
         onDragStartCard={(e, card) => handleDragStart(e, card, 'hand')}
-        onMoveCard={(card) => moveCard(card, 'hand', 'battlefield')}
-        moveLabel="▶"
+        buttons={[playToBattlefield]}
         isOver={dragOverZone === 'hand'}
         onDragOver={() => setDragOverZone('hand')}
         onDragLeave={() => setDragOverZone(null)}
-        onDrop={(e) => handleDrop(e, 'hand')}
+        onDrop={(e) => handleListDrop(e, 'hand')}
       />
 
-      <DropZone
-        title="🎴 Spielfeld"
-        cards={battlefield}
-        emptyText="Noch nichts ausgespielt — Karte von der Hand hierher ziehen."
-        onDragStartCard={(e, card) => handleDragStart(e, card, 'battlefield')}
-        onMoveCard={(card) => moveCard(card, 'battlefield', 'hand')}
-        moveLabel="◀"
-        onToggleTap={handleToggleTap}
-        isOver={dragOverZone === 'battlefield'}
-        onDragOver={() => setDragOverZone('battlefield')}
+      <div
+        ref={battlefieldRef}
+        onDragOver={(e) => { e.preventDefault(); setDragOverZone('battlefield') }}
         onDragLeave={() => setDragOverZone(null)}
-        onDrop={(e) => handleDrop(e, 'battlefield')}
-      />
+        onDrop={(e) => { e.preventDefault(); handleBattlefieldDrop(e) }}
+        className="relative mb-4 rounded-xl flex-shrink-0 overflow-auto"
+        style={{
+          height: '48vh',
+          minHeight: 320,
+          backgroundColor: dragOverZone === 'battlefield' ? 'rgba(79,168,245,0.08)' : 'rgba(255,255,255,0.03)',
+          border: dragOverZone === 'battlefield' ? '1px dashed var(--u)' : '1px solid var(--border)'
+        }}
+      >
+        <div className="absolute top-2 left-2 text-xs text-cmd-muted uppercase tracking-wide pointer-events-none">
+          🎴 Spielfeld ({zones.battlefield.length})
+        </div>
+        {zones.battlefield.length === 0 && (
+          <p className="absolute inset-0 flex items-center justify-center text-sm text-cmd-muted text-center px-4">
+            Noch nichts ausgespielt — Karte von der Hand hierher ziehen und frei platzieren.
+          </p>
+        )}
+        {zones.battlefield.map(card => (
+          <MiniCard
+            key={card.id}
+            card={card}
+            onDragStart={(e, c) => handleDragStart(e, c, 'battlefield')}
+            style={{ position: 'absolute', left: card.x, top: card.y }}
+            extraActions={{ onToggleTap: handleToggleTap, buttons: [sendToHand, sendToGraveyard, sendToExile] }}
+          />
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <ListZone
+          title="💀 Friedhof"
+          cards={zones.graveyard}
+          emptyText="Noch leer."
+          onDragStartCard={(e, card) => handleDragStart(e, card, 'graveyard')}
+          buttons={[returnFromGraveyard]}
+          isOver={dragOverZone === 'graveyard'}
+          onDragOver={() => setDragOverZone('graveyard')}
+          onDragLeave={() => setDragOverZone(null)}
+          onDrop={(e) => handleListDrop(e, 'graveyard')}
+        />
+
+        <ListZone
+          title="🚫 Exil"
+          cards={zones.exile}
+          emptyText="Noch leer."
+          onDragStartCard={(e, card) => handleDragStart(e, card, 'exile')}
+          buttons={[returnFromExile]}
+          isOver={dragOverZone === 'exile'}
+          onDragOver={() => setDragOverZone('exile')}
+          onDragLeave={() => setDragOverZone(null)}
+          onDrop={(e) => handleListDrop(e, 'exile')}
+        />
+      </div>
     </div>
   )
 }
