@@ -11,7 +11,7 @@ import StrategyPage from './pages/StrategyPage'
 import AnalyzePage from './pages/AnalyzePage'
 import EditDeckPage from './pages/EditDeckPage'
 import ChatBuilderPage from './pages/ChatBuilderPage'
-import { pullFromCloud } from './lib/cloudSync'
+import { pullFromCloud, scheduleCloudPush } from './lib/cloudSync'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -31,8 +31,16 @@ function App() {
         const data = await response.json()
         // Hydrate localStorage from the server BEFORE any page can mount and read it —
         // otherwise a page's own useState(loadCollection) would grab whatever (stale or
-        // empty) was already in this browser's localStorage first.
+        // empty) was already in this browser's localStorage first. pullFromCloud() only ever
+        // overwrites keys the server actually has, so on the very first login anywhere
+        // (server has nothing yet) this is a no-op and this device's existing local data
+        // survives untouched.
         await pullFromCloud()
+        // Then push right back — on a brand new device this just re-sends what was pulled
+        // (harmless), but on the FIRST device to ever log in after this feature shipped, this
+        // is what actually seeds the server from its local data, instead of leaving the
+        // server empty until some unrelated edit happens to trigger a push.
+        scheduleCloudPush()
         setUser(data.user)
       }
     } catch (error) {
