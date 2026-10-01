@@ -114,15 +114,9 @@ const SUGGEST_SCHEMA = {
   required: ['intro', 'suggestions']
 }
 
-const AUDIT_SCHEMA = {
+const AUDIT_STRATEGY_SCHEMA = {
   type: 'object',
   properties: {
-    // Forced to come FIRST in the schema — Gemini generates structured output field by
-    // field, so committing to an explicit read of the deck's game plan before judging any
-    // individual card is what actually makes the judgments below consistent with each
-    // other, the same way a human deckbuilder wouldn't start cutting cards before deciding
-    // what the deck is trying to do. Skipping straight to cardsToCut let the model judge
-    // each card in a vacuum, with no fixed strategy to check consistency against.
     strategy: {
       type: 'object',
       properties: {
@@ -133,6 +127,21 @@ const AUDIT_SCHEMA = {
       required: ['winCondition', 'gamePlan', 'weaknesses']
     },
     summary: { type: 'string' },
+    cardsToCut: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { name: { type: 'string' }, reason: { type: 'string' } },
+        required: ['name', 'reason']
+      }
+    }
+  },
+  required: ['strategy', 'summary', 'cardsToCut']
+}
+
+const AUDIT_SUGGESTIONS_SCHEMA = {
+  type: 'object',
+  properties: {
     cardsToAdd: {
       type: 'array',
       items: {
@@ -148,29 +157,37 @@ const AUDIT_SCHEMA = {
         properties: { name: { type: 'string' }, reason: { type: 'string' } },
         required: ['name', 'reason']
       }
-    },
-    cardsToCut: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: { name: { type: 'string' }, reason: { type: 'string' } },
-        required: ['name', 'reason']
-      }
     }
   },
-  required: ['strategy', 'summary', 'cardsToAdd', 'cardsToBuy', 'cardsToCut']
+  required: ['cardsToAdd', 'cardsToBuy']
+}
+
+// Same EDHREC "not in any real list for this commander" signal used by both audit phases —
+// extracted so phase 1 (cuts) and phase 2 (adds/buys context) build it identically.
+function buildEdhecCutSignal(commander, deckCards, edhecData) {
+  if (!edhecData?.allCards?.length) return ''
+  const edhecNameSet = new Set(edhecData.allCards.map(c => normalizeCardName(c.name)))
+  const unlisted = deckCards
+    .filter(c => !FULL_DECK_BASIC_LAND_NAMES.has(c.name.toLowerCase()) && !edhecNameSet.has(normalizeCardName(c.name)))
+    .map(c => c.name)
+  if (!unlisted.length) return ''
+  return `\nDIESE KARTEN AUS DER DECKLISTE TAUCHEN IN KEINER EDHREC-LISTE FÜR ${commander} AUF (weder Top-Karten noch High-Synergy — reales Signal für unterdurchschnittliche Verbreitung, aber KEIN Automatismus, wäge strategisch ab): ${unlisted.join(', ')}\n`
+}
+
+function formatStrategyForPrompt(strategy) {
+  return `- winCondition: ${strategy.winCondition}\n- gamePlan: ${strategy.gamePlan}\n- weaknesses: ${strategy.weaknesses}`
 }
 
 /**
- * Audit an existing, already-built deck (real decklist) using Gemini
+ * Audit phase 1/2: strategy read + cardsToCut only. Kept deliberately light (no collection
+ * list, bounded output) — this call used to also produce the uncapped cardsToAdd/cardsToBuy
+ * lists in one shot, which together with a much larger collection sample (raised from 150 to
+ * 2000 names) started reliably blowing Netlify's 30s function budget, even on small/medium
+ * decks. Splitting into two independently-budgeted calls (same pattern already used for the
+ * price-gainer scan's chunked requests) is what actually fixes that, rather than trading away
+ * either the bigger collection sample or the uncapped suggestions.
  */
-async function auditDeck({ commander, deckCards, collectionSampleNames, budget, edhecData, strategyOverride, powerLevel }) {
-  // The model previously only ever saw a bare list of card NAMES — every judgment about a
-  // card's role (ramp? removal? win-con?) relied purely on the model's own memorized
-  // knowledge of that exact name, with zero grounding for anything it doesn't recall well.
-  // Attaching real type/CMC data (already fetched everywhere else in this codebase via
-  // Scryfall) turns "guess what this card does from its name" into "here's what it
-  // actually is" for the structural read, without the token cost of full oracle text.
+async function auditDeckStrategy({ commander, deckCards, edhecData, strategyOverride, powerLevel }) {
   const cardInfo = await getBulkPrices(deckCards.map(c => c.name))
   const deckListText = deckCards
     .map(c => {
@@ -180,47 +197,18 @@ async function auditDeck({ commander, deckCards, collectionSampleNames, budget, 
     })
     .join(', ')
 
-  const collectionContext = collectionSampleNames?.length
-    ? `\nWEITERE KARTEN IN DER SAMMLUNG DES SPIELERS (nicht in diesem Deck, mögliche Tauschkandidaten):\n${collectionSampleNames.join(', ')}\n`
-    : ''
-
-  // Same EDHREC grounding the full-deck builder uses — without it, "cardsToAdd" is just
-  // Gemini's own unaided guess at what's good for this commander, with no check against
-  // what actually works in real decks. That's exactly the kind of ungrounded suggestion
-  // that reads as "doesn't really make sense" for anyone who knows the commander well.
   const edhecContext = edhecData?.allCards?.length
-    ? `\nEDHREC-DATEN (echte Decks mit ${commander}):\n- High Synergy Cards (überdurchschnittlich oft speziell mit diesem Commander gespielt — starkes Synergie-/Combo-Signal): ${(edhecData.highSynergyCards || []).slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n- Meistgespielte Karten insgesamt: ${edhecData.topCards?.slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n`
+    ? `\nEDHREC-DATEN (echte Decks mit ${commander}):\n- High Synergy Cards: ${(edhecData.highSynergyCards || []).slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n- Meistgespielte Karten insgesamt: ${edhecData.topCards?.slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n`
     : ''
 
-  // Cut candidates get a real, code-computed data point too, not just the model's unaided
-  // opinion: a card that doesn't show up in ANY of EDHREC's lists for this commander at all
-  // (not even the generic "played" lists, let alone high-synergy) is genuinely
-  // underrepresented in real decks with this commander — a concrete signal, not a guess.
-  // Never a hard rule (plenty of good cards are off-meta or a personal build choice), just
-  // a real fact to weigh instead of vibes.
-  let edhecCutSignal = ''
-  if (edhecData?.allCards?.length) {
-    const edhecNameSet = new Set(edhecData.allCards.map(c => normalizeCardName(c.name)))
-    const unlisted = deckCards
-      .filter(c => !FULL_DECK_BASIC_LAND_NAMES.has(c.name.toLowerCase()) && !edhecNameSet.has(normalizeCardName(c.name)))
-      .map(c => c.name)
-    if (unlisted.length) {
-      edhecCutSignal = `\nDIESE KARTEN AUS DER DECKLISTE TAUCHEN IN KEINER EDHREC-LISTE FÜR ${commander} AUF (weder Top-Karten noch High-Synergy — reales Signal für unterdurchschnittliche Verbreitung, aber KEIN Automatismus, wäge strategisch ab): ${unlisted.join(', ')}\n`
-    }
-  }
-
-  const budgetContext = budget ? `\nBUDGET: Bevorzuge bei "cardsToAdd" Karten bis max. ca. €${budget} pro Stück (Basisländer ausgenommen).\n` : ''
+  const edhecCutSignal = buildEdhecCutSignal(commander, deckCards, edhecData)
 
   const strategyContext = strategyOverride
     ? `\nVOM NUTZER BESTÄTIGTE/KORRIGIERTE STRATEGIE (verbindlich — übernimm das exakt als "strategy" in deiner Antwort, erfinde keine eigene, abweichende Strategie): ${strategyOverride}\n`
     : ''
 
-  // "Weak" is relative — a card that's a clear cut in a cEDH list can be a perfectly fine
-  // include in a casual precon upgrade. Without this, the model has to guess the target
-  // power level from the decklist alone, which skews toward judging everything by a
-  // generic/competitive standard.
   const powerLevelContext = powerLevel
-    ? `\nZIEL-POWER-LEVEL DES SPIELERS: ${powerLevel} — bewerte "schwach"/"stark" relativ zu DIESEM Niveau, nicht absolut. Schlage bei Competitive/Semi-Competitive eher Effizienz/Konsistenz vor, bei Casual eher Spaß/Thematik über reine Power.\n`
+    ? `\nZIEL-POWER-LEVEL DES SPIELERS: ${powerLevel} — bewerte "schwach"/"stark" relativ zu DIESEM Niveau, nicht absolut.\n`
     : ''
 
   const prompt = `Du bist ein Magic: The Gathering Commander Deck Expert — arbeite wie ein erfahrener Deckbuilder: zuerst verstehen, was das Deck WILL, dann erst bewerten, was nicht passt.
@@ -229,36 +217,34 @@ COMMANDER: ${commander}
 
 AKTUELLE DECKLISTE (${deckCards.length} Karten, [Typ, Manawert] wo bekannt):
 ${deckListText}
-${collectionContext}${edhecContext}${edhecCutSignal}${budgetContext}${strategyContext}${powerLevelContext}
+${edhecContext}${edhecCutSignal}${strategyContext}${powerLevelContext}
 AUFGABE:
 Bewerte dieses BEREITS GEBAUTE Deck. Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
 - "strategy": ${strategyOverride ? 'übernimm die vom Nutzer bestätigte Strategie oben unverändert in winCondition/gamePlan/weaknesses.' : 'lies aus der Deckliste (Kartentypen, Manawerte, Commander-Fähigkeiten) das TATSÄCHLICHE Spielplan des Decks heraus, BEVOR du irgendeine Karte bewertest — "winCondition" (wie gewinnt dieses Deck konkret), "gamePlan" (Früh-/Mittel-/Spätspiel-Ablauf, Kernrollen: Ramp, Kartenvorteil, Removal/Interaktion, Payoffs — mit welchen Karten sie abgedeckt sind), "weaknesses" (welche dieser Rollen fehlen oder sind unterbesetzt). Das ist die Grundlage für ALLES danach.'}
 - "summary": kurze deutsche Fließtext-Bewertung basierend auf der obigen Strategie-Einschätzung, 3-5 Sätze
-- "cardsToCut": Schwächste Karten AUS DER OBIGEN DECKLISTE mit Begründung, warum sie raus sollten. KRITISCH: jede Begründung muss sich auf die oben festgelegte "strategy" beziehen (z.B. "trägt nichts zu [winCondition] bei" oder "redundant zu [andere Karte], die dieselbe Rolle besser erfüllt") — keine generischen "das ist eine schwache Karte"-Begründungen ohne Bezug zu DIESEM Deck.${edhecCutSignal ? ' Die oben genannten, bei EDHREC nicht gelisteten Karten sind bevorzugte (aber nicht zwingende) Kandidaten — nenne bei Bedarf auch andere.' : ''} Üblicherweise 3-6 Karten, aber KEINE feste Obergrenze — wenn das Deck wirklich viele Schwachstellen hat, nenne mehr; wenn es schon stark ist, nenne weniger oder auch gar keine. "name" muss EXAKT und WORTWÖRTLICH einem Eintrag aus der Deckliste oben entsprechen (ohne den [Typ, Manawert]-Zusatz) — erfinde niemals eine Karte, die dort nicht steht, und ändere keine Namen.
-- "cardsToAdd": Karten AUSSCHLIESSLICH aus der Sammlungs-Liste oben ("WEITERE KARTEN IN DER SAMMLUNG..."), die eine der oben in "weaknesses" identifizierten Lücken schließen würden — der Nutzer besitzt sie bereits, nichts davon muss gekauft werden. KRITISCH: jeder "name" muss WORTWÖRTLICH in dieser Sammlungs-Liste stehen; wenn die Liste leer ist oder nichts davon wirklich passt, gib ein leeres Array zurück statt eine Karte zu erfinden oder eine zu nennen, die nicht dort steht.
-- "cardsToBuy": UNABHÄNGIG von der Sammlung — 2-5 starke Kartenvorschläge, die konkret eine der "weaknesses" schließen oder die "winCondition" verstärken, auch wenn der Nutzer sie nicht besitzt. Das ist eine eigene, separate Liste — nenne hier ruhig auch Karten, die es in der Sammlungs-Liste nicht gibt.
-
-Für "cardsToAdd" und "cardsToBuy" gilt gemeinsam: dürfen NICHT bereits in der Deckliste oben stehen — prüfe das aktiv, bevor du eine Karte nennst.${edhecData?.allCards?.length ? ' Nutze die EDHREC-Daten oben als echtes Signal, welche Karten in der Community wirklich mit diesem Commander funktionieren — bevorzuge insbesondere die High Synergy Cards, wenn sie zur "strategy" oben passen.' : ''} Jede Begründung muss konkret erklären, WAS sie in DIESEM Deck bewirkt (Bezug zur "strategy" oben, Synergie mit einer bestehenden Karte oder Commander-Fähigkeit) statt nur "ist eine gute Karte".
+- "cardsToCut": Schwächste Karten AUS DER OBIGEN DECKLISTE mit Begründung (EIN kurzer Satz), warum sie raus sollten. KRITISCH: jede Begründung muss sich auf die oben festgelegte "strategy" beziehen (z.B. "trägt nichts zu [winCondition] bei" oder "redundant zu [andere Karte], die dieselbe Rolle besser erfüllt") — keine generischen "das ist eine schwache Karte"-Begründungen ohne Bezug zu DIESEM Deck.${edhecCutSignal ? ' Die oben genannten, bei EDHREC nicht gelisteten Karten sind bevorzugte (aber nicht zwingende) Kandidaten — nenne bei Bedarf auch andere.' : ''} KEINE feste Obergrenze — wenn das Deck wirklich viele Schwachstellen hat, nenne entsprechend viele; wenn es schon stark ist, nenne weniger oder auch gar keine. "name" muss EXAKT und WORTWÖRTLICH einem Eintrag aus der Deckliste oben entsprechen (ohne den [Typ, Manawert]-Zusatz) — erfinde niemals eine Karte, die dort nicht steht, und ändere keine Namen.
 
 Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
 
   try {
-    console.log('[Gemini] Auditing deck:', commander, `(model: ${GEMINI_MODEL_AUDIT})`)
+    console.log('[Gemini] Auditing deck (phase 1/2: strategy+cuts):', commander, `(model: ${GEMINI_MODEL_AUDIT})`)
 
     const result = await generateContentWithRetry({
       model: GEMINI_MODEL_AUDIT,
       contents: prompt,
       config: {
-        // Lowered from 0.7 — this is an analytical/evaluative task (judge against a stated
-        // strategy), not a creative one; consistency matters more than variety here.
         temperature: 0.35,
         responseMimeType: 'application/json',
-        responseSchema: AUDIT_SCHEMA,
-        // Raised twice now — the strategy sub-fields plus uncapped, EDHREC-grounded
-        // cut/add/buy reasoning on a large, complex deck genuinely needs more room. Observed
-        // live at 3500: the response got cut off mid-sentence (an unterminated JSON string),
-        // which failed to parse and displayed as raw broken text to the user.
-        maxOutputTokens: 6000
+        responseSchema: AUDIT_STRATEGY_SCHEMA,
+        maxOutputTokens: 3500,
+        // gemini-3.5-flash has "thinking" enabled by default, which burns hidden reasoning
+        // tokens out of the SAME maxOutputTokens budget as the visible JSON — observed live:
+        // a 72-card deck's strategy+cuts call (well within the visible-output budget) still
+        // got truncated at MAX_TOKENS and took 24s wall-clock, with the hidden thinking
+        // tokens being the only explanation. This is a single structured-JSON analytical
+        // call under a hard 30s Netlify ceiling — reliability matters far more here than the
+        // marginal reasoning-quality gain from letting the model "think" before answering.
+        thinkingConfig: { thinkingBudget: 0 }
       }
     })
 
@@ -266,81 +252,153 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
 
     if (!parsed) {
       const truncated = result.candidates?.[0]?.finishReason === 'MAX_TOKENS'
-      console.warn(`[Gemini] auditDeck: could not parse structured JSON (truncated: ${truncated}), falling back`)
+      console.warn(`[Gemini] auditDeckStrategy: could not parse structured JSON (truncated: ${truncated}), falling back`)
       return {
         strategy: null,
-        // Showing the raw, likely mid-sentence-cut JSON text as if it were a readable
-        // summary was worse than no summary at all — an honest message instead.
         summary: truncated
           ? 'Die Analyse wurde wegen Längenlimit abgeschnitten, bevor sie fertig war — bitte "Erneut versuchen" klicken.'
           : 'Die Antwort konnte nicht als strukturierte Analyse gelesen werden — bitte "Erneut versuchen" klicken.',
-        cardsToAdd: [],
-        cardsToBuy: [],
         cardsToCut: [],
         parseError: true,
         usage: mapUsage(result)
       }
     }
 
-    // Gemini occasionally hallucinates a "cut" suggestion that isn't actually in the
-    // decklist (small/fast models like flash-lite do this more than larger ones) —
-    // rather than trust the prompt alone, hard-filter against the real deck here.
     const deckCardNames = new Set(deckCards.map(c => normalizeCardName(c.name)))
     const rawCardsToCut = parsed.cardsToCut || []
     const validCardsToCut = rawCardsToCut.filter(c => deckCardNames.has(normalizeCardName(c.name)))
     if (validCardsToCut.length !== rawCardsToCut.length) {
       console.warn(
-        `[Gemini] auditDeck: dropped ${rawCardsToCut.length - validCardsToCut.length} hallucinated cardsToCut ` +
+        `[Gemini] auditDeckStrategy: dropped ${rawCardsToCut.length - validCardsToCut.length} hallucinated cardsToCut ` +
         `entr${rawCardsToCut.length - validCardsToCut.length === 1 ? 'y' : 'ies'} not present in the actual decklist`
       )
     }
 
-    // cardsToAdd is meant to be collection-only ("you already own this, nothing to buy") —
-    // enforce that in code rather than trust the prompt alone, same as the other guards.
-    const collectionNames = new Set((collectionSampleNames || []).map(n => normalizeCardName(n)))
-    const rawCardsToAdd = parsed.cardsToAdd || []
-    const validCardsToAdd = rawCardsToAdd.filter(c =>
-      !deckCardNames.has(normalizeCardName(c.name)) && collectionNames.has(normalizeCardName(c.name))
-    )
-    if (validCardsToAdd.length !== rawCardsToAdd.length) {
-      console.warn(
-        `[Gemini] auditDeck: dropped ${rawCardsToAdd.length - validCardsToAdd.length} cardsToAdd ` +
-        `entr${rawCardsToAdd.length - validCardsToAdd.length === 1 ? 'y' : 'ies'} already in the decklist or not actually in the collection sample`
-      )
-    }
-
-    // cardsToBuy is the deliberately collection-independent list — only needs to not
-    // already be in the deck.
-    const rawCardsToBuy = parsed.cardsToBuy || []
-    const validCardsToBuy = rawCardsToBuy.filter(c => !deckCardNames.has(normalizeCardName(c.name)))
-    if (validCardsToBuy.length !== rawCardsToBuy.length) {
-      console.warn(
-        `[Gemini] auditDeck: dropped ${rawCardsToBuy.length - validCardsToBuy.length} cardsToBuy ` +
-        `entr${rawCardsToBuy.length - validCardsToBuy.length === 1 ? 'y' : 'ies'} already present in the decklist`
-      )
-    }
-    // Diagnostic for the case this filter STILL misses something — prints exactly what each
-    // suggested name normalizes to, so a real remaining mismatch is visible in the logs
-    // instead of requiring another guess.
-    console.log('[Gemini] auditDeck: cardsToBuy after filter:', validCardsToBuy.map(c => `${c.name} -> "${normalizeCardName(c.name)}"`))
-    console.log('[Gemini] auditDeck: deck card names (normalized):', [...deckCardNames])
-
-    const [cardsToAdd, cardsToBuy, cardsToCut] = await Promise.all([
-      enrichWithImages(validCardsToAdd),
-      enrichWithImages(validCardsToBuy),
-      enrichWithImages(validCardsToCut)
-    ])
+    const cardsToCut = await enrichWithImages(validCardsToCut)
 
     return {
       strategy: parsed.strategy,
       summary: parsed.summary,
-      cardsToAdd,
-      cardsToBuy,
       cardsToCut,
       usage: mapUsage(result)
     }
   } catch (error) {
-    console.error('[Gemini] Error auditing deck:', error)
+    console.error('[Gemini] Error auditing deck (strategy phase):', error)
+    throw error
+  }
+}
+
+/**
+ * Audit phase 2/2: cardsToAdd (collection-only) + cardsToBuy (unbounded), run as its own
+ * Netlify invocation with its own fresh 30s budget — this is the half of the audit that
+ * actually needs the big (up to 2000-name) collection list and produces unbounded output, so
+ * it's the half that was timing out when it shared a single request with the strategy phase.
+ * Takes the already-determined `strategy` object from phase 1 instead of re-deriving it, so
+ * the suggestions stay consistent with what the user already saw and confirmed.
+ */
+async function auditDeckSuggestions({ commander, deckCards, collectionSampleNames, budget, edhecData, strategy }) {
+  const deckCardNames = new Set(deckCards.map(c => c.name))
+  const deckListText = [...deckCardNames].join(', ')
+
+  const collectionContext = collectionSampleNames?.length
+    ? `\nWEITERE KARTEN IN DER SAMMLUNG DES SPIELERS (nicht in diesem Deck, mögliche Tauschkandidaten):\n${collectionSampleNames.join(', ')}\n`
+    : ''
+
+  const edhecContext = edhecData?.allCards?.length
+    ? `\nEDHREC-DATEN (echte Decks mit ${commander}):\n- High Synergy Cards (überdurchschnittlich oft speziell mit diesem Commander gespielt — starkes Synergie-/Combo-Signal): ${(edhecData.highSynergyCards || []).slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n- Meistgespielte Karten insgesamt: ${edhecData.topCards?.slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n`
+    : ''
+
+  const budgetContext = budget ? `\nBUDGET: Bevorzuge bei "cardsToAdd" Karten bis max. ca. €${budget} pro Stück (Basisländer ausgenommen).\n` : ''
+
+  const strategyContext = `\nBEREITS FESTGELEGTE STRATEGIE DIESES DECKS (verbindlich — nicht neu bewerten, nur als Grundlage für deine Vorschläge nutzen):\n${formatStrategyForPrompt(strategy)}\n`
+
+  const prompt = `Du bist ein Magic: The Gathering Commander Deck Expert.
+
+COMMANDER: ${commander}
+
+AKTUELLE DECKLISTE (${deckCards.length} Karten): ${deckListText}
+${strategyContext}${collectionContext}${edhecContext}${budgetContext}
+AUFGABE:
+Schlage auf Basis der oben festgelegten Strategie und ihrer "weaknesses" Karten vor. Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
+- "cardsToAdd": ALLE Karten AUSSCHLIESSLICH aus der Sammlungs-Liste oben ("WEITERE KARTEN IN DER SAMMLUNG..."), die eine der in "weaknesses" identifizierten Lücken schließen würden — der Nutzer besitzt sie bereits, nichts davon muss gekauft werden. KEINE feste Obergrenze — geh die Sammlungs-Liste wirklich durch und nenne JEDE Karte, die strategisch passt, nicht nur ein paar Beispiele. KRITISCH: jeder "name" muss WORTWÖRTLICH in dieser Sammlungs-Liste stehen; wenn die Liste leer ist oder nichts davon wirklich passt, gib ein leeres Array zurück statt eine Karte zu erfinden oder eine zu nennen, die nicht dort steht.
+- "cardsToBuy": UNABHÄNGIG von der Sammlung — starke Kartenvorschläge, die konkret eine der "weaknesses" schließen oder die "winCondition" verstärken, auch wenn der Nutzer sie nicht besitzt. KEINE feste Obergrenze, nenne so viele wie wirklich sinnvoll sind. Das ist eine eigene, separate Liste — nenne hier ruhig auch Karten, die es in der Sammlungs-Liste nicht gibt.
+
+Für beide Listen gemeinsam: dürfen NICHT bereits in der Deckliste oben stehen — prüfe das aktiv, bevor du eine Karte nennst.${edhecData?.allCards?.length ? ' Nutze die EDHREC-Daten oben als echtes Signal, welche Karten in der Community wirklich mit diesem Commander funktionieren — bevorzuge insbesondere die High Synergy Cards, wenn sie zur Strategie oben passen.' : ''} Jede Begründung muss konkret erklären, WAS sie in DIESEM Deck bewirkt (Bezug zur Strategie oben, Synergie mit einer bestehenden Karte oder Commander-Fähigkeit) statt nur "ist eine gute Karte" — aber halte jede Begründung auf EINEN kurzen Satz, damit bei vielen Vorschlägen die Antwort nicht zu lang wird.
+
+Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
+
+  try {
+    // Deliberately the LITE model, not GEMINI_MODEL_AUDIT — two reasons. First, this half of
+    // the task is comparatively mechanical ("match collection names against known gaps"), not
+    // the deep strategic read phase 1 already did. Second, and decisive in practice: Gemini's
+    // free-tier quota is PER MODEL (observed live: gemini-3.5-flash's free tier caps out at
+    // 20 requests/DAY total) — splitting strategy and suggestions across two different models
+    // means one audit costs 1 request from EACH model's separate quota, instead of 2 requests
+    // from the same one, which would have halved how many audits/day the app could serve.
+    console.log('[Gemini] Auditing deck (phase 2/2: suggestions):', commander, `(model: ${GEMINI_MODEL})`)
+
+    const result = await generateContentWithRetry({
+      model: GEMINI_MODEL,
+      contents: prompt,
+      config: {
+        temperature: 0.35,
+        responseMimeType: 'application/json',
+        responseSchema: AUDIT_SUGGESTIONS_SCHEMA,
+        // No thinkingConfig here (unlike the strategy phase) — the lite model rejects it
+        // outright with a 400 INVALID_ARGUMENT (verified live), it simply doesn't have a
+        // "thinking" variant to configure in the first place.
+        maxOutputTokens: 8000
+      }
+    })
+
+    const parsed = parseJson(result.text)
+
+    if (!parsed) {
+      const truncated = result.candidates?.[0]?.finishReason === 'MAX_TOKENS'
+      console.warn(`[Gemini] auditDeckSuggestions: could not parse structured JSON (truncated: ${truncated}), falling back`)
+      return {
+        cardsToAdd: [],
+        cardsToBuy: [],
+        parseError: true,
+        truncated,
+        usage: mapUsage(result)
+      }
+    }
+
+    const collectionNames = new Set((collectionSampleNames || []).map(n => normalizeCardName(n)))
+    const normalizedDeckNames = new Set(deckCards.map(c => normalizeCardName(c.name)))
+    const rawCardsToAdd = parsed.cardsToAdd || []
+    const validCardsToAdd = rawCardsToAdd.filter(c =>
+      !normalizedDeckNames.has(normalizeCardName(c.name)) && collectionNames.has(normalizeCardName(c.name))
+    )
+    if (validCardsToAdd.length !== rawCardsToAdd.length) {
+      console.warn(
+        `[Gemini] auditDeckSuggestions: dropped ${rawCardsToAdd.length - validCardsToAdd.length} cardsToAdd ` +
+        `entr${rawCardsToAdd.length - validCardsToAdd.length === 1 ? 'y' : 'ies'} already in the decklist or not actually in the collection sample`
+      )
+    }
+
+    const rawCardsToBuy = parsed.cardsToBuy || []
+    const validCardsToBuy = rawCardsToBuy.filter(c => !normalizedDeckNames.has(normalizeCardName(c.name)))
+    if (validCardsToBuy.length !== rawCardsToBuy.length) {
+      console.warn(
+        `[Gemini] auditDeckSuggestions: dropped ${rawCardsToBuy.length - validCardsToBuy.length} cardsToBuy ` +
+        `entr${rawCardsToBuy.length - validCardsToBuy.length === 1 ? 'y' : 'ies'} already present in the decklist`
+      )
+    }
+
+    const [cardsToAdd, cardsToBuy] = await Promise.all([
+      enrichWithImages(validCardsToAdd),
+      enrichWithImages(validCardsToBuy)
+    ])
+
+    return {
+      cardsToAdd,
+      cardsToBuy,
+      usage: mapUsage(result)
+    }
+  } catch (error) {
+    console.error('[Gemini] Error auditing deck (suggestions phase):', error)
     throw error
   }
 }
@@ -1155,7 +1213,8 @@ Antworte auf Deutsch, knapp und konkret (max. ca. 150 Wörter, außer der Nutzer
 
 module.exports = {
   analyzeDeck,
-  auditDeck,
+  auditDeckStrategy,
+  auditDeckSuggestions,
   suggestCommanders,
   chatAssistant
 }

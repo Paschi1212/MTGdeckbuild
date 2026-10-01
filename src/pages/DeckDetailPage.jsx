@@ -8,7 +8,11 @@ import CommanderAutocompleteInput from '../components/CommanderAutocompleteInput
 import DeckAuditPage from './DeckAuditPage'
 import EditDeckPage from './EditDeckPage'
 
-const SAMPLE_CARD_LIMIT = 150
+// Was 150 — far too small to let the AI actually consider "which of my cards would fit" for
+// a real collection (observed live: ~2790 unique priced cards, only the first 150 in
+// arbitrary CSV order were ever shown to it). Raised to cover realistically every collection
+// while still bounding worst-case prompt size for a pathologically huge one.
+const SAMPLE_CARD_LIMIT = 2000
 const POWER_LEVELS = ['Casual', 'Semi-Casual', 'Semi-Competitive', 'Competitive']
 const TABS = [
   { id: 'overview', label: '🃏 Übersicht' },
@@ -106,6 +110,7 @@ export default function DeckDetailPage() {
     const deckCardNames = new Set(deckCards.map(c => c.name))
     return getAvailableCardNames(collection, deckName)
       .filter(name => !deckCardNames.has(name))
+      .sort((a, b) => a.localeCompare(b))
       .slice(0, SAMPLE_CARD_LIMIT)
   }, [collection, deckName, deckCards])
 

@@ -1,10 +1,26 @@
 /**
  * POST /.netlify/functions/audit-deck
- * Audits an existing, already-built deck using Gemini AI
+ * Audits an existing, already-built deck using Gemini AI — split into two independently
+ * budgeted phases (each its own Netlify invocation, each its own fresh 30s window), the same
+ * way the price-gainer scan is chunked into several requests instead of one big one:
+ * - phase "strategy": strategy read + summary + cardsToCut (bounded output, no collection list)
+ * - phase "suggestions": cardsToAdd + cardsToBuy (the uncapped, collection-sized half)
+ * A single combined call used to do all of this at once and reliably exceeded 30s once the
+ * collection sample was raised and the suggestion counts were uncapped.
  */
 
-const { auditDeck } = require('./lib/gemini-api.cjs')
+const { auditDeckStrategy, auditDeckSuggestions } = require('./lib/gemini-api.cjs')
 const { getCommanderData, extractRecommendations } = require('./lib/edhrec-api.cjs')
+
+async function fetchEdhecData(commander) {
+  try {
+    const rawData = await getCommanderData(commander)
+    return extractRecommendations(rawData)
+  } catch (error) {
+    console.warn('[API] Could not fetch EDHREC data for audit:', error.message)
+    return null
+  }
+}
 
 exports.handler = async (event) => {
   try {
@@ -15,7 +31,7 @@ exports.handler = async (event) => {
       }
     }
 
-    const { commander, deckName, deckCards, collectionSampleNames, budget, strategyOverride, powerLevel } = JSON.parse(event.body)
+    const { commander, deckName, deckCards, collectionSampleNames, budget, strategyOverride, powerLevel, strategy, phase } = JSON.parse(event.body)
 
     if (!commander || !Array.isArray(deckCards) || deckCards.length === 0) {
       return {
@@ -24,36 +40,48 @@ exports.handler = async (event) => {
       }
     }
 
-    console.log(`[API] Auditing deck "${deckName}" for ${commander}`)
+    if (phase === 'suggestions') {
+      if (!strategy) {
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ error: 'Missing strategy (required for phase "suggestions")' })
+        }
+      }
 
-    // Best-effort — a broken/rate-limited EDHREC fetch shouldn't block the audit, it just
-    // loses the community-data grounding for cardsToAdd (falls back to Gemini's own
-    // unaided suggestions, same as before this fix).
-    let edhecData = null
-    try {
-      const rawData = await getCommanderData(commander)
-      edhecData = extractRecommendations(rawData)
-    } catch (error) {
-      console.warn('[API] Could not fetch EDHREC data for audit:', error.message)
+      console.log(`[API] Auditing deck "${deckName}" for ${commander} (phase: suggestions)`)
+      const edhecData = await fetchEdhecData(commander)
+      const result = await auditDeckSuggestions({ commander, deckCards, collectionSampleNames, budget, edhecData, strategy })
+
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          commander,
+          deckName,
+          cardsToAdd: result.cardsToAdd,
+          cardsToBuy: result.cardsToBuy,
+          parseError: result.parseError || false,
+          usage: result.usage
+        })
+      }
     }
 
-    const audit = await auditDeck({ commander, deckCards, collectionSampleNames, budget, edhecData, strategyOverride, powerLevel })
+    // Default / explicit phase "strategy"
+    console.log(`[API] Auditing deck "${deckName}" for ${commander} (phase: strategy)`)
+    const edhecData = await fetchEdhecData(commander)
+    const result = await auditDeckStrategy({ commander, deckCards, edhecData, strategyOverride, powerLevel })
 
     return {
       statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         commander,
         deckName,
-        strategy: audit.strategy,
-        summary: audit.summary,
-        cardsToAdd: audit.cardsToAdd,
-        cardsToBuy: audit.cardsToBuy,
-        cardsToCut: audit.cardsToCut,
-        parseError: audit.parseError || false,
-        usage: audit.usage
+        strategy: result.strategy,
+        summary: result.summary,
+        cardsToCut: result.cardsToCut,
+        parseError: result.parseError || false,
+        usage: result.usage
       })
     }
   } catch (error) {

@@ -13,7 +13,9 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
 
   const [audit, setAudit] = useState(cachedAudit || null)
   const [loading, setLoading] = useState(false)
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const [error, setError] = useState(null)
+  const [suggestionsError, setSuggestionsError] = useState(null)
   const [strategyDraft, setStrategyDraft] = useState(rememberedStrategy)
   const [editingStrategy, setEditingStrategy] = useState(false)
 
@@ -21,20 +23,59 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
     ? `Win Condition: ${strategy.winCondition}\n\nSpielplan: ${strategy.gamePlan}\n\nSchwächen: ${strategy.weaknesses}`
     : ''
 
-  const runAudit = async (strategyOverride) => {
+  // cardsToAdd/cardsToBuy (the uncapped half, scanning a collection of up to 2000 names) ran
+  // in the same request as the strategy read and reliably blew Netlify's 30s budget once both
+  // the collection sample and the suggestion counts were uncapped. Split into two requests —
+  // each with its own fresh 30s window — the same chunking idea already used for the
+  // Preisgewinner scan. Phase 2 needs phase 1's "strategy" object as input, so it only starts
+  // once phase 1 has actually returned one.
+  const runSuggestions = async (strategy) => {
     try {
-      setLoading(true)
-      setError(null)
+      setLoadingSuggestions(true)
+      setSuggestionsError(null)
 
       const response = await fetch('/.netlify/functions/audit-deck', {
         method: 'POST',
-        body: JSON.stringify({ commander, deckName, deckCards, collectionSampleNames, strategyOverride, powerLevel })
+        body: JSON.stringify({ commander, deckName, deckCards, collectionSampleNames, strategy, phase: 'suggestions' })
       })
 
       if (response.ok) {
         const data = await response.json()
-        setAudit(data)
-        onAuditComplete?.(data)
+        setAudit(prev => {
+          const merged = { ...prev, cardsToAdd: data.cardsToAdd, cardsToBuy: data.cardsToBuy }
+          onAuditComplete?.(merged)
+          return merged
+        })
+        if (data.parseError) {
+          setSuggestionsError('Die Kaufvorschläge wurden wegen Längenlimit abgeschnitten, bevor sie fertig waren.')
+        }
+      } else {
+        setSuggestionsError(await readApiError(response))
+      }
+    } catch (err) {
+      console.error('Error:', err)
+      setSuggestionsError(err.message)
+    } finally {
+      setLoadingSuggestions(false)
+    }
+  }
+
+  const runAudit = async (strategyOverride) => {
+    try {
+      setLoading(true)
+      setError(null)
+      setSuggestionsError(null)
+
+      const response = await fetch('/.netlify/functions/audit-deck', {
+        method: 'POST',
+        body: JSON.stringify({ commander, deckName, deckCards, strategyOverride, powerLevel, phase: 'strategy' })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        const partial = { ...data, cardsToAdd: [], cardsToBuy: [] }
+        setAudit(partial)
+        onAuditComplete?.(partial)
         // A fresh AI read (no override) is persisted too, not just an explicit manual
         // correction — otherwise running "Analysieren" once leaves nothing to show on the
         // deck's own page, since that page only ever read the remembered override.
@@ -44,13 +85,17 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
           if (formatted) setDeckPreferences(deckName, { strategyOverride: formatted })
         }
         setEditingStrategy(false)
+        setLoading(false)
+        if (data.strategy && !data.parseError) {
+          runSuggestions(data.strategy)
+        }
       } else {
         setError(await readApiError(response))
+        setLoading(false)
       }
     } catch (err) {
       console.error('Error:', err)
       setError(err.message)
-    } finally {
       setLoading(false)
     }
   }
@@ -170,7 +215,7 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
 
       {audit?.cardsToCut?.length > 0 && (
         <div className="mb-8">
-          <h3 className="text-lg font-bold mb-3" style={{ color: 'var(--r)' }}>✂️ Cards to Cut</h3>
+          <h3 className="text-lg font-bold mb-3" style={{ color: 'var(--r)' }}>✂️ Cards to Cut ({audit.cardsToCut.length})</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
             {audit.cardsToCut.map(card => (
               <CardTile key={card.name} card={card} />
@@ -179,9 +224,25 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
         </div>
       )}
 
+      {loadingSuggestions && (
+        <div className="card mb-8 flex items-center gap-3">
+          <div className="animate-spin w-5 h-5 border-2 border-gray-600 border-t-mtg-blue rounded-full flex-shrink-0"></div>
+          <p className="text-sm text-gray-300">Lade Kaufvorschläge & Sammlungs-Treffer…</p>
+        </div>
+      )}
+
+      {suggestionsError && !loadingSuggestions && (
+        <div className="card bg-red-900/20 border-red-700 mb-8">
+          <p className="text-red-300 mb-3">❌ {suggestionsError}</p>
+          <button onClick={() => runSuggestions(audit.strategy)} className="btn-primary text-sm">
+            🔄 Kaufvorschläge erneut laden
+          </button>
+        </div>
+      )}
+
       {audit?.cardsToAdd?.length > 0 && (
         <div className="mb-8">
-          <h3 className="text-lg font-bold mb-3" style={{ color: 'var(--g)' }}>✅ Aus deiner Sammlung</h3>
+          <h3 className="text-lg font-bold mb-3" style={{ color: 'var(--g)' }}>✅ Aus deiner Sammlung ({audit.cardsToAdd.length})</h3>
           <p className="text-xs text-cmd-muted mb-3">Besitzt du bereits — nichts zu kaufen.</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
             {audit.cardsToAdd.map(card => (
@@ -193,7 +254,7 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
 
       {audit?.cardsToBuy?.length > 0 && (
         <div className="mb-8">
-          <h3 className="text-lg font-bold mb-3" style={{ color: 'var(--r)' }}>🛒 Zusätzliche Kaufvorschläge</h3>
+          <h3 className="text-lg font-bold mb-3" style={{ color: 'var(--r)' }}>🛒 Zusätzliche Kaufvorschläge ({audit.cardsToBuy.length})</h3>
           <p className="text-xs text-cmd-muted mb-3">Nicht in deiner Sammlung — unabhängig davon starke Verbesserungen für dieses Deck.</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
             {audit.cardsToBuy.map(card => (
