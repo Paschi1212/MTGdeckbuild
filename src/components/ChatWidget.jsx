@@ -3,7 +3,7 @@ import { readApiError } from '../lib/apiError'
 
 const HISTORY_LIMIT = 10
 
-export default function ChatWidget({ commander, cards, onAction, contextNote, embedded = false, collectionSampleNames, bulkBuild = false, onReply }) {
+export default function ChatWidget({ commander, cards, onAction, contextNote, embedded = false, collectionSampleNames, bulkBuild = false, onReply, autoSendMessage }) {
   const [open, setOpen] = useState(embedded)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -16,8 +16,15 @@ export default function ChatWidget({ commander, cards, onAction, contextNote, em
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, loading, open])
 
-  const handleSend = async () => {
-    const trimmed = input.trim()
+  // Lets a caller (e.g. the questionnaire handoff) start the conversation with a ready-made
+  // first message instead of requiring the user to type it themselves.
+  useEffect(() => {
+    if (autoSendMessage) handleSend(autoSendMessage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleSend = async (textOverride) => {
+    const trimmed = (textOverride ?? input).trim()
     if (!trimmed || loading) return
 
     const history = messages.slice(-HISTORY_LIMIT).map(m => ({ role: m.role, text: m.text }))

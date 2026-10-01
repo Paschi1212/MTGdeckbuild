@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 export default function StrategyPage() {
@@ -10,13 +10,30 @@ export default function StrategyPage() {
     primaryWinCon: '',
     keyMechanics: [],
     playStyle: '',
+    themes: [],
     budget: 500,
     combos: [],
     synergies: [],
     notes: ''
   })
 
-  const [loading, setLoading] = useState(false)
+  // Real, commander-specific archetype tags from EDHREC (e.g. for Korvold: Treasure,
+  // Sacrifice, Aristocrats, Voltron...) instead of one fixed generic playstyle list for every
+  // commander — best-effort, the form still works fine if this fetch fails or comes back thin.
+  const [edhrecThemes, setEdhrecThemes] = useState([])
+  const [themesLoading, setThemesLoading] = useState(true)
+
+  useEffect(() => {
+    if (!commander) {
+      setThemesLoading(false)
+      return
+    }
+    fetch(`/.netlify/functions/get-commander-data?commander=${encodeURIComponent(commander)}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => setEdhrecThemes(data?.themes || []))
+      .catch(() => setEdhrecThemes([]))
+      .finally(() => setThemesLoading(false))
+  }, [commander])
 
   const winConditions = [
     'Combat Damage',
@@ -58,6 +75,15 @@ export default function StrategyPage() {
     }))
   }
 
+  const toggleTheme = (theme) => {
+    setStrategy(prev => ({
+      ...prev,
+      themes: prev.themes.includes(theme)
+        ? prev.themes.filter(t => t !== theme)
+        : [...prev.themes, theme]
+    }))
+  }
+
   const handleAddCombo = (e) => {
     const input = document.getElementById('combo-input')
     if (input.value.trim()) {
@@ -76,15 +102,30 @@ export default function StrategyPage() {
     }))
   }
 
-  const handleNext = async () => {
+  // Funnels the questionnaire into the chat-driven builder instead of a separate results
+  // page — same underlying build pipeline either way, but now everyone lands in one place
+  // (chat + editor) rather than the form leading somewhere the chat flow doesn't.
+  const buildAutoMessage = () => {
+    const parts = [`Baue mir ein komplettes Deck für ${commander}.`]
+    parts.push(`Primäre Win Condition: ${strategy.primaryWinCon}.`)
+    if (strategy.keyMechanics.length) parts.push(`Wichtige Mechaniken: ${strategy.keyMechanics.join(', ')}.`)
+    if (strategy.themes.length) parts.push(`Gewünschte Themen (EDHREC): ${strategy.themes.join(', ')}.`)
+    if (strategy.playStyle) parts.push(`Spielstil: ${strategy.playStyle}.`)
+    if (strategy.combos.length) parts.push(`Gewünschte Combos: ${strategy.combos.join('; ')}.`)
+    if (strategy.notes.trim()) parts.push(`Weitere Notizen: ${strategy.notes.trim()}.`)
+    parts.push(`Zukaufsbudget: max. ca. €${strategy.budget} pro Karte (Basisländer ausgenommen).`)
+    return parts.join(' ')
+  }
+
+  const handleNext = () => {
     if (!strategy.primaryWinCon || strategy.keyMechanics.length === 0) {
       alert('Bitte fülle alle Pflichtfelder aus')
       return
     }
 
-    // Save strategy and navigate to analyze
-    sessionStorage.setItem('strategy', JSON.stringify(strategy))
-    navigate('/analyze', { state: { commander, strategy } })
+    navigate('/select-commander', {
+      state: { activeTab: 'chat', chatCommander: commander, chatAutoMessage: buildAutoMessage() }
+    })
   }
 
   if (!commander) {
@@ -115,6 +156,36 @@ export default function StrategyPage() {
             <option key={wc} value={wc}>{wc}</option>
           ))}
         </select>
+      </div>
+
+      <div className="card mb-6">
+        <h2 className="text-xl font-bold mb-1">🏷️ Themen für {commander}</h2>
+        <p className="text-sm text-gray-400 mb-4">
+          Echte Archetypen aus EDHREC, abgeleitet aus tausenden Decks mit genau diesem Commander — nicht nur eine generische Liste.
+        </p>
+        {themesLoading ? (
+          <p className="text-sm text-cmd-muted">Lade Themen…</p>
+        ) : edhrecThemes.length === 0 ? (
+          <p className="text-sm text-cmd-muted">Keine EDHREC-Themen gefunden — nutze stattdessen Mechaniken/Spielstil unten.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {edhrecThemes.map(theme => (
+              <button
+                key={theme.slug}
+                onClick={() => toggleTheme(theme.name)}
+                className={`px-3 py-2 rounded-xl transition text-sm font-semibold ${
+                  strategy.themes.includes(theme.name)
+                    ? ''
+                    : 'text-cmd-muted hover:text-white bg-[color:var(--surface)] border border-[color:var(--border)]'
+                }`}
+                style={strategy.themes.includes(theme.name) ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' } : undefined}
+                title={`${theme.count} Decks auf EDHREC mit diesem Tag`}
+              >
+                {theme.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="card mb-6">
@@ -229,10 +300,9 @@ export default function StrategyPage() {
         </button>
         <button
           onClick={handleNext}
-          disabled={loading}
           className="btn-primary flex-1"
         >
-          {loading ? 'Analysiert...' : 'Deck Analysieren →'}
+          Weiter zum Chat-Aufbau →
         </button>
       </div>
     </div>

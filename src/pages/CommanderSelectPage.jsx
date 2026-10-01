@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import CardTile from '../components/CardTile'
 import { readApiError } from '../lib/apiError'
 import ChatWidget from '../components/ChatWidget'
@@ -35,7 +35,14 @@ function buildCommanderSearchContextNote(preferences) {
 
 export default function CommanderSelectPage() {
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState('find')
+  const location = useLocation()
+  // The questionnaire (StrategyPage) funnels its answers into the chat builder instead of a
+  // separate results page — arriving with that handoff state should land straight on the
+  // chat tab with the commander and a ready-to-send first message, not back on "Finden".
+  const [activeTab, setActiveTab] = useState(location.state?.activeTab || 'find')
+  const chatHandoff = location.state?.activeTab === 'chat'
+    ? { commander: location.state?.chatCommander, autoMessage: location.state?.chatAutoMessage }
+    : null
   const [step, setStep] = useState('method') // method | questionnaire | search | results
   const [preferences, setPreferences] = useState({
     colors: [],
@@ -389,7 +396,9 @@ export default function CommanderSelectPage() {
       </div>
 
       {activeTab === 'find' && renderFindTab()}
-      {activeTab === 'chat' && <ChatBuilderPage />}
+      {activeTab === 'chat' && (
+        <ChatBuilderPage initialCommander={chatHandoff?.commander} initialMessage={chatHandoff?.autoMessage} />
+      )}
       {activeTab === 'analyze' && <AnalyzePage />}
     </div>
   )

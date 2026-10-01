@@ -183,11 +183,28 @@ function extractSynergyCommanders(commanderData) {
   return commanderData.similar.slice(0, 10).map(name => ({ name }))
 }
 
+/**
+ * Real, community-derived archetype tags for THIS specific commander (e.g. for Korvold:
+ * Treasure, Sacrifice, Aristocrats, Tokens, Combo, Lands Matter, Voltron...), each with how
+ * many real decks on EDHREC carry that tag. Lives at panels.taglinks on the commander JSON —
+ * a genuinely different, much richer signal than a fixed generic playstyle dropdown, and
+ * specific to the commander actually chosen rather than a one-size-fits-all list.
+ */
+function extractThemes(commanderData, limit = 12) {
+  const taglinks = commanderData?.panels?.taglinks
+  if (!Array.isArray(taglinks)) return []
+  return [...taglinks]
+    .sort((a, b) => (b.count || 0) - (a.count || 0))
+    .slice(0, limit)
+    .map(t => ({ name: t.value, slug: t.slug, count: t.count || 0 }))
+}
+
 module.exports = {
   getCommanderData,
   getCardSynergies,
   getTopCommandersByMeta,
   extractRecommendations,
   extractSynergyCommanders,
+  extractThemes,
   commanderToSlug
 }

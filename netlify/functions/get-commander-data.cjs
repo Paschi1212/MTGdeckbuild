@@ -3,7 +3,7 @@
  * Returns EDHREC data for a commander
  */
 
-const { getCommanderData, extractRecommendations, extractSynergyCommanders } = require('./lib/edhrec-api.cjs')
+const { getCommanderData, extractRecommendations, extractSynergyCommanders, extractThemes } = require('./lib/edhrec-api.cjs')
 
 exports.handler = async (event) => {
   try {
@@ -22,6 +22,7 @@ exports.handler = async (event) => {
 
     const recommendations = extractRecommendations(data)
     const synergies = extractSynergyCommanders(data)
+    const themes = extractThemes(data)
 
     return {
       statusCode: 200,
@@ -34,7 +35,8 @@ exports.handler = async (event) => {
         salt: data.salt || 0,
         deckCount: data.deckCount || 0,
         recommendations,
-        synergyCommanders: synergies
+        synergyCommanders: synergies,
+        themes
       })
     }
   } catch (error) {

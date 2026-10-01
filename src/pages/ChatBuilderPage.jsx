@@ -15,9 +15,9 @@ function buildContextNote(preferCollection) {
   return base + collectionClause
 }
 
-export default function ChatBuilderPage() {
+export default function ChatBuilderPage({ initialCommander, initialMessage } = {}) {
   const navigate = useNavigate()
-  const [commander, setCommander] = useState('')
+  const [commander, setCommander] = useState(initialCommander || '')
   const [commanderCard, setCommanderCard] = useState(null)
   const [cards, setCards] = useState([])
   const [priceMap, setPriceMap] = useState({})
@@ -208,6 +208,7 @@ export default function ChatBuilderPage() {
             collectionSampleNames={preferCollection ? availableCardNames : undefined}
             bulkBuild
             onReply={setStrategyNote}
+            autoSendMessage={resetKey === 0 ? initialMessage : undefined}
           />
         </div>
 
