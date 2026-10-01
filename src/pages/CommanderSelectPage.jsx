@@ -5,16 +5,7 @@ import { readApiError } from '../lib/apiError'
 import ChatWidget from '../components/ChatWidget'
 import ChatBuilderPage from './ChatBuilderPage'
 import AnalyzePage from './AnalyzePage'
-import { loadCollection } from '../lib/collection'
-import CommanderAutocompleteInput from '../components/CommanderAutocompleteInput'
-
-// ManaBox exports don't include a card's type line, so this can't be narrowed down to
-// "legendary creatures only" without a per-card Scryfall lookup — every owned card name
-// is offered, which is still far better than no suggestions at all.
-function useCollectionCardNames() {
-  const collection = loadCollection()
-  return collection?.uniqueCardNames || []
-}
+import CommanderSearchInput from '../components/CommanderSearchInput'
 
 const HUB_TABS = [
   { id: 'find', label: '🔍 Commander finden' },
@@ -55,7 +46,6 @@ export default function CommanderSelectPage() {
   const [selectedCommander, setSelectedCommander] = useState(null)
   const [searchCommanderInput, setSearchCommanderInput] = useState('')
   const [directCommanderInput, setDirectCommanderInput] = useState('')
-  const collectionCardNames = useCollectionCardNames()
 
   // EDHREC's full site-wide theme list (Tokens, Aristocrats, Voltron, ...) — loaded once,
   // lazily, the first time the user actually opens the theme browser rather than on every
@@ -394,16 +384,15 @@ export default function CommanderSelectPage() {
 
           <div className="card mb-6">
             <h2 className="text-xl font-bold mb-4">Oder gib einen Commander direkt ein:</h2>
-            <CommanderAutocompleteInput
+            <CommanderSearchInput
               value={directCommanderInput}
               onChange={setDirectCommanderInput}
               onSubmit={handleSelectCommander}
-              cardNames={collectionCardNames}
               placeholder="z.B. Magus Lucea Kane"
               className="w-full text-white rounded-xl p-3"
             />
             <p className="text-sm text-gray-400 mt-2">
-              Enter zum Bestätigen{collectionCardNames.length > 0 ? ' — Vorschläge aus deiner Sammlung beim Tippen' : ''}
+              Enter zum Bestätigen — Vorschläge über alle Commander, nicht nur deine Sammlung
             </p>
           </div>
 
@@ -424,11 +413,10 @@ export default function CommanderSelectPage() {
       return (
         <div className="max-w-2xl mx-auto">
           <div className="card mb-6">
-            <CommanderAutocompleteInput
+            <CommanderSearchInput
               value={searchCommanderInput}
               onChange={setSearchCommanderInput}
               onSubmit={handleSelectCommander}
-              cardNames={collectionCardNames}
               placeholder="z.B. Magus Lucea Kane, Marisi Goat, etc."
               className="w-full text-white rounded-xl p-3 text-lg mb-4"
             />
@@ -442,11 +430,9 @@ export default function CommanderSelectPage() {
             >
               Wählen →
             </button>
-            {collectionCardNames.length > 0 && (
-              <p className="text-sm text-gray-400 mt-2">
-                Vorschläge aus deiner Sammlung beim Tippen
-              </p>
-            )}
+            <p className="text-sm text-gray-400 mt-2">
+              Vorschläge über alle Commander beim Tippen, nicht nur deine Sammlung
+            </p>
           </div>
 
           <button

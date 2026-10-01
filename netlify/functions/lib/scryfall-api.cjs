@@ -314,11 +314,30 @@ async function getBudgetAlternatives(cardName, maxPrice = 10) {
   }
 }
 
+/**
+ * Live commander-name search across ALL of Magic, not just the user's own collection —
+ * backs the "Direkte Suche" autocomplete on the commander-selection page. Scryfall's
+ * `is:commander` filter correctly covers every way a card can legally be a commander
+ * (legendary creatures, planeswalkers with "can be your commander" text, backgrounds, ...),
+ * not just "legendary creature", and `order=edhrec` surfaces well-known commanders first.
+ */
+async function searchCommanders(query) {
+  const q = `is:commander ${query}`
+  const url = `${SCRYFALL_BASE}/cards/search?q=${encodeURIComponent(q)}&order=edhrec&unique=cards`
+
+  const response = await fetchWithRetry(url, { headers: SCRYFALL_HEADERS })
+  if (!response.ok) return [] // Scryfall 404s a search with zero matches — not a real error
+
+  const data = await response.json()
+  return (data.data || []).slice(0, 10).map(card => card.name)
+}
+
 module.exports = {
   getCardData,
   getCardPrice,
   searchAlternativeCards,
   getBulkPrices,
   getCardsByIds,
-  getBudgetAlternatives
+  getBudgetAlternatives,
+  searchCommanders
 }
