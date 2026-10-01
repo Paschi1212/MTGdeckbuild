@@ -199,6 +199,77 @@ function extractThemes(commanderData, limit = 12) {
     .map(t => ({ name: t.value, slug: t.slug, count: t.count || 0 }))
 }
 
+/**
+ * The full site-wide theme/archetype list (Tokens, Aristocrats, Voltron, Group Hug, ...),
+ * independent of any commander — EDHREC's own general tag taxonomy, not the per-commander
+ * taglinks extractThemes() reads. Lets the user browse/pick a THEME first ("I want to build
+ * an Aristocrats deck") and get real commanders for it from actual deck data, instead of
+ * only searching by a commander name they already know or an AI-guessed suggestion.
+ * Verified live via curl against json.edhrec.com/pages/tags/themes.json.
+ */
+async function getAllThemes() {
+  const cacheKey = '__all_themes__'
+  const cached = cache.get(cacheKey)
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    console.log('[EDHREC] Cache hit for all themes')
+    return cached.data
+  }
+
+  console.log('[EDHREC] Fetching all themes')
+  const response = await fetch(`${EDHREC_BASE}/tags/themes.json`, { headers: EDHREC_HEADERS })
+  if (!response.ok) {
+    throw new Error(`EDHREC API error: ${response.status}`)
+  }
+
+  const data = await response.json()
+  const list = data?.container?.json_dict?.cardlists?.[0]?.cardviews || []
+  const themes = list
+    .map(t => ({ name: t.name, slug: (t.url || '').replace(/^\/tags\//, ''), numDecks: t.num_decks || 0 }))
+    .filter(t => t.name && t.slug)
+
+  cache.set(cacheKey, { data: themes, timestamp: Date.now() })
+  return themes
+}
+
+/**
+ * Real commanders for a given theme/tag slug (from getAllThemes(), or any of EDHREC's tag
+ * slugs), ranked by how many real decks on EDHREC carry both that commander and that tag —
+ * the "Top Commanders" cardlist on the tag's own page, not a per-commander detail.
+ */
+async function getTagCommanders(tagSlug) {
+  const cacheKey = `tag:${tagSlug}`
+  const cached = cache.get(cacheKey)
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    console.log(`[EDHREC] Cache hit for tag ${tagSlug}`)
+    return cached.data
+  }
+
+  console.log(`[EDHREC] Fetching commanders for tag ${tagSlug}`)
+  const response = await fetch(`${EDHREC_BASE}/tags/${tagSlug}.json`, { headers: EDHREC_HEADERS })
+  if (!response.ok) {
+    throw new Error(`EDHREC API error: ${response.status}`)
+  }
+
+  const data = await response.json()
+  const cardlists = data?.container?.json_dict?.cardlists || []
+  const topCommanders = cardlists.find(cl => cl.tag === 'topcommanders')?.cardviews || []
+  const newCommanders = cardlists.find(cl => cl.tag === 'newcommanders')?.cardviews || []
+
+  // "Top" first (real popularity signal), then any "New" ones not already listed — a
+  // genuinely new/rare commander for this theme is still worth surfacing, just after the
+  // proven ones rather than instead of them.
+  const seen = new Set()
+  const commanders = []
+  for (const c of [...topCommanders, ...newCommanders]) {
+    if (!c.name || seen.has(c.name)) continue
+    seen.add(c.name)
+    commanders.push({ name: c.name, slug: c.slug || c.sanitized, numDecks: c.num_decks || 0 })
+  }
+
+  cache.set(cacheKey, { data: commanders, timestamp: Date.now() })
+  return commanders
+}
+
 module.exports = {
   getCommanderData,
   getCardSynergies,
@@ -206,5 +277,7 @@ module.exports = {
   extractRecommendations,
   extractSynergyCommanders,
   extractThemes,
+  getAllThemes,
+  getTagCommanders,
   commanderToSlug
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import CardTile from '../components/CardTile'
 import { readApiError } from '../lib/apiError'
@@ -43,7 +43,7 @@ export default function CommanderSelectPage() {
   const chatHandoff = location.state?.activeTab === 'chat'
     ? { commander: location.state?.chatCommander, autoMessage: location.state?.chatAutoMessage }
     : null
-  const [step, setStep] = useState('method') // method | questionnaire | search | results
+  const [step, setStep] = useState('method') // method | questionnaire | search | results | theme | themeResults
   const [preferences, setPreferences] = useState({
     colors: [],
     playStyle: '',
@@ -56,6 +56,44 @@ export default function CommanderSelectPage() {
   const [searchCommanderInput, setSearchCommanderInput] = useState('')
   const [directCommanderInput, setDirectCommanderInput] = useState('')
   const collectionCardNames = useCollectionCardNames()
+
+  // EDHREC's full site-wide theme list (Tokens, Aristocrats, Voltron, ...) — loaded once,
+  // lazily, the first time the user actually opens the theme browser rather than on every
+  // page load. Real community deck counts instead of an AI-guessed suggestion.
+  const [themes, setThemes] = useState([])
+  const [themesLoading, setThemesLoading] = useState(false)
+  const [themeFilter, setThemeFilter] = useState('')
+  const [selectedTheme, setSelectedTheme] = useState(null)
+  const [themeCommanders, setThemeCommanders] = useState([])
+  const [themeCommandersLoading, setThemeCommandersLoading] = useState(false)
+
+  useEffect(() => {
+    if (step !== 'theme' || themes.length > 0 || themesLoading) return
+    setThemesLoading(true)
+    fetch('/.netlify/functions/get-edhrec-themes')
+      .then(res => (res.ok ? res.json() : { themes: [] }))
+      .then(data => setThemes(data.themes || []))
+      .catch(() => {})
+      .finally(() => setThemesLoading(false))
+  }, [step, themes.length, themesLoading])
+
+  const filteredThemes = useMemo(() => {
+    const q = themeFilter.trim().toLowerCase()
+    if (!q) return themes
+    return themes.filter(t => t.name.toLowerCase().includes(q))
+  }, [themes, themeFilter])
+
+  const handleSelectTheme = (theme) => {
+    setSelectedTheme(theme)
+    setStep('themeResults')
+    setThemeCommandersLoading(true)
+    setThemeCommanders([])
+    fetch(`/.netlify/functions/get-theme-commanders?theme=${encodeURIComponent(theme.slug)}`)
+      .then(res => (res.ok ? res.json() : { commanders: [] }))
+      .then(data => setThemeCommanders(data.commanders || []))
+      .catch(() => setThemeCommanders([]))
+      .finally(() => setThemeCommandersLoading(false))
+  }
 
   const contextNote = buildCommanderSearchContextNote(preferences)
 
@@ -145,6 +183,16 @@ export default function CommanderSelectPage() {
               <h3 className="text-xl font-bold mb-2 text-mtg-green">🔍 Direkte Suche</h3>
               <p className="text-gray-400">
                 Du kennst bereits einen Commander, den du spielen möchtest?
+              </p>
+            </button>
+
+            <button
+              onClick={() => setStep('theme')}
+              className="card-hover md:col-span-2"
+            >
+              <h3 className="text-xl font-bold mb-2 text-mtg-gold">🏷️ Nach Thema suchen</h3>
+              <p className="text-gray-400">
+                Durchsuche echte EDHREC-Themen (Aristocrats, Voltron, Tokens, ...) und finde die dort beliebtesten Commander dafür — auf Basis echter Deck-Zahlen, nicht KI-geraten.
               </p>
             </button>
 
@@ -366,6 +414,97 @@ export default function CommanderSelectPage() {
             className="btn-secondary w-full"
           >
             ← Zurück
+          </button>
+
+          <ChatWidget contextNote={contextNote} />
+        </div>
+      )
+    }
+
+    // Step 5: Browse EDHREC themes
+    if (step === 'theme') {
+      return (
+        <div className="max-w-3xl mx-auto">
+          <div className="card mb-6">
+            <h2 className="text-xl font-bold mb-4">🏷️ Nach Thema suchen</h2>
+            <input
+              type="text"
+              value={themeFilter}
+              onChange={(e) => setThemeFilter(e.target.value)}
+              placeholder="Thema filtern… z.B. Voltron, Tokens, Reanimator"
+              className="w-full text-white rounded-xl p-3 mb-4"
+              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+              autoFocus
+            />
+
+            {themesLoading ? (
+              <p className="text-cmd-muted text-sm py-6 text-center">Lade EDHREC-Themen…</p>
+            ) : filteredThemes.length === 0 ? (
+              <p className="text-cmd-muted text-sm py-6 text-center">Kein Thema gefunden.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2 max-h-[420px] overflow-y-auto pr-1">
+                {filteredThemes.map(theme => (
+                  <button
+                    key={theme.slug}
+                    onClick={() => handleSelectTheme(theme)}
+                    className="px-3 py-2 rounded-xl text-sm text-left transition hover:brightness-125"
+                    style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
+                  >
+                    <span className="text-white font-medium">{theme.name}</span>
+                    <span className="text-cmd-muted text-xs ml-2">{theme.numDecks.toLocaleString('de-DE')} Decks</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={() => setStep('method')}
+            className="btn-secondary w-full"
+          >
+            ← Zurück
+          </button>
+
+          <ChatWidget contextNote={contextNote} />
+        </div>
+      )
+    }
+
+    // Step 6: Commanders for the selected theme
+    if (step === 'themeResults') {
+      return (
+        <div className="max-w-4xl mx-auto">
+          <h2 className="text-xl font-bold mb-1">🏷️ {selectedTheme?.name}</h2>
+          <p className="text-cmd-muted mb-6">
+            Die auf EDHREC beliebtesten Commander für dieses Thema, nach echter Deck-Zahl sortiert.
+          </p>
+
+          {themeCommandersLoading ? (
+            <p className="text-cmd-muted text-sm py-10 text-center">Lade Commander für "{selectedTheme?.name}"…</p>
+          ) : themeCommanders.length === 0 ? (
+            <p className="text-cmd-muted text-sm py-10 text-center">Keine Commander-Daten für dieses Thema gefunden.</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mb-8">
+              {themeCommanders.map(card => (
+                <div key={card.name}>
+                  <CardTile card={card} />
+                  <p className="text-xs text-cmd-muted text-center mt-1">{card.numDecks.toLocaleString('de-DE')} Decks</p>
+                  <button
+                    onClick={() => handleSelectCommander(card.name)}
+                    className="btn-primary w-full mt-2 text-xs px-2 py-1.5"
+                  >
+                    Auswählen
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button
+            onClick={() => setStep('theme')}
+            className="btn-secondary w-full"
+          >
+            ← Andere Themen
           </button>
 
           <ChatWidget contextNote={contextNote} />
