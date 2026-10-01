@@ -5,7 +5,7 @@
  */
 
 const { GoogleGenAI } = require('@google/genai')
-const { getBulkPrices, getBudgetAlternatives } = require('./scryfall-api.cjs')
+const { getBulkPrices, getBudgetAlternatives, searchCardNames } = require('./scryfall-api.cjs')
 const { getCommanderData, extractRecommendations, extractSynergyCommanders } = require('./edhrec-api.cjs')
 
 const GEMINI_MODEL = 'gemini-3.5-flash-lite'
@@ -204,13 +204,50 @@ const X_ACTIVATED_ABILITY_RE = /^[^:\n]*\{X\}[^:\n]*:/m
 // get copied too). The prompts used to pass only the commander's NAME, so for a less famous
 // commander the model guessed its ability from memory — observed live: it claimed an
 // {X}{X}{U}{U} enchantment "isn't an X-spell Lucea Kane can copy", contradicting her text.
-async function getCommanderOracleText(commander) {
+async function getCommanderProfile(commander) {
   const commanderNames = splitCommanderNames(commander)
   const commanderInfo = await getBulkPrices(commanderNames)
-  return commanderNames
+  const text = commanderNames
     .map(n => (commanderInfo[n]?.oracleText ? `${commanderInfo[n].name || n}: ${commanderInfo[n].oracleText}` : ''))
     .filter(Boolean)
     .join('\n')
+  const identity = new Set()
+  for (const n of commanderNames) {
+    for (const c of (commanderInfo[n]?.colorIdentity || '').split(' ').filter(Boolean)) identity.add(c.toLowerCase())
+  }
+  return { text, identity: [...identity].join('') }
+}
+
+// The card category the commander's own printed ability rewards, as a Scryfall query — only
+// "X matters" so far: a commander that references OTHER spells/abilities/costs with {X}
+// (Magus Lucea Kane copies them, Zaxara makes hydras off them, Rosheen pays for them). A
+// commander that merely has an X cost itself doesn't match.
+function commanderCategory(commanderText) {
+  if (/(spells?|abilit(y|ies)|costs?)[^.]*\{X\}/i.test(commanderText)) {
+    return { label: 'Karten mit {X} in den Manakosten oder einer aktivierten {X}-Fähigkeit', query: '(mana:{X} OR o:"{X}:")' }
+  }
+  return null
+}
+
+// A real, legal candidate pool for that category instead of leaving the model to recall it:
+// observed live, the lite model suggested zero of the most-played X-spells for a Magus Lucea
+// Kane deck (Finale of Devastation, Green Sun's Zenith, Pull from Tomorrow, ...) and couldn't
+// pick the X-cards out of a 2000-name collection list on its own. Scryfall does both exactly:
+// most-played first, already restricted to the commander's color identity.
+async function getCategoryCandidates(profile, deckCards, collectionSampleNames) {
+  const category = commanderCategory(profile.text)
+  if (!category) return null
+  const names = await searchCardNames(`id<=${profile.identity || 'c'} ${category.query} -t:land legal:commander`)
+  if (!names.length) return null
+
+  const inDeck = new Set(deckCards.map(c => normalizeCardName(c.name)))
+  const owned = new Set((collectionSampleNames || []).map(normalizeCardName))
+  const notInDeck = names.filter(n => !inDeck.has(normalizeCardName(n)))
+  return {
+    label: category.label,
+    owned: notInDeck.filter(n => owned.has(normalizeCardName(n))).slice(0, 60),
+    notOwned: notInDeck.filter(n => !owned.has(normalizeCardName(n))).slice(0, 40)
+  }
 }
 
 // Objective interactions between a deck card and the commander's OWN printed ability,
@@ -299,7 +336,7 @@ async function auditDeckStrategy({ commander, deckCards, edhecData, strategyOver
     ? `\nEDHREC-DATEN (echte Decks mit ${commander}):\n- High Synergy Cards: ${(edhecData.highSynergyCards || []).slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n- Meistgespielte Karten insgesamt: ${edhecData.topCards?.slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n`
     : ''
 
-  const commanderText = await getCommanderOracleText(commander)
+  const { text: commanderText } = await getCommanderProfile(commander)
   const commanderSynergy = findCommanderSynergyCards(commanderText, commander, deckCards, cardInfo)
   console.log(`[Gemini] auditDeckStrategy: commander text ${commanderText ? 'found' : 'MISSING'}, code-detected commander synergies:`, [...commanderSynergy.keys()])
   const synergyContext = commanderSynergy.size
@@ -467,14 +504,21 @@ async function auditDeckSuggestions({ commander, deckCards, collectionSampleName
 
   const strategyContext = `\nBEREITS FESTGELEGTE STRATEGIE DIESES DECKS (verbindlich — nicht neu bewerten, nur als Grundlage für deine Vorschläge nutzen):\n${formatStrategyForPrompt(strategy)}\n`
 
-  const commanderText = await getCommanderOracleText(commander)
+  const profile = await getCommanderProfile(commander)
+  const commanderText = profile.text
+  const candidates = await getCategoryCandidates(profile, deckCards, collectionSampleNames)
+  console.log('[Gemini] auditDeckSuggestions: category candidates —',
+    candidates ? `owned: ${candidates.owned.length}, not owned: ${candidates.notOwned.length}` : 'none (commander rewards no specific category)')
+  const categoryContext = candidates
+    ? `\nKERNKATEGORIE VON ${commander} (aus dem Kartentext abgeleitet): ${candidates.label}. Echte, legale Kandidaten in den Farben des Commanders, nach Verbreitung in echten Decks sortiert (noch nicht im Deck):\n- BESITZT DER SPIELER BEREITS: ${candidates.owned.join(', ') || '(keine)'}\n- BESITZT ER NICHT: ${candidates.notOwned.join(', ')}\nDie stärksten davon — gemessen an der Interaktion mit ${commander}s Fähigkeit — gehören in deine Vorschläge: bereits besessene in "cardsToAdd", nicht besessene in "cardsToBuy". Das ist für dieses Deck die wichtigste Vorschlagskategorie, nicht nur eine unter vielen.\n`
+    : ''
 
   const prompt = `Du bist ein Magic: The Gathering Commander Deck Expert.
 
 COMMANDER: ${commander}${commanderText ? `\nEXAKTER KARTENTEXT DES COMMANDERS (maßgeblich — schlage Karten vor, die mit GENAU dieser Fähigkeit interagieren):\n${commanderText}` : ''}
 
 AKTUELLE DECKLISTE (${deckCards.length} Karten): ${deckListText}
-${strategyContext}${collectionContext}${edhecContext}${budgetContext}
+${strategyContext}${categoryContext}${collectionContext}${edhecContext}${budgetContext}
 AUFGABE:
 Schlage auf Basis der oben festgelegten Strategie und ihrer "weaknesses" Karten vor. Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
 - "cardsToAdd": ALLE Karten AUSSCHLIESSLICH aus der Sammlungs-Liste oben ("WEITERE KARTEN IN DER SAMMLUNG..."), die eine der in "weaknesses" identifizierten Lücken schließen würden — der Nutzer besitzt sie bereits, nichts davon muss gekauft werden. KEINE feste Obergrenze — geh die Sammlungs-Liste wirklich durch und nenne JEDE Karte, die strategisch passt, nicht nur ein paar Beispiele. KRITISCH: jeder "name" muss WORTWÖRTLICH in dieser Sammlungs-Liste stehen; wenn die Liste leer ist oder nichts davon wirklich passt, gib ein leeres Array zurück statt eine Karte zu erfinden oder eine zu nennen, die nicht dort steht.

@@ -344,6 +344,23 @@ async function searchCommanders(query) {
   }))
 }
 
+/**
+ * Card names for an arbitrary Scryfall search, first result page (up to 175), most-played
+ * first (EDHREC order). Returns [] on zero matches (Scryfall 404s those) or any error.
+ */
+async function searchCardNames(query) {
+  const url = `${SCRYFALL_BASE}/cards/search?q=${encodeURIComponent(query)}&order=edhrec&unique=cards`
+  try {
+    const response = await fetchWithRetry(url, { headers: SCRYFALL_HEADERS })
+    if (!response.ok) return []
+    const data = await response.json()
+    return (data.data || []).map(card => card.name)
+  } catch (error) {
+    console.error('[Scryfall] Error searching card names:', error)
+    return []
+  }
+}
+
 module.exports = {
   getCardData,
   getCardPrice,
@@ -351,5 +368,6 @@ module.exports = {
   getBulkPrices,
   getCardsByIds,
   getBudgetAlternatives,
-  searchCommanders
+  searchCommanders,
+  searchCardNames
 }
