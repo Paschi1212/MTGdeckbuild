@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Link, NavLink } from 'react-router-dom'
+import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useTheme } from '../hooks/useTheme'
+import CommanderSearchInput from './CommanderSearchInput'
 
 // "Entwürfe" lives as a tab inside "Meine Decks", and "Chat-Aufbau"/"Analysieren" as tabs
 // inside "Commander" — keeps the top nav from growing every time a new tool gets added.
@@ -38,8 +39,22 @@ function NavTextLink({ to, label, onClick }) {
 
 export default function Navigation({ user, onLogout }) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchValue, setSearchValue] = useState('')
   const { theme, toggle } = useTheme()
+  const navigate = useNavigate()
   const initials = user?.email ? user.email[0].toUpperCase() : '?'
+
+  // Same handoff CommanderSelectPage's own "pick a commander" flow uses — jumps straight to
+  // the strategy questionnaire for that commander from ANY page, not just from inside the
+  // "Commander finden" hub.
+  const handleGlobalCommanderPick = (commander) => {
+    if (!commander?.trim()) return
+    sessionStorage.setItem('selectedCommander', commander)
+    setSearchOpen(false)
+    setSearchValue('')
+    navigate('/strategy', { state: { commander } })
+  }
 
   return (
     <header
@@ -64,6 +79,39 @@ export default function Navigation({ user, onLogout }) {
       <div className="flex items-center gap-3 flex-shrink-0">
         {user && (
           <>
+            <div
+              className="relative"
+              onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setSearchOpen(false) }}
+            >
+              <button
+                onClick={() => setSearchOpen(open => !open)}
+                className="w-11 h-11 md:w-12 md:h-12 flex items-center justify-center text-lg"
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text)' }}
+                aria-label="Commander suchen"
+                title="Commander suchen"
+              >
+                🔍
+              </button>
+
+              {searchOpen && (
+                <div
+                  className="absolute right-0 mt-2 p-3 rounded-xl"
+                  style={{ width: 320, maxWidth: '90vw', backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 24px 48px -16px rgba(0,0,0,0.5)' }}
+                >
+                  <p className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>
+                    Commander suchen und direkt damit starten
+                  </p>
+                  <CommanderSearchInput
+                    value={searchValue}
+                    onChange={setSearchValue}
+                    onSubmit={handleGlobalCommanderPick}
+                    placeholder="z.B. Atraxa, Praetors' Voice"
+                    className="w-full text-white rounded-xl p-2.5 text-sm"
+                  />
+                </div>
+              )}
+            </div>
+
             <div
               className="hidden md:flex w-8 h-8 items-center justify-center text-xs font-bold"
               style={{ backgroundColor: 'var(--color-accent-light)', color: 'var(--color-text)', borderRadius: 'var(--radius-sm)' }}
