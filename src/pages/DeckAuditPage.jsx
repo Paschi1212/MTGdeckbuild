@@ -127,7 +127,7 @@ export default function DeckAuditPage() {
       {audit?.strategy && (
         <div className="card mb-6" style={{ borderColor: 'var(--u)' }}>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold" style={{ color: 'var(--u)' }}>🎯 Erkannte Strategie</h2>
+            <h2 className="text-lg font-bold" style={{ color: 'var(--u)' }}>🎯 Spielplan</h2>
             {!editingStrategy && (
               <button onClick={() => setEditingStrategy(true)} className="btn-secondary text-xs px-3 py-1.5">
                 ✏️ Korrigieren
@@ -135,7 +135,7 @@ export default function DeckAuditPage() {
             )}
           </div>
           <p className="text-xs text-cmd-muted mb-3">
-            Alle Cuts/Adds unten sind gegen genau diese Strategie bewertet. Falls sie danebenliegt, korrigiere sie —
+            Alle Cuts/Adds unten sind gegen genau diesen Spielplan bewertet. Falls er danebenliegt, korrigiere ihn —
             die Bewertung wird dann strikt an deiner Version ausgerichtet, statt neu zu raten.
           </p>
 
@@ -152,7 +152,7 @@ export default function DeckAuditPage() {
                   onClick={() => { setDeckPreferences(deckName, { strategyOverride: strategyDraft }); runAudit(strategyDraft) }}
                   className="btn-primary text-sm flex-1"
                 >
-                  🔄 Neu bewerten mit dieser Strategie
+                  🔄 Neu bewerten mit diesem Spielplan
                 </button>
                 <button onClick={() => { setEditingStrategy(false); setStrategyDraft(formatStrategy(audit.strategy)) }} className="btn-secondary text-sm px-4">
                   Abbrechen

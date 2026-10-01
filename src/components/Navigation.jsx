@@ -8,7 +8,7 @@ const NAV_LINKS = [
   { to: '/upload', label: 'Sammlung' },
   { to: '/collection', label: 'Meine Sammlung' },
   { to: '/decks', label: 'Meine Decks' },
-  { to: '/select-commander', label: 'Commander' }
+  { to: '/select-commander', label: 'Deck bauen' }
 ]
 
 function LogoIcon({ size = 44 }) {
