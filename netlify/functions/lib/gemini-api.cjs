@@ -308,7 +308,10 @@ async function auditDeckSuggestions({ commander, deckCards, collectionSampleName
     ? `\nEDHREC-DATEN (echte Decks mit ${commander}):\n- High Synergy Cards (überdurchschnittlich oft speziell mit diesem Commander gespielt — starkes Synergie-/Combo-Signal): ${(edhecData.highSynergyCards || []).slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n- Meistgespielte Karten insgesamt: ${edhecData.topCards?.slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n`
     : ''
 
-  const budgetContext = budget ? `\nBUDGET: Bevorzuge bei "cardsToAdd" Karten bis max. ca. €${budget} pro Stück (Basisländer ausgenommen).\n` : ''
+  // Budget is always a cap on the TOTAL cost of everything in "cardsToBuy" together — never
+  // a per-card limit, and never applies to "cardsToAdd" (those are already-owned collection
+  // cards, nothing to buy, a per-piece price cap on them wouldn't mean anything).
+  const budgetContext = budget ? `\nZUKAUFSBUDGET: Die Summe der geschätzten Preise ALLER "cardsToBuy"-Vorschläge ZUSAMMEN sollte ca. €${budget} nicht überschreiten (Basisländer ausgenommen) — das ist ein Gesamtbudget für den kompletten Zukauf, kein Limit pro Einzelkarte. Gilt NICHT für "cardsToAdd" (bereits besessen, nichts zu kaufen).\n` : ''
 
   const strategyContext = `\nBEREITS FESTGELEGTE STRATEGIE DIESES DECKS (verbindlich — nicht neu bewerten, nur als Grundlage für deine Vorschläge nutzen):\n${formatStrategyForPrompt(strategy)}\n`
 
@@ -411,13 +414,13 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
  * full 99-card generation with no retry/verification.
  */
 async function analyzeDeck({ commander, strategy, collection, edhecData, budget }) {
+  const requestStartedAt = Date.now()
   const strategyParts = []
   if (strategy?.playStyle) strategyParts.push(`Spielstil: ${strategy.playStyle}`)
   if (strategy?.primaryWinCon) strategyParts.push(`Primäre Win Condition: ${strategy.primaryWinCon}`)
   if (strategy?.keyMechanics?.length) strategyParts.push(`Wichtige Mechaniken: ${strategy.keyMechanics.join(', ')}`)
   if (strategy?.combos?.length) strategyParts.push(`Gewünschte Combos: ${strategy.combos.join('; ')}`)
   if (strategy?.notes) strategyParts.push(`Weitere Notizen: ${strategy.notes}`)
-  if (budget) strategyParts.push(`Budget pro Karte: max. ca. €${budget} (Basisländer ausgenommen)`)
 
   try {
     console.log('[Gemini] Analyzing deck (via buildFullDeckFromChat):', commander)
@@ -433,12 +436,26 @@ async function analyzeDeck({ commander, strategy, collection, edhecData, budget 
       return { summary: '', cards: [], parseError: true, usage: { prompt_tokens: 0, completion_tokens: 0 } }
     }
 
+    // "Budget" is always a cap on the TOTAL cost of cards that still need to be bought, never
+    // a per-card limit — enforced deterministically here (the same enforcePurchaseBudget pass
+    // the chat's build_full_deck flow uses: sums the real purchase cost of everything not
+    // already owned, swaps the priciest offenders for cheaper EDHREC-pool alternatives if over)
+    // instead of a soft per-card prompt hint the model could (and did, before this fix)
+    // interpret as "every single card must individually cost under €X".
+    let finalCards = built.cards
+    let budgetNote = ''
+    if (budget) {
+      const budgetResult = await enforcePurchaseBudget(built.cards, collection?.sampleCardNames, budget, requestStartedAt)
+      finalCards = budgetResult.cards
+      budgetNote = budgetResult.budgetNote
+    }
+
     // The chat flow resolves images/prices client-side after the fact; this flow's
     // consumer (AnalyzePage) expects them already attached to each card, like before.
-    const cards = await enrichWithImages(built.cards)
+    const cards = await enrichWithImages(finalCards)
 
     return {
-      summary: built.summary,
+      summary: (built.summary || '') + budgetNote,
       cards,
       usage: built.usage
     }

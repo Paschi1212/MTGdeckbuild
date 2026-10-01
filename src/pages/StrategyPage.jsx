@@ -113,7 +113,7 @@ export default function StrategyPage() {
     if (strategy.playStyle) parts.push(`Spielstil: ${strategy.playStyle}.`)
     if (strategy.combos.length) parts.push(`Gewünschte Combos: ${strategy.combos.join('; ')}.`)
     if (strategy.notes.trim()) parts.push(`Weitere Notizen: ${strategy.notes.trim()}.`)
-    parts.push(`Zukaufsbudget: max. ca. €${strategy.budget} pro Karte (Basisländer ausgenommen).`)
+    parts.push(`Zukaufsbudget: max. ca. €${strategy.budget} für alle Karten ZUSAMMEN, die ich noch nicht besitze (Basisländer ausgenommen) — kein Limit pro Einzelkarte.`)
     return parts.join(' ')
   }
 
@@ -232,7 +232,7 @@ export default function StrategyPage() {
       </div>
 
       <div className="card mb-6">
-        <h2 className="text-xl font-bold mb-4">💰 Budget pro Karte (max.)</h2>
+        <h2 className="text-xl font-bold mb-4">💰 Zukaufsbudget (max.)</h2>
         <div className="flex items-center gap-4">
           <input
             type="range"
@@ -245,7 +245,7 @@ export default function StrategyPage() {
           <span className="text-lg font-bold">€{strategy.budget}</span>
         </div>
         <p className="text-sm text-gray-400 mt-2">
-          Gilt pro Einzelkarte (nicht fürs ganze Deck) — Basisländer ausgenommen. Anders als das "Deck-Budget insgesamt" vom vorherigen Schritt.
+          Gilt für ALLE Karten zusammen, die du noch nicht besitzt (Basisländer ausgenommen) — nicht pro Einzelkarte. Ergänzt das "Deck-Budget insgesamt" vom vorherigen Schritt, das nur für die Commander-Auswahl zählt.
         </p>
       </div>
 
