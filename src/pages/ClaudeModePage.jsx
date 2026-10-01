@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useAiMode } from '../hooks/useAiMode'
-import { checkBridge, setClaudeFeatureEnabled, setPreferredMode } from '../lib/aiMode'
+import { checkBridge, setClaudeFeatureEnabled, setPreferredMode, setClaudeModel, CLAUDE_MODELS } from '../lib/aiMode'
 
 function StatusRow({ ok, label, detail }) {
   return (
@@ -28,7 +28,7 @@ function Code({ children }) {
 // Setup + live status for the Claude-Modus (see src/lib/aiMode.js). Switching the feature on
 // here is per device — it is what allows the site to look for the local bridge at all.
 export default function ClaudeModePage() {
-  const { enabled, preferred, bridge, claudeActive } = useAiMode()
+  const { enabled, preferred, model, bridge, claudeActive } = useAiMode()
 
   useEffect(() => {
     if (enabled) checkBridge()
@@ -47,7 +47,7 @@ export default function ClaudeModePage() {
         Auf diesem Computer beantwortet <strong>Claude</strong> statt Gemini die KI-Anfragen dieser Seite:
         Deck-Analyse, Chat-Deckbau, Analyse und Commander-Ideen. Claude prüft dabei Kartentexte live auf
         Scryfall und vergleicht mit EDHREC. Es zählt gegen dein Claude-Abo, hat kein 30-Sekunden-Limit und
-        braucht dafür 1–3 Minuten pro Antwort. Auf anderen Geräten und für andere Nutzer bleibt alles bei Gemini.
+        braucht je nach Modell bis zu einigen Minuten pro Antwort. Auf anderen Geräten und für andere Nutzer bleibt alles bei Gemini.
       </p>
 
       <div className="card mb-6">
@@ -73,7 +73,7 @@ export default function ClaudeModePage() {
             )}
             <StatusRow
               ok={claudeActive}
-              label={claudeActive ? 'Aktive KI: 🧠 Claude' : 'Aktive KI: ✨ Gemini'}
+              label={claudeActive ? `Aktive KI: 🧠 Claude ${CLAUDE_MODELS.find(m => m.id === model)?.label || ''}` : 'Aktive KI: ✨ Gemini'}
               detail={!claudeActive && bridge.ready ? 'Unten oder oben in der Leiste auf Claude umschalten.' : null}
             />
           </>
@@ -113,6 +113,38 @@ export default function ClaudeModePage() {
           )}
         </div>
       </div>
+
+      {enabled && (
+        <div className="card mb-6">
+          <h2 className="text-lg font-bold mb-1">Modell</h2>
+          <p className="text-xs mb-4" style={{ color: 'var(--color-text-muted)' }}>
+            Gilt für dieses Gerät und sofort für die nächste Anfrage. Es wird immer die neueste Version des gewählten Modells genutzt.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {CLAUDE_MODELS.map(option => {
+              const selected = option.id === model
+              return (
+                <button
+                  key={option.id}
+                  onClick={() => setClaudeModel(option.id)}
+                  className="text-left p-3"
+                  style={{
+                    background: selected ? 'var(--color-accent-light)' : 'var(--color-surface)',
+                    border: `2px solid ${selected ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--color-text)'
+                  }}
+                >
+                  <div className="font-bold text-sm mb-1">
+                    {selected ? '● ' : '○ '}{option.label}{option.id === 'opus' && ' (Standard)'}
+                  </div>
+                  <div className="text-xs leading-snug" style={{ color: 'var(--color-text-secondary)' }}>{option.description}</div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="card mb-6 space-y-4">
         <h2 className="text-lg font-bold">Anleitung</h2>

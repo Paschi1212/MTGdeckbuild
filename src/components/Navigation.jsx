@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useTheme } from '../hooks/useTheme'
 import { useAiMode } from '../hooks/useAiMode'
-import { setPreferredMode } from '../lib/aiMode'
+import { setPreferredMode, CLAUDE_MODELS } from '../lib/aiMode'
 import CommanderSearchInput from './CommanderSearchInput'
 
 // "Entwürfe" lives as a tab inside "Meine Decks", and "Chat-Aufbau"/"Analysieren" as tabs
@@ -43,15 +43,16 @@ function NavTextLink({ to, label, onClick }) {
 // (/claude-modus). Click flips Claude ⇄ Gemini; without a running bridge it opens the setup page.
 function AiModeSwitch() {
   const navigate = useNavigate()
-  const { enabled, bridge, claudeActive } = useAiMode()
+  const { enabled, model, bridge, claudeActive } = useAiMode()
   if (!enabled) return null
+  const modelLabel = CLAUDE_MODELS.find(m => m.id === model)?.label || 'Claude'
 
   const handleClick = () => {
     if (!bridge.ready) navigate('/claude-modus')
     else setPreferredMode(claudeActive ? 'gemini' : 'claude')
   }
   const title = claudeActive
-    ? 'Claude beantwortet die KI-Anfragen (lokale Brücke). Klick: zu Gemini wechseln.'
+    ? `Claude ${modelLabel} beantwortet die KI-Anfragen (lokale Brücke). Klick: zu Gemini wechseln. Modell ändern: Seite /claude-modus.`
     : bridge.ready
       ? 'Gemini aktiv. Klick: zu Claude wechseln.'
       : 'Gemini aktiv — Claude-Brücke nicht bereit. Klick: Status & Anleitung.'
@@ -68,7 +69,7 @@ function AiModeSwitch() {
         borderRadius: 'var(--radius-sm)'
       }}
     >
-      {claudeActive ? '🧠 Claude' : '✨ Gemini'}
+      {claudeActive ? `🧠 ${modelLabel}` : '✨ Gemini'}
       {!bridge.ready && <span className="w-2 h-2 rounded-full" style={{ background: 'var(--color-text-muted)' }} />}
     </button>
   )

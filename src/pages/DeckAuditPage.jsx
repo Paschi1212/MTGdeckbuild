@@ -4,7 +4,7 @@ import { readApiError } from '../lib/apiError'
 import ChatWidget from '../components/ChatWidget'
 import { getDeckPreferences, setDeckPreferences } from '../lib/deckPreferences'
 import { getSecondaryAvailability } from '../lib/secondaryCollections'
-import { aiFetch, isClaudeActive } from '../lib/aiMode'
+import { aiFetch, isClaudeActive, getClaudeModelLabel, formatModelId } from '../lib/aiMode'
 
 // Embedded as the "Analyse" tab of a deck's consolidated detail page — no longer a standalone
 // route. `cachedAudit`/`onAuditComplete` let the parent remember the last result across tab
@@ -77,7 +77,9 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
 
       if (response.ok) {
         const data = await response.json()
-        const partial = { ...data, cardsToAdd: [], cardsToBuy: [], engine }
+        // The bridge reports the exact model that answered (e.g. "claude-opus-5-5").
+        const engineModel = engine === 'claude' ? response.headers.get('X-AI-Model') : null
+        const partial = { ...data, cardsToAdd: [], cardsToBuy: [], engine, engineModel }
         setAudit(partial)
         onAuditComplete?.(partial)
         // A fresh AI read (no override) is persisted too, not just an explicit manual
@@ -127,7 +129,7 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
           <p className="text-gray-300 mb-2">Analysiere {deckName}...</p>
           <p className="text-sm text-gray-400">
             {isClaudeActive()
-              ? '🧠 Claude prüft Kartentexte auf Scryfall & EDHREC — das dauert 1–3 Minuten'
+              ? `🧠 Claude ${getClaudeModelLabel()} prüft Kartentexte auf Scryfall & EDHREC — das kann einige Minuten dauern`
               : 'Dies kann eine Minute dauern'}
           </p>
         </div>
@@ -208,7 +210,7 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
           Analyse-Ergebnis
           {audit?.engine && (
             <span className="ml-3 align-middle text-xs font-semibold px-2 py-1 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}>
-              {audit.engine === 'claude' ? '🧠 von Claude' : '✨ von Gemini'}
+              {audit.engine === 'claude' ? `🧠 von Claude ${formatModelId(audit.engineModel)}`.trim() : '✨ von Gemini'}
             </span>
           )}
         </h2>
@@ -243,7 +245,7 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
         <div className="card mb-8 flex items-center gap-3">
           <div className="animate-spin w-5 h-5 border-2 border-gray-600 border-t-mtg-blue rounded-full flex-shrink-0"></div>
           <p className="text-sm text-gray-300">
-            Lade Kaufvorschläge & Sammlungs-Treffer…{isClaudeActive() && ' (🧠 Claude, 1–3 Minuten)'}
+            Lade Kaufvorschläge & Sammlungs-Treffer…{isClaudeActive() && ` (🧠 Claude ${getClaudeModelLabel()}, kann einige Minuten dauern)`}
           </p>
         </div>
       )}

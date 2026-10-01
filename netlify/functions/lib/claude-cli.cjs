@@ -13,7 +13,26 @@
  */
 
 const { spawn } = require('child_process')
+const { AsyncLocalStorage } = require('async_hooks')
 const os = require('os')
+
+// Per-request settings from the website (the model picked on /claude-modus). The bridge runs
+// each request inside withClaudeRequest(), so the choice reaches runClaudeCli without being
+// threaded through every function in gemini-api.cjs — and the models that actually answered
+// are collected on the same object for the response header.
+const requestContext = new AsyncLocalStorage()
+
+function withClaudeRequest(context, fn) {
+  return requestContext.run(context, fn)
+}
+
+// modelUsage can list a helper model next to the main one; the main one wrote the most.
+function mainModel(modelUsage) {
+  const entries = Object.entries(modelUsage || {})
+  if (!entries.length) return null
+  entries.sort(([, a], [, b]) => (b?.outputTokens ?? 0) - (a?.outputTokens ?? 0))
+  return entries[0][0]
+}
 
 const MCP_URL = process.env.MTG_MCP_URL || 'https://mtgepicdeckbuilder.netlify.app/mcp'
 const MCP_CONFIG = JSON.stringify({ mcpServers: { mtg: { type: 'http', url: MCP_URL } } })
@@ -83,10 +102,11 @@ function friendlyCliError(message) {
 }
 
 function runClaudeCli({ prompt, schema, model }) {
+  const request = requestContext.getStore()
   const args = [
     '-p',
     '--output-format', 'json',
-    '--model', model || process.env.CLAUDE_MODEL || 'opus',
+    '--model', model || request?.model || process.env.CLAUDE_MODEL || 'opus',
     '--tools', '',
     '--strict-mcp-config',
     '--mcp-config', MCP_CONFIG,
@@ -125,6 +145,8 @@ function runClaudeCli({ prompt, schema, model }) {
         return reject(new Error(friendlyCliError((stderr || stdout || 'keine Ausgabe').trim().slice(0, 300))))
       }
       if (result.is_error) return reject(new Error(friendlyCliError(String(result.result || result.subtype || 'unbekannter Fehler'))))
+      const answeredBy = mainModel(result.modelUsage)
+      if (answeredBy) request?.modelsUsed?.add(answeredBy)
       resolve(result)
     })
 
@@ -145,7 +167,7 @@ async function generateWithClaude(params, { model } = {}) {
 
   const startedAt = Date.now()
   const result = await runClaudeCli({ prompt, schema, model })
-  console.log(`[Claude] answered in ${((Date.now() - startedAt) / 1000).toFixed(1)}s (${result.num_turns ?? '?'} turns, model ${Object.keys(result.modelUsage || {}).join('+') || '?'})`)
+  console.log(`[Claude] answered in ${((Date.now() - startedAt) / 1000).toFixed(1)}s (${result.num_turns ?? '?'} turns, model ${mainModel(result.modelUsage) || '?'})`)
 
   const structured = result.structured_output
   const usageMetadata = {
@@ -170,4 +192,4 @@ async function generateWithClaude(params, { model } = {}) {
   return { text, usageMetadata, candidates }
 }
 
-module.exports = { isClaudeProvider, generateWithClaude, runClaudeCli }
+module.exports = { isClaudeProvider, generateWithClaude, runClaudeCli, withClaudeRequest }

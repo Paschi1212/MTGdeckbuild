@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import {
-  subscribeAiMode, isClaudeFeatureEnabled, getPreferredMode, getBridgeStatus, isClaudeActive
+  subscribeAiMode, isClaudeFeatureEnabled, getPreferredMode, getBridgeStatus, isClaudeActive, getClaudeModel
 } from '../lib/aiMode'
 
 function snapshot() {
   return {
     enabled: isClaudeFeatureEnabled(),
     preferred: getPreferredMode(),
+    model: getClaudeModel(),
     bridge: getBridgeStatus(),
     claudeActive: isClaudeActive()
   }

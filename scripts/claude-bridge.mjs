@@ -23,10 +23,13 @@ dotenv.config({ path: path.join(root, '.env') })
 process.env.AI_PROVIDER = 'claude'
 
 const require = createRequire(import.meta.url)
-const { runClaudeCli } = require(path.join(root, 'netlify/functions/lib/claude-cli.cjs'))
+const { runClaudeCli, withClaudeRequest } = require(path.join(root, 'netlify/functions/lib/claude-cli.cjs'))
 
 const PORT = Number(process.env.CLAUDE_BRIDGE_PORT || 8787)
-const MODEL = process.env.CLAUDE_MODEL || 'opus'
+// The website sends the model picked on /claude-modus (X-Claude-Model); anything else falls
+// back to this default. Aliases — the CLI resolves each to the newest model of that family.
+const MODELS = ['opus', 'sonnet', 'haiku']
+const MODEL = MODELS.includes(process.env.CLAUDE_MODEL) ? process.env.CLAUDE_MODEL : 'opus'
 const AI_FUNCTIONS = ['audit-deck', 'chat-assistant', 'analyze-deck', 'suggest-commanders']
 const ALLOWED_ORIGINS = new Set([
   'https://mtgepicdeckbuilder.netlify.app',
@@ -49,7 +52,8 @@ function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Claude-Model',
+    'Access-Control-Expose-Headers': 'X-AI-Provider, X-AI-Model',
     // Chrome's local-network protection: a public site calling 127.0.0.1 needs this on the
     // preflight (plus the one-time permission prompt in the browser).
     'Access-Control-Allow-Private-Network': 'true',
@@ -108,7 +112,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/health') {
     if (!status.ready && !status.checking && Date.now() - lastSelfTestAt > SELF_TEST_RETRY_MS) selfTest()
-    return send(res, 200, { ok: true, provider: 'claude', model: MODEL, ...status, activeRequests }, origin)
+    return send(res, 200, { ok: true, provider: 'claude', model: MODEL, models: MODELS, ...status, activeRequests }, origin)
   }
 
   const match = url.pathname.match(/^\/\.netlify\/functions\/([a-z-]+)$/)
@@ -124,9 +128,11 @@ const server = http.createServer(async (req, res) => {
   }
 
   const name = match[1]
+  const requestedModel = String(req.headers['x-claude-model'] || '').toLowerCase()
+  const claudeRequest = { model: MODELS.includes(requestedModel) ? requestedModel : MODEL, modelsUsed: new Set() }
   const startedAt = Date.now()
   activeRequests++
-  console.log(`[${time()}] → ${name} …`)
+  console.log(`[${time()}] → ${name} (${claudeRequest.model}) …`)
   try {
     const body = await readBody(req)
     const event = {
@@ -137,10 +143,11 @@ const server = http.createServer(async (req, res) => {
       body,
       isBase64Encoded: false
     }
-    const result = await getHandler(name)(event)
+    const result = await withClaudeRequest(claudeRequest, () => getHandler(name)(event))
     const seconds = ((Date.now() - startedAt) / 1000).toFixed(1)
-    console.log(`[${time()}] ← ${name} ${result.statusCode} nach ${seconds}s`)
-    send(res, result.statusCode || 200, result.body ?? '', origin, { 'X-AI-Provider': 'claude' })
+    const answeredBy = [...claudeRequest.modelsUsed].join(', ') || claudeRequest.model
+    console.log(`[${time()}] ← ${name} ${result.statusCode} nach ${seconds}s (${answeredBy})`)
+    send(res, result.statusCode || 200, result.body ?? '', origin, { 'X-AI-Provider': 'claude', 'X-AI-Model': answeredBy })
   } catch (error) {
     console.error(`[${time()}] ✗ ${name}:`, error.message)
     send(res, 500, { error: 'Claude-Brücke: Fehler', message: error.message }, origin)
@@ -156,8 +163,8 @@ async function selfTest() {
     await runClaudeCli({ prompt: 'Antworte nur mit: OK', model: 'haiku' })
     status.ready = true
     status.error = null
-    console.log(`✅ Claude-CLI angemeldet — Claude-Modus bereit (Modell: ${MODEL}).`)
-    console.log('   Website öffnen, oben auf den KI-Schalter klicken → 🧠 Claude.')
+    console.log('✅ Claude-CLI angemeldet — Claude-Modus bereit.')
+    console.log(`   Website öffnen, oben auf den KI-Schalter klicken. Modell wählst du auf /claude-modus (Standard: ${MODEL}).`)
   } catch (error) {
     status.ready = false
     status.error = error.message

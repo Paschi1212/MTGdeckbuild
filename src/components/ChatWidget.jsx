@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { readApiError } from '../lib/apiError'
-import { aiFetch, isClaudeActive } from '../lib/aiMode'
+import { aiFetch, isClaudeActive, getClaudeModelLabel } from '../lib/aiMode'
 
 const HISTORY_LIMIT = 10
 
@@ -146,7 +146,7 @@ export default function ChatWidget({ commander, cards, onAction, contextNote, em
           <div className="flex justify-start">
             <div className="rounded-xl px-3 py-2 text-sm text-cmd-muted" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
               {bulkBuild ? '…baut Kartenladung auf, kann etwas dauern' : '…denkt nach'}
-              {isClaudeActive() && ' (🧠 Claude prüft Karten, bis zu einigen Minuten)'}
+              {isClaudeActive() && ` (🧠 Claude ${getClaudeModelLabel()} prüft Karten, bis zu einigen Minuten)`}
             </div>
           </div>
         )}

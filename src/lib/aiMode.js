@@ -10,6 +10,14 @@
 const BRIDGE_URL = 'http://127.0.0.1:8787'
 const ENABLED_KEY = 'mtg_claude_feature'
 const MODE_KEY = 'mtg_ai_mode'
+const MODEL_KEY = 'mtg_claude_model'
+
+// Family aliases — the bridge's CLI resolves each to the newest model of that family.
+export const CLAUDE_MODELS = [
+  { id: 'opus', label: 'Opus', description: 'Am gründlichsten — die besten Analysen, braucht am längsten und am meisten von deinem Abo-Kontingent.' },
+  { id: 'sonnet', label: 'Sonnet', description: 'Sehr stark und spürbar schneller — der Alltags-Kompromiss.' },
+  { id: 'haiku', label: 'Haiku', description: 'Am schnellsten und sparsamsten — für einfache Fragen, bei kniffligen Deck-Analysen deutlich schwächer.' }
+]
 
 let bridge = { checked: false, reachable: false, ready: false, checking: false, model: null, error: null }
 const listeners = new Set()
@@ -55,6 +63,28 @@ export function setPreferredMode(mode) {
   notify()
 }
 
+export function getClaudeModel() {
+  const saved = read(MODEL_KEY)
+  return CLAUDE_MODELS.some(m => m.id === saved) ? saved : 'opus'
+}
+
+export function setClaudeModel(id) {
+  write(MODEL_KEY, CLAUDE_MODELS.some(m => m.id === id) ? id : null)
+  notify()
+}
+
+export function getClaudeModelLabel() {
+  return CLAUDE_MODELS.find(m => m.id === getClaudeModel())?.label || 'Claude'
+}
+
+// The bridge reports the exact model that answered ("claude-opus-5-5") — shown as "Opus 5.5".
+export function formatModelId(id) {
+  const match = /claude-([a-z]+)-(\d+)(?:-(\d{1,2})(?!\d))?/i.exec(id || '')
+  if (!match) return id || ''
+  const family = match[1][0].toUpperCase() + match[1].slice(1)
+  return `${family} ${match[2]}${match[3] ? `.${match[3]}` : ''}`
+}
+
 export function getBridgeStatus() {
   return bridge
 }
@@ -97,7 +127,7 @@ export async function aiFetch(path, options) {
     // The bridge only accepts JSON-typed requests (that forces the browser's CORS preflight,
     // so no other website can fire requests at it) — the app's calls send JSON bodies but
     // don't always label them.
-    const headers = { 'Content-Type': 'application/json', ...(options?.headers || {}) }
+    const headers = { 'Content-Type': 'application/json', 'X-Claude-Model': getClaudeModel(), ...(options?.headers || {}) }
     try {
       return await fetch(`${BRIDGE_URL}${path}`, { ...options, headers })
     } catch {
