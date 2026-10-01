@@ -7,7 +7,7 @@
  * with whatever the client currently has locally.
  */
 
-import { getStore } from '@netlify/blobs'
+import { connectLambda, getStore } from '@netlify/blobs'
 import { parseSessionCookie } from './lib/session.js'
 
 // Only these keys are ever written to or read from the store — an arbitrary client payload
@@ -22,15 +22,23 @@ const SYNCED_KEYS = [
 ]
 
 export const handler = async (event) => {
+  // This handler uses the classic `exports.handler = async (event) => {}` (Lambda-
+  // compatible) signature, not Netlify's newer V2 function format — Blobs' environment
+  // context (siteID/token) is only auto-populated for V2 functions. In Lambda compatibility
+  // mode it must be wired up manually via connectLambda(event), called before any getStore()
+  // — skipping this is exactly what caused a live 502 (an uncaught error inside getStore()
+  // itself, outside the try/catch below, instead of a clean JSON error response).
+  connectLambda(event)
+
   const session = parseSessionCookie(event.headers.cookie)
   if (!session?.email) {
     return { statusCode: 401, body: JSON.stringify({ error: 'Not authenticated' }) }
   }
 
-  const store = getStore('user-data')
-  const key = session.email.toLowerCase()
-
   try {
+    const store = getStore('user-data')
+    const key = session.email.toLowerCase()
+
     if (event.httpMethod === 'GET') {
       const data = (await store.get(key, { type: 'json' })) || {}
       return {
