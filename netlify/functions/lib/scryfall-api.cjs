@@ -89,7 +89,9 @@ async function getCardPrice(cardName) {
     image: data.image_uris?.normal ?? data.card_faces?.[0]?.image_uris?.normal,
     typeLine: data.type_line,
     cmc: data.cmc ?? 0,
-    colorIdentity: (data.color_identity ?? []).join(' ')
+    colorIdentity: (data.color_identity ?? []).join(' '),
+    oracleText: data.oracle_text ?? data.card_faces?.[0]?.oracle_text ?? '',
+    manaCost: data.mana_cost ?? data.card_faces?.[0]?.mana_cost ?? ''
   }
 }
 
@@ -190,7 +192,10 @@ async function getBulkPrices(cardNames) {
             // is the field Commander's "must match the commander's color identity" rule
             // actually uses. Needed to verify deck legality deterministically.
             colorIdentity: (card.color_identity ?? []).join(' '),
-            oracleText: card.oracle_text ?? card.card_faces?.[0]?.oracle_text ?? ''
+            oracleText: card.oracle_text ?? card.card_faces?.[0]?.oracle_text ?? '',
+            // The printed cost, not just CMC — CMC counts X as 0, so an {X}{X}{U}{U} card shows
+            // up as "CMC 2" and the model concluded it "has no X in its mana cost".
+            manaCost: card.mana_cost ?? card.card_faces?.[0]?.mana_cost ?? ''
           }
           result[name] = entry
           cache.set(`name:${name.toLowerCase()}`, { data: entry, timestamp: Date.now() })

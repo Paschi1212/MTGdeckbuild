@@ -188,6 +188,58 @@ function formatStrategyForPrompt(strategy) {
   return `- winCondition: ${strategy.winCondition}\n- gamePlan: ${strategy.gamePlan}\n- weaknesses: ${strategy.weaknesses}`
 }
 
+// Untap effects that can hit a creature/permanent you control — incl. "...target creature.
+// Untap it." (Gift of the Viper) and blanket "untap all creatures".
+const UNTAP_EFFECT_RE = /\buntap (another |up to (one|two) )?target (permanent|creature)\b|\buntap all (permanents|creatures)\b|target creature\b[^.]*\.\s*untap it\b/i
+// Cards that REWARD a creature having +1/+1 counters (e.g. Pridemalkin's trample grant).
+const COUNTER_PAYOFF_RE = /with (a|one or more) \+1\/\+1 counters? on (it|them)|for each \+1\/\+1 counter/i
+// An activated ability whose COST contains {X} ("{X}{R}: ..."), i.e. before the colon on its
+// own line — what a commander like Magus Lucea Kane copies ("activate an ability with {X} in
+// its activation cost"). Deliberately NOT X-cost spells in general: those are usually the
+// deck's core category, and trading a weaker X-spell for a better one is legitimate.
+const X_ACTIVATED_ABILITY_RE = /^[^:\n]*\{X\}[^:\n]*:/m
+
+// The commander's own printed text (reminder text kept — e.g. Magus Lucea Kane's "A copy of
+// a permanent spell becomes a token" is exactly what tells you X-cost enchantments/creatures
+// get copied too). The prompts used to pass only the commander's NAME, so for a less famous
+// commander the model guessed its ability from memory — observed live: it claimed an
+// {X}{X}{U}{U} enchantment "isn't an X-spell Lucea Kane can copy", contradicting her text.
+async function getCommanderOracleText(commander) {
+  const commanderNames = splitCommanderNames(commander)
+  const commanderInfo = await getBulkPrices(commanderNames)
+  return commanderNames
+    .map(n => (commanderInfo[n]?.oracleText ? `${commanderInfo[n].name || n}: ${commanderInfo[n].oracleText}` : ''))
+    .filter(Boolean)
+    .join('\n')
+}
+
+// Objective interactions between a deck card and the commander's OWN printed ability,
+// detected in code from real oracle text — the model was observed live, repeatedly, cutting
+// exactly these as "unrelated to the strategy" even after being shown the full card text and
+// told to check for them (Formidable Speaker and Gift of the Viper can both untap a
+// {T}-ability commander = a second activation per turn; Pridemalkin rewards the +1/+1
+// counter Magus Lucea Kane places every combat). Same philosophy as enforceColorIdentity:
+// facts the code can verify aren't left to model judgment. Returns Map<name, reason>.
+function findCommanderSynergyCards(commanderText, commander, deckCards, cardInfo) {
+  const hasTapAbility = /\{T\}:/.test(commanderText)
+  const placesCounters = /\+1\/\+1 counter/i.test(commanderText)
+  const copiesXAbilities = /ability with \{X\}/i.test(commanderText)
+
+  const synergy = new Map()
+  for (const card of deckCards) {
+    const text = cardInfo[card.name]?.oracleText || ''
+    if (!text || synergy.has(card.name)) continue
+    if (hasTapAbility && UNTAP_EFFECT_RE.test(text)) {
+      synergy.set(card.name, `kann ${commander} untappen → zusätzliche Aktivierung der {T}-Fähigkeit im selben Zug`)
+    } else if (copiesXAbilities && X_ACTIVATED_ABILITY_RE.test(text)) {
+      synergy.set(card.name, `hat eine aktivierte {X}-Fähigkeit, die ${commander} kopiert`)
+    } else if (placesCounters && COUNTER_PAYOFF_RE.test(text)) {
+      synergy.set(card.name, `belohnt +1/+1-Counter, die ${commander} selbst verteilt`)
+    }
+  }
+  return synergy
+}
+
 // The user's correction (DeckAuditPage's "✏️ Korrigieren" box) is a single free-text blob in
 // the client's "Win Condition: X\n\nSpielplan: Y\n\nSchwächen: Z" format (see
 // DeckAuditPage.jsx's formatStrategy()). The model was previously just told to echo it back
@@ -227,15 +279,18 @@ async function auditDeckStrategy({ commander, deckCards, edhecData, strategyOver
   // judged less-famous cards from memory alone and got some outright wrong (e.g. called
   // Extraordinary Journey, an exile-and-recast value/flicker enchantment, a "removal
   // enchantment unrelated to the deck's creature synergies" — a real, confidently-wrong
-  // misread of what the card actually does, leading to a bad cardsToCut call). Truncated to
-  // ~100 chars/card to keep the added INPUT size sane for a 99-card deck — input tokens are
-  // cheap and weren't the source of any prior timeout (output generation/thinking was).
+  // misread of what the card actually does, leading to a bad cardsToCut call). Reminder text
+  // (parenthesized, purely explanatory) is stripped and the rest capped at 300 chars — an
+  // earlier 100-char cap cut off exactly the synergy-relevant SECOND ability on many cards
+  // (Formidable Speaker's untap, Pridemalkin's trample grant), so the model still cut them as
+  // "unrelated". Input tokens are cheap; output/thinking was what caused prior timeouts.
   const deckListText = deckCards
     .map(c => {
       const info = cardInfo[c.name]
-      const typeInfo = info?.typeLine ? ` [${info.typeLine}${info.cmc != null ? `, CMC ${info.cmc}` : ''}]` : ''
-      const oracle = info?.oracleText ? info.oracleText.replace(/\s+/g, ' ').trim() : ''
-      const oracleSnippet = oracle ? ` — "${oracle.slice(0, 100)}${oracle.length > 100 ? '…' : ''}"` : ''
+      const cost = info?.manaCost || (info?.cmc != null ? `CMC ${info.cmc}` : '')
+      const typeInfo = info?.typeLine ? ` [${info.typeLine}${cost ? `, ${cost}` : ''}]` : ''
+      const oracle = info?.oracleText ? info.oracleText.replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim() : ''
+      const oracleSnippet = oracle ? ` — "${oracle.slice(0, 300)}${oracle.length > 300 ? '…' : ''}"` : ''
       return `${c.quantity > 1 ? `${c.quantity}x ` : ''}${c.name}${typeInfo}${oracleSnippet}`
     })
     .join('\n')
@@ -244,7 +299,27 @@ async function auditDeckStrategy({ commander, deckCards, edhecData, strategyOver
     ? `\nEDHREC-DATEN (echte Decks mit ${commander}):\n- High Synergy Cards: ${(edhecData.highSynergyCards || []).slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n- Meistgespielte Karten insgesamt: ${edhecData.topCards?.slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n`
     : ''
 
-  const edhecCutSignal = buildEdhecCutSignal(commander, deckCards, edhecData)
+  const commanderText = await getCommanderOracleText(commander)
+  const commanderSynergy = findCommanderSynergyCards(commanderText, commander, deckCards, cardInfo)
+  console.log(`[Gemini] auditDeckStrategy: commander text ${commanderText ? 'found' : 'MISSING'}, code-detected commander synergies:`, [...commanderSynergy.keys()])
+  const synergyContext = commanderSynergy.size
+    ? `\nNACHWEISLICHE DIREKTE SYNERGIE MIT ${commander}S EIGENER FÄHIGKEIT (aus dem echten Kartentext erkannt — diese Karten sind KEINE Cut-Kandidaten, berücksichtige sie im Spielplan als Teil der Commander-Engine):\n${[...commanderSynergy].map(([name, why]) => `- ${name}: ${why}`).join('\n')}\n`
+    : ''
+
+  // Soft fact, not a hard guard (trading a weaker X-spell for a stronger one is legitimate):
+  // which deck cards actually have {X} in their mana cost when the commander copies X-spells.
+  // Observed live on the lite model: "Genesis Wave lacks an X in its mana cost" — it's {X}{G}{G}{G}.
+  const xSpellNames = /spell with \{X\} in its mana cost/i.test(commanderText)
+    ? deckCards.filter(c => /\{X\}/.test(cardInfo[c.name]?.manaCost || '')).map(c => c.name)
+    : []
+  const xSpellContext = xSpellNames.length
+    ? `\nFAKT: DIESE KARTEN HABEN {X} IN DEN MANAKOSTEN und werden von ${commander} kopiert (auch bleibende Karten — die Kopie wird ein Token): ${xSpellNames.join(', ')}. Cutte eine davon nur, wenn eine klar stärkere X-Karte im Deck dieselbe Rolle erfüllt — und behaupte nie, eine davon hätte kein X.\n`
+    : ''
+
+  // Protected cards are left out of the "not on any EDHREC list = cut candidate" signal too —
+  // a less-played card with a verified commander interaction (Formidable Speaker) was
+  // otherwise actively flagged as a preferred cut by that signal.
+  const edhecCutSignal = buildEdhecCutSignal(commander, deckCards.filter(c => !commanderSynergy.has(c.name)), edhecData)
 
   const strategyContext = strategyOverride
     ? `\nVOM NUTZER BESTÄTIGTE/KORRIGIERTE STRATEGIE (verbindlich — übernimm das exakt als "strategy" in deiner Antwort, erfinde keine eigene, abweichende Strategie): ${strategyOverride}\n`
@@ -256,16 +331,16 @@ async function auditDeckStrategy({ commander, deckCards, edhecData, strategyOver
 
   const prompt = `Du bist ein Magic: The Gathering Commander Deck Expert — arbeite wie ein erfahrener Deckbuilder: zuerst verstehen, was das Deck WILL, dann erst bewerten, was nicht passt.
 
-COMMANDER: ${commander}
+COMMANDER: ${commander}${commanderText ? `\nEXAKTER KARTENTEXT DES COMMANDERS (maßgeblich — leite seine Fähigkeit hieraus ab, nicht aus deinem Gedächtnis):\n${commanderText}` : ''}
 
-AKTUELLE DECKLISTE (${deckCards.length} Karten, [Typ, Manawert] und Kartentext-Auszug wo bekannt — verlass dich auf DIESEN Text, nicht auf dein eigenes Gedächtnis der Karte, falls sie dir unbekannt vorkommt):
+AKTUELLE DECKLISTE (${deckCards.length} Karten, [Typ, Manakosten] und Kartentext-Auszug wo bekannt — verlass dich auf DIESEN Text, nicht auf dein eigenes Gedächtnis der Karte, falls sie dir unbekannt vorkommt):
 ${deckListText}
-${edhecContext}${edhecCutSignal}${strategyContext}${powerLevelContext}
+${synergyContext}${xSpellContext}${edhecContext}${edhecCutSignal}${strategyContext}${powerLevelContext}
 AUFGABE:
 Bewerte dieses BEREITS GEBAUTE Deck. Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
 - "strategy": ${strategyOverride ? 'übernimm die vom Nutzer bestätigte Strategie oben unverändert in winCondition/gamePlan/weaknesses.' : `lies aus der Deckliste (Kartentypen, Manawerte, Commander-Fähigkeiten) das TATSÄCHLICHE Spielplan des Decks heraus, BEVOR du irgendeine Karte bewertest. WICHTIG: "winCondition" und "gamePlan" müssen sich um die FÄHIGKEIT VON ${commander} selbst drehen, nicht um eine andere (auch wenn bekanntere/stärkere) Karte im Deck — eine starke Synergiekarte ist ein Baustein DER Commander-Strategie, niemals deren Ersatz. — "winCondition" (wie gewinnt dieses Deck konkret, ausgehend von ${commander}s eigener Fähigkeit), "gamePlan" (Früh-/Mittel-/Spätspiel-Ablauf, Kernrollen: Ramp, Kartenvorteil, Removal/Interaktion, Payoffs — mit welchen Karten sie abgedeckt sind), "weaknesses" (welche dieser Rollen fehlen oder sind unterbesetzt — UND GLEICHBERECHTIGT DAZU: falls die Strategie auf einer bestimmten Kartenkategorie/Synergie basiert, die der Commander direkt belohnt oder verstärkt (z.B. X-Spells, Token-Erzeugung, +1/+1-Counter, Artefakte, ein Tribal-Typ), zähle die Karten dieser Kategorie im Deck AUSDRÜCKLICH durch und benenne "zu wenig [Kategorie]-Karten" explizit als eigene Schwäche, wenn die Dichte für eine konsequente Strategie zu gering ist — das ist für ein Synergie-Deck oft die wichtigste Schwäche überhaupt, nicht nur eine generische Rolle unter vielen). Das ist die Grundlage für ALLES danach.`}
 - "summary": kurze deutsche Fließtext-Bewertung basierend auf der obigen Strategie-Einschätzung, 3-5 Sätze
-- "cardsToCut": Schwächste Karten AUS DER OBIGEN DECKLISTE mit Begründung (EIN kurzer Satz), warum sie raus sollten. KRITISCH: jede Begründung muss sich auf die oben festgelegte "strategy" beziehen (z.B. "trägt nichts zu [winCondition] bei" oder "redundant zu [andere Karte], die dieselbe Rolle besser erfüllt") — keine generischen "das ist eine schwache Karte"-Begründungen ohne Bezug zu DIESEM Deck. STÜTZE DICH AUSSCHLIESSLICH auf den tatsächlichen Kartentext oben, nicht auf eine vage Erinnerung an die Karte — wenn du den genauen Effekt einer Karte aus dem mitgelieferten Text nicht sicher einordnen kannst, cutte sie NICHT (lieber eine eindeutig schwache Karte nennen als eine unklare falsch zu beschreiben).${edhecCutSignal ? ' Die oben genannten, bei EDHREC nicht gelisteten Karten sind bevorzugte (aber nicht zwingende) Kandidaten — nenne bei Bedarf auch andere.' : ''} KEINE feste Obergrenze — wenn das Deck wirklich viele Schwachstellen hat, nenne entsprechend viele; wenn es schon stark ist, nenne weniger oder auch gar keine. "name" muss EXAKT und WORTWÖRTLICH einem Eintrag aus der Deckliste oben entsprechen (ohne den [Typ, Manawert]-Zusatz) — erfinde niemals eine Karte, die dort nicht steht, und ändere keine Namen.
+- "cardsToCut": Schwächste Karten AUS DER OBIGEN DECKLISTE mit Begründung (EIN kurzer Satz), warum sie raus sollten. KRITISCH: jede Begründung muss sich auf die oben festgelegte "strategy" beziehen (z.B. "trägt nichts zu [winCondition] bei" oder "redundant zu [andere Karte], die dieselbe Rolle besser erfüllt") — keine generischen "das ist eine schwache Karte"-Begründungen ohne Bezug zu DIESEM Deck. STÜTZE DICH AUSSCHLIESSLICH auf den tatsächlichen Kartentext oben, nicht auf eine vage Erinnerung an die Karte — wenn du den genauen Effekt einer Karte aus dem mitgelieferten Text nicht sicher einordnen kannst, cutte sie NICHT (lieber eine eindeutig schwache Karte nennen als eine unklare falsch zu beschreiben). BEVOR du eine Karte als "trägt nichts zur Strategie bei" einstufst, prüfe AUSDRÜCKLICH ihre INDIREKTEN mechanischen Synergien — eine Karte muss nicht selbst zur Kernkategorie gehören, um die Strategie zu tragen: (1) interagiert sie mit ${commander}s eigener Fähigkeit? (z.B. ein Untap-Effekt bei einem Commander mit {T}-Fähigkeit = eine zusätzliche Aktivierung pro Zug — das ist eine der stärksten Synergien überhaupt; Schutz für einen Commander, von dem der Plan abhängt), (2) unterstützt sie die Finisher/Payoffs des Decks, ohne selbst einer zu sein? (z.B. Trample/Evasion oder +1/+1-Counter für große Kreaturen, damit sie nicht einfach geblockt werden), (3) liefert sie Konstanz/Resilienz? (z.B. ein Tutor, der den Commander oder einen Key-Payoff findet). Erfüllt eine Karte einen dieser Punkte, ist sie KEIN Cut-Kandidat, nur weil sie nicht direkt zur Kernkategorie gehört.${edhecCutSignal ? ' Die oben genannten, bei EDHREC nicht gelisteten Karten sind bevorzugte (aber nicht zwingende) Kandidaten — nenne bei Bedarf auch andere.' : ''} KEINE feste Obergrenze — wenn das Deck wirklich viele Schwachstellen hat, nenne entsprechend viele; wenn es schon stark ist, nenne weniger oder auch gar keine. "name" muss EXAKT und WORTWÖRTLICH einem Eintrag aus der Deckliste oben entsprechen (ohne den [Typ, Manakosten]-Zusatz und ohne den Kartentext) — erfinde niemals eine Karte, die dort nicht steht, und ändere keine Namen.
 
 Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
 
@@ -331,12 +406,20 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
 
     const deckCardNames = new Set(deckCards.map(c => normalizeCardName(c.name)))
     const rawCardsToCut = parsed.cardsToCut || []
-    const validCardsToCut = rawCardsToCut.filter(c => deckCardNames.has(normalizeCardName(c.name)))
-    if (validCardsToCut.length !== rawCardsToCut.length) {
+    const inDeckCardsToCut = rawCardsToCut.filter(c => deckCardNames.has(normalizeCardName(c.name)))
+    if (inDeckCardsToCut.length !== rawCardsToCut.length) {
       console.warn(
-        `[Gemini] auditDeckStrategy: dropped ${rawCardsToCut.length - validCardsToCut.length} hallucinated cardsToCut ` +
-        `entr${rawCardsToCut.length - validCardsToCut.length === 1 ? 'y' : 'ies'} not present in the actual decklist`
+        `[Gemini] auditDeckStrategy: dropped ${rawCardsToCut.length - inDeckCardsToCut.length} hallucinated cardsToCut ` +
+        `entr${rawCardsToCut.length - inDeckCardsToCut.length === 1 ? 'y' : 'ies'} not present in the actual decklist`
       )
+    }
+    // Hard guard, not just the prompt hint: a card with a code-verified interaction with the
+    // commander's own ability is never suggested as a cut.
+    const protectedNames = new Set([...commanderSynergy.keys()].map(normalizeCardName))
+    const validCardsToCut = inDeckCardsToCut.filter(c => !protectedNames.has(normalizeCardName(c.name)))
+    if (validCardsToCut.length !== inDeckCardsToCut.length) {
+      console.warn('[Gemini] auditDeckStrategy: kept commander-synergy cards out of cardsToCut:',
+        inDeckCardsToCut.filter(c => protectedNames.has(normalizeCardName(c.name))).map(c => c.name))
     }
 
     const cardsToCut = await enrichWithImages(validCardsToCut)
@@ -384,9 +467,11 @@ async function auditDeckSuggestions({ commander, deckCards, collectionSampleName
 
   const strategyContext = `\nBEREITS FESTGELEGTE STRATEGIE DIESES DECKS (verbindlich — nicht neu bewerten, nur als Grundlage für deine Vorschläge nutzen):\n${formatStrategyForPrompt(strategy)}\n`
 
+  const commanderText = await getCommanderOracleText(commander)
+
   const prompt = `Du bist ein Magic: The Gathering Commander Deck Expert.
 
-COMMANDER: ${commander}
+COMMANDER: ${commander}${commanderText ? `\nEXAKTER KARTENTEXT DES COMMANDERS (maßgeblich — schlage Karten vor, die mit GENAU dieser Fähigkeit interagieren):\n${commanderText}` : ''}
 
 AKTUELLE DECKLISTE (${deckCards.length} Karten): ${deckListText}
 ${strategyContext}${collectionContext}${edhecContext}${budgetContext}
