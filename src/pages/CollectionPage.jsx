@@ -100,7 +100,7 @@ export default function CollectionPage() {
   const collection = source === 'mine' ? myCollection : secondaryCollections.find(c => c.id === source) || myCollection
 
   const [search, setSearch] = useState('')
-  const [imageMap, setImageMap] = useState({})
+  const [imageMap, setImageMap] = useState({ byId: {}, byName: {} })
   const [loadingImages, setLoadingImages] = useState(true)
   const [selectedColors, setSelectedColors] = useState([])
   const [selectedType, setSelectedType] = useState('')
@@ -133,20 +133,47 @@ export default function CollectionPage() {
     }
 
     const ids = [...new Set(collection.cards.map(c => c.scryfallId).filter(Boolean))]
-    if (ids.length === 0) {
+    // A card with no Scryfall ID (blank in the CSV, or an export whose "Scryfall ID" column
+    // was named/cased differently — e.g. a different ManaBox app version/locale, observed
+    // live: both of a friend's uploaded collections had none) used to just never get an
+    // image at all, since this only ever looked up by ID. Falling back to a by-NAME lookup
+    // for exactly those cards (same dual-lookup pattern EditDeckPage/ChatBuilderPage already
+    // use for manually-added cards) covers that instead of silently showing nothing.
+    const namesWithoutId = [...new Set(collection.cards.filter(c => !c.scryfallId).map(c => c.name))]
+
+    if (ids.length === 0 && namesWithoutId.length === 0) {
       setLoadingImages(false)
       return
     }
 
-    fetch('/.netlify/functions/get-card-price', {
-      method: 'POST',
-      body: JSON.stringify({ ids })
-    })
-      .then(res => (res.ok ? res.json() : {}))
-      .then(setImageMap)
+    Promise.all([
+      ids.length
+        ? fetch('/.netlify/functions/get-card-price', { method: 'POST', body: JSON.stringify({ ids }) })
+          .then(res => (res.ok ? res.json() : {}))
+          .catch(() => ({}))
+        : {},
+      namesWithoutId.length
+        ? fetch('/.netlify/functions/get-card-price', { method: 'POST', body: JSON.stringify({ names: namesWithoutId }) })
+          .then(res => (res.ok ? res.json() : {}))
+          .catch(() => ({}))
+        : {}
+    ])
+      .then(([byId, byNameRaw]) => {
+        // The by-name batch endpoint (getBulkPrices) returns colorIdentity, not colors (the
+        // by-ID endpoint's field, this page's color filter reads) — close enough a stand-in
+        // for the color filter to work on cards only resolvable by name.
+        const byName = Object.fromEntries(
+          Object.entries(byNameRaw).map(([name, entry]) => [name, { ...entry, colors: entry.colorIdentity }])
+        )
+        setImageMap({ byId, byName })
+      })
       .catch(() => {})
       .finally(() => setLoadingImages(false))
   }, [collection])
+
+  // Prefer the by-ID match (exact printing) and fall back to by-name (any printing) — a card
+  // with no Scryfall ID in the CSV only ever has a by-name entry to find.
+  const resolveCard = (card) => imageMap.byId[card.scryfallId] ?? imageMap.byName[card.name]
 
   const toggleColor = (colorId) => {
     setSelectedColors(prev =>
@@ -169,14 +196,14 @@ export default function CollectionPage() {
         // Subset match, not overlap: a card must not contain any color OUTSIDE the
         // selection (picking Blue+White was showing Red/White cards too, since they
         // do contain White — just not exclusively).
-        const cardColorList = (imageMap[c.scryfallId]?.colors || '').split(' ').filter(Boolean)
+        const cardColorList = (resolveCard(c)?.colors || '').split(' ').filter(Boolean)
         if (cardColorList.length === 0) return selectedColors.includes('C')
         return cardColorList.every(cc => selectedColors.includes(cc))
       })
     }
 
     if (selectedType) {
-      result = result.filter(c => imageMap[c.scryfallId]?.typeLine?.includes(selectedType))
+      result = result.filter(c => resolveCard(c)?.typeLine?.includes(selectedType))
     }
 
     if (availability === 'free') {
@@ -202,11 +229,11 @@ export default function CollectionPage() {
     }
 
     if (minCmc) {
-      result = result.filter(c => (imageMap[c.scryfallId]?.cmc ?? 0) >= Number(minCmc))
+      result = result.filter(c => (resolveCard(c)?.cmc ?? 0) >= Number(minCmc))
     }
 
     if (maxCmc) {
-      result = result.filter(c => (imageMap[c.scryfallId]?.cmc ?? 0) <= Number(maxCmc))
+      result = result.filter(c => (resolveCard(c)?.cmc ?? 0) <= Number(maxCmc))
     }
 
     const sortFn = PRICE_SORTS[sortBy]?.fn
@@ -451,7 +478,7 @@ export default function CollectionPage() {
 
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
         {visibleCards.map((card, index) => {
-          const resolved = imageMap[card.scryfallId]
+          const resolved = resolveCard(card)
           return (
             <CardTile
               key={`${card.scryfallId || card.name}-${index}`}
@@ -472,7 +499,7 @@ export default function CollectionPage() {
       {modalIndex !== null && visibleCards[modalIndex] && (
         <CardModal
           card={visibleCards[modalIndex]}
-          resolved={imageMap[visibleCards[modalIndex].scryfallId]}
+          resolved={resolveCard(visibleCards[modalIndex])}
           onClose={() => setModalIndex(null)}
           onPrev={() => setModalIndex(i => (i - 1 + visibleCards.length) % visibleCards.length)}
           onNext={() => setModalIndex(i => (i + 1) % visibleCards.length)}
