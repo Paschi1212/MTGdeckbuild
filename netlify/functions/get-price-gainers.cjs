@@ -6,7 +6,10 @@
 
 const { getBulkPrices } = require('./lib/scryfall-api.cjs')
 
-const MIN_GAIN_EUR = 2
+// Threshold is on the CARD'S CURRENT VALUE, not the gain amount — a bulk card going from
+// €0.10 to €0.20 "doubled" but isn't interesting; a real card worth over €2 that's gone up
+// at all is.
+const MIN_CURRENT_VALUE_EUR = 2
 const MAX_RESULTS = 50
 
 exports.handler = async (event) => {
@@ -30,8 +33,9 @@ exports.handler = async (event) => {
         // No current price match, or no purchase price on file (ManaBox leaves it 0 when
         // unset) — nothing meaningful to compare, skip rather than report a fake €0 -> X gain.
         if (current == null || current <= 0 || !c.purchasePrice) return null
+        if (current <= MIN_CURRENT_VALUE_EUR) return null
         const gain = current - c.purchasePrice
-        if (gain <= MIN_GAIN_EUR) return null
+        if (gain <= 0) return null
         return {
           name: c.name,
           quantity: c.quantity || 1,

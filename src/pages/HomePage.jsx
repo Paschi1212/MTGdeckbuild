@@ -135,7 +135,7 @@ function Dashboard() {
           </button>
         </div>
         <p className="text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
-          Vergleicht aktuelle Scryfall-Marktpreise mit deinen ManaBox-Kaufpreisen — nur Karten mit mehr als €2 Wertsteigerung.
+          Vergleicht aktuelle Scryfall-Marktpreise mit deinen ManaBox-Kaufpreisen — nur Karten über €2 aktuellem Wert, die im Preis gestiegen sind.
         </p>
 
         {scanError && <p className="text-sm mb-3" style={{ color: 'var(--r)' }}>{scanError}</p>}
