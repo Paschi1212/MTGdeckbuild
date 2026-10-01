@@ -144,3 +144,24 @@ export function getAvailableCardNames(collection, excludeBinderName = null) {
   const quantities = getAvailableQuantities(collection, excludeBinderName)
   return [...quantities.entries()].filter(([, v]) => v.available > 0).map(([name]) => name)
 }
+
+/**
+ * One entry per unique card name with a purchase price on file (ManaBox leaves it 0 if never
+ * set), total quantity owned across all binders/decks. Used for the price-gainer scan — a
+ * single representative purchase price per name, not weighted across rows bought at
+ * different times, which is a reasonable simplification for "did this generally go up".
+ */
+export function getPricedCardNames(collection) {
+  if (!collection?.cards) return []
+  const byName = new Map()
+  for (const card of collection.cards) {
+    if (!card.purchasePrice) continue
+    const entry = byName.get(card.name)
+    if (entry) {
+      entry.quantity += card.quantity
+    } else {
+      byName.set(card.name, { name: card.name, purchasePrice: card.purchasePrice, quantity: card.quantity })
+    }
+  }
+  return [...byName.values()]
+}
