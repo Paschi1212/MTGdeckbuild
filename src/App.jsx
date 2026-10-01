@@ -11,6 +11,7 @@ import StrategyPage from './pages/StrategyPage'
 import AnalyzePage from './pages/AnalyzePage'
 import EditDeckPage from './pages/EditDeckPage'
 import ChatBuilderPage from './pages/ChatBuilderPage'
+import { pullFromCloud } from './lib/cloudSync'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -28,6 +29,10 @@ function App() {
       })
       if (response.ok) {
         const data = await response.json()
+        // Hydrate localStorage from the server BEFORE any page can mount and read it —
+        // otherwise a page's own useState(loadCollection) would grab whatever (stale or
+        // empty) was already in this browser's localStorage first.
+        await pullFromCloud()
         setUser(data.user)
       }
     } catch (error) {

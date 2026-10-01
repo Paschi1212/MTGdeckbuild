@@ -1,3 +1,5 @@
+import { scheduleCloudPush } from './cloudSync'
+
 // Per-deck settings the user has taught the tool — a confirmed/corrected strategy read,
 // a chosen power level — separate from commanderOverrides.js since these are a distinct
 // concern (deck-audit context, not "which card is the commander").
@@ -21,4 +23,5 @@ export function setDeckPreferences(deckName, patch) {
   const all = loadAll()
   all[deckName] = { ...(all[deckName] || {}), ...patch }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(all))
+  scheduleCloudPush()
 }

@@ -1,3 +1,5 @@
+import { scheduleCloudPush } from './cloudSync'
+
 // Persists the last full analysis result (strategy, cardsToCut/Add/Buy) per deck — separate
 // from deckPreferences.js, which holds what the user has explicitly taught the tool
 // (strategyOverride, powerLevel). This is just a cache of the last computed result, so it
@@ -23,4 +25,5 @@ export function setSavedAudit(deckName, audit) {
   const all = loadAll()
   all[deckName] = audit
   localStorage.setItem(STORAGE_KEY, JSON.stringify(all))
+  scheduleCloudPush()
 }

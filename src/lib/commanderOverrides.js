@@ -1,3 +1,5 @@
+import { scheduleCloudPush } from './cloudSync'
+
 const STORAGE_KEY = 'mtg_commander_overrides'
 
 function loadOverrides() {
@@ -18,4 +20,5 @@ export function setCommanderOverride(deckName, commanderName) {
   const overrides = loadOverrides()
   overrides[deckName] = commanderName
   localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides))
+  scheduleCloudPush()
 }

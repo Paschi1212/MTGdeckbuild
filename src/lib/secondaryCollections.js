@@ -1,3 +1,5 @@
+import { scheduleCloudPush } from './cloudSync'
+
 // Friends'/other people's collections — each its own named, fully separate entry, never
 // merged into the user's own collection (localStorage key 'mtg_collection') or its totals.
 // The only thing these feed into is a "your friend already owns this" badge on cards the
@@ -27,11 +29,13 @@ export function addSecondaryCollection(label, summary) {
   }
   all.push(entry)
   localStorage.setItem(STORAGE_KEY, JSON.stringify(all))
+  scheduleCloudPush()
   return entry
 }
 
 export function removeSecondaryCollection(id) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(loadAll().filter(c => c.id !== id)))
+  scheduleCloudPush()
 }
 
 /**

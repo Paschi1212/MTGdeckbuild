@@ -1,4 +1,5 @@
 import Papa from 'papaparse'
+import { scheduleCloudPush } from './cloudSync'
 
 const STORAGE_KEY = 'mtg_collection'
 
@@ -91,6 +92,7 @@ export function parseCollectionCsv(file) {
 
 export function saveCollection(summary) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(summary))
+  scheduleCloudPush()
 }
 
 export function loadCollection() {

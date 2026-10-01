@@ -1,3 +1,5 @@
+import { scheduleCloudPush } from './cloudSync'
+
 const STORAGE_KEY = 'mtg_draft_decks'
 
 export function loadDraftDecks() {
@@ -12,6 +14,7 @@ export function loadDraftDecks() {
 
 function persist(drafts) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(drafts))
+  scheduleCloudPush()
 }
 
 export function getDraftDeck(id) {
