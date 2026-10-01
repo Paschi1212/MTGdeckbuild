@@ -65,6 +65,17 @@ export default function ChatBuilderPage({ initialCommander, initialMessage } = {
       return
     }
 
+    // A full build_full_deck result — replace the whole list outright instead of funneling
+    // each card through the same +N "add" semantics as a single add_card request. That was
+    // the bug behind runaway counts: asking for a full rebuild a second time in the same
+    // chat session silently stacked a second manabase on top of the first (basics just keep
+    // incrementing; nonbasic duplicates were dropped by the existing-card guard below,
+    // masking the same bug there too) instead of starting fresh.
+    if (action.type === 'replaceDeck') {
+      setCards((action.cards || []).map(c => ({ name: c.name, count: c.quantity, isLand: c.isLand })))
+      return
+    }
+
     const nameLower = (action.name || '').toLowerCase()
     if (!nameLower) return
 

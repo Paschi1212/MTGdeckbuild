@@ -429,6 +429,16 @@ export default function EditDeckPage(embeddedState) {
       return
     }
 
+    // A full build_full_deck result — a complete, self-contained 99-card deck, not an
+    // increment to whatever was already here. Replacing the whole list (rather than
+    // funneling each card through the same +N semantics as a single add_card request) is
+    // what actually fixes runaway counts from asking for a rebuild more than once per
+    // session — "add" on a basic land used to stack a second manabase on top of the first.
+    if (action.type === 'replaceDeck') {
+      setCards((action.cards || []).map(c => ({ name: c.name, count: c.quantity, price: 0, isLand: c.isLand })))
+      return
+    }
+
     const nameLower = (action.name || '').toLowerCase()
     if (!nameLower) return
 

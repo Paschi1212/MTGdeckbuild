@@ -614,6 +614,12 @@ function synthesizeFallbackReply(actions) {
   const added = actions.filter(a => a.type === 'add')
   if (added.length) parts.push(`hinzugefügt: ${added.map(a => (a.quantity > 1 ? `${a.quantity}x ${a.name}` : a.name)).join(', ')}`)
 
+  const replaceDeckAction = actions.find(a => a.type === 'replaceDeck')
+  if (replaceDeckAction) {
+    const total = replaceDeckAction.cards.reduce((sum, c) => sum + c.quantity, 0)
+    parts.push(`komplettes Deck gebaut (${total} Karten)`)
+  }
+
   const removed = actions.filter(a => a.type === 'remove')
   if (removed.length) parts.push(`entfernt: ${removed.map(a => a.name).join(', ')}`)
 
@@ -1172,15 +1178,27 @@ Antworte auf Deutsch, knapp und konkret (max. ca. 150 Wörter, außer der Nutzer
           budgetNote = budgetResult.budgetNote
         }
 
-        const fullDeckActions = finalCards
-          .filter(c => c.name && c.quantity)
-          .map(c => ({ type: 'add', name: c.name, quantity: c.quantity, isLand: c.isLand }))
-
+        // A single 'replaceDeck' action, NOT one 'add' action per card — a full build is a
+        // fresh, self-contained 99-card deck, not an increment to whatever was already there.
+        // Funneling it through the same 'add' semantics as a single manual add_card request
+        // was the bug behind runaway card counts: 'add' on a basic land ADDS to its existing
+        // count (correct for "add 3 more Islands"), so asking for a full rebuild a second
+        // time in the same chat session silently stacked a whole second manabase on top of
+        // the first (observed live: 87 basic lands across 2 builds instead of ~37) — nonbasic
+        // duplicates were silently dropped by the existing-card guard, masking the same bug
+        // there. A full build should always replace the deck outright.
+        const fullDeckActions = []
         // Relay set_commander too (if the model called it) — otherwise the frontend's own
         // commander state never gets updated even though the build used the right name.
         if (setCommanderCall?.args?.name) {
-          fullDeckActions.unshift({ type: 'setCommander', name: setCommanderCall.args.name })
+          fullDeckActions.push({ type: 'setCommander', name: setCommanderCall.args.name })
         }
+        fullDeckActions.push({
+          type: 'replaceDeck',
+          cards: finalCards
+            .filter(c => c.name && c.quantity)
+            .map(c => ({ name: c.name, quantity: c.quantity, isLand: c.isLand }))
+        })
 
         return {
           reply: (built.summary || synthesizeFallbackReply(fullDeckActions)) + budgetNote,

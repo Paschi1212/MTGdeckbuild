@@ -14,6 +14,23 @@ const SCRYFALL_HEADERS = {
 
 const cache = new Map()
 
+// A transient Scryfall hiccup (429 rate-limit, a 5xx blip) used to just permanently drop
+// those names from the batch with no retry — they'd fall through to the per-card fuzzy
+// fallback, which could ALSO fail under the same transient condition, leaving a card with no
+// image/price/type for the rest of that request even though nothing was actually wrong with
+// the card or its name. One short retry (mirrors generateContentWithRetry's pattern for
+// Gemini) costs almost nothing when Scryfall is healthy and recovers the common case where
+// it briefly isn't.
+async function fetchWithRetry(url, options, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const response = await fetch(url, options)
+    if (response.ok || attempt === retries) return response
+    if (response.status !== 429 && response.status < 500) return response // not transient — don't retry a real 4xx
+    const delayMs = 300 * (attempt + 1)
+    await new Promise(resolve => setTimeout(resolve, delayMs))
+  }
+}
+
 /**
  * Get card data including price
  */
@@ -30,7 +47,7 @@ async function getCardData(cardName) {
     // "fuzzy" instead of "exact" — card names we look up this way often come from an LLM
     // (deck proposals, chat, suggestions) and are rarely byte-perfect (capitalization,
     // apostrophes, punctuation), which "exact" 404s on far more often than it should.
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${SCRYFALL_BASE}/cards/named?fuzzy=${encodeURIComponent(cardName)}`,
       { headers: SCRYFALL_HEADERS }
     )
@@ -143,7 +160,7 @@ async function getBulkPrices(cardNames) {
     const notFoundInBatch = []
 
     try {
-      const response = await fetch(`${SCRYFALL_BASE}/cards/collection`, {
+      const response = await fetchWithRetry(`${SCRYFALL_BASE}/cards/collection`, {
         method: 'POST',
         headers: { ...SCRYFALL_HEADERS, 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifiers: batch.map(name => ({ name })) })
@@ -227,7 +244,7 @@ async function getCardsByIds(scryfallIds) {
     const batch = idsToFetch.slice(i, i + SCRYFALL_COLLECTION_LIMIT)
 
     try {
-      const response = await fetch(`${SCRYFALL_BASE}/cards/collection`, {
+      const response = await fetchWithRetry(`${SCRYFALL_BASE}/cards/collection`, {
         method: 'POST',
         headers: { ...SCRYFALL_HEADERS, 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifiers: batch.map(id => ({ id })) })
