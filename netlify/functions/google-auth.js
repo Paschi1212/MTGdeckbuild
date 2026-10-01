@@ -1,12 +1,10 @@
 import { OAuth2Client } from 'google-auth-library'
 import { createSessionCookie } from './lib/session.js'
 
-const SCOPES = [
-  'openid',
-  'email',
-  'profile',
-  'https://www.googleapis.com/auth/drive.readonly'
-]
+// Drive scope removed — nothing in this codebase reads from Google Drive (persistence is
+// Netlify Blobs now, see sync-data.js); requesting it just showed every new user a
+// needlessly alarming "this app wants to see your Google Drive files" consent screen.
+const SCOPES = ['openid', 'email', 'profile']
 
 function client() {
   return new OAuth2Client(
