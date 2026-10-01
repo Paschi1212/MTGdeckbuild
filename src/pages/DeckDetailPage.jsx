@@ -171,10 +171,10 @@ export default function DeckDetailPage() {
                 onClick={() => handlePowerLevelChange(level)}
                 className={`p-2 text-sm transition ${
                   powerLevel === level
-                    ? 'text-white'
+                    ? ''
                     : 'text-cmd-muted hover:text-white bg-[color:var(--surface)] border border-[color:var(--border)]'
                 }`}
-                style={powerLevel === level ? { backgroundImage: 'linear-gradient(135deg, var(--u), var(--b))' } : undefined}
+                style={powerLevel === level ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' } : undefined}
               >
                 {level}
               </button>

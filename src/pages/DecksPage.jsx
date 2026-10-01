@@ -17,8 +17,8 @@ function TabButton({ active, onClick, children }) {
       onClick={onClick}
       className="px-4 py-2 rounded-full text-sm font-semibold transition-colors"
       style={active
-        ? { backgroundImage: 'linear-gradient(135deg, var(--u), var(--b))', color: '#fff' }
-        : { backgroundColor: 'rgba(255,255,255,0.04)', color: 'var(--cmd-muted, #a99fc4)' }}
+        ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' }
+        : { backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
     >
       {children}
     </button>

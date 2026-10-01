@@ -126,10 +126,10 @@ export default function StrategyPage() {
               onClick={() => toggleMechanic(mechanic)}
               className={`p-3 rounded-xl transition text-sm font-semibold ${
                 strategy.keyMechanics.includes(mechanic)
-                  ? 'text-white'
+                  ? ''
                   : 'text-cmd-muted hover:text-white bg-[color:var(--surface)] border border-[color:var(--border)]'
               }`}
-              style={strategy.keyMechanics.includes(mechanic) ? { backgroundColor: 'var(--g)' } : undefined}
+              style={strategy.keyMechanics.includes(mechanic) ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' } : undefined}
             >
               {mechanic}
             </button>
@@ -149,10 +149,10 @@ export default function StrategyPage() {
               onClick={() => setStrategy(prev => ({ ...prev, playStyle: style }))}
               className={`p-3 rounded-xl transition ${
                 strategy.playStyle === style
-                  ? 'text-white'
+                  ? ''
                   : 'text-cmd-muted hover:text-white bg-[color:var(--surface)] border border-[color:var(--border)]'
               }`}
-              style={strategy.playStyle === style ? { backgroundImage: 'linear-gradient(135deg, var(--u), var(--b))' } : undefined}
+              style={strategy.playStyle === style ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' } : undefined}
             >
               {style}
             </button>

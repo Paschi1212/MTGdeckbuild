@@ -380,8 +380,8 @@ export default function CommanderSelectPage() {
             onClick={() => setActiveTab(tab.id)}
             className="px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-colors"
             style={activeTab === tab.id
-              ? { backgroundImage: 'linear-gradient(135deg, var(--u), var(--b))', color: '#fff' }
-              : { backgroundColor: 'rgba(255,255,255,0.04)', color: 'var(--text)' }}
+              ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' }
+              : { backgroundColor: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
           >
             {tab.label}
           </button>
