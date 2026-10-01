@@ -5,6 +5,7 @@ import { loadCollection, getCardsForBinder, getAvailableQuantities, getAvailable
 import { saveDraftDeck } from '../lib/draftDecks'
 import { classifyType, BASIC_LAND_NAMES } from '../lib/cardType'
 import { getSecondaryAvailability } from '../lib/secondaryCollections'
+import { getDeckPreferences } from '../lib/deckPreferences'
 import { CardZoomModal } from '../components/CardTile'
 import ChatWidget from '../components/ChatWidget'
 import PlaytestModal from '../components/PlaytestModal'
@@ -195,7 +196,15 @@ export default function EditDeckPage(embeddedState) {
   const suggestedCardsToAdd = state.cardsToAdd || []
   const suggestedCardsToCut = state.cardsToCut || []
   const proposedCards = state.cards
-  const [strategyNote, setStrategyNote] = useState(state.strategyNote || '')
+  // A real deck's strategy correction (the "✏️ Korrigieren" box on the Analyse tab) is
+  // persisted in deckPreferences, not passed down as a prop — opening the Editor tab
+  // directly (not via the Analyse result's "Deck Editieren" button, which DOES pass
+  // strategyNote explicitly) left this blank even though a correction was saved, so the
+  // Editor silently showed no strategy at all. Falls back to the saved override for a real
+  // deck when nothing more specific was handed down.
+  const [strategyNote, setStrategyNote] = useState(
+    state.strategyNote || (deckName ? getDeckPreferences(deckName).strategyOverride : '') || ''
+  )
   // Re-saving a draft you opened from "Meine Entwürfe" overwrites it in place instead of
   // piling up duplicates — only set when this session actually started from a saved draft.
   const [draftId, setDraftId] = useState(state.draftId || null)
