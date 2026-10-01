@@ -71,7 +71,7 @@ export default function ChatWidget({ commander, cards, onAction, contextNote, em
         onClick={() => setOpen(true)}
         className="fixed bottom-6 right-6 z-[90] w-14 h-14 rounded-full flex items-center justify-center text-2xl shadow-lg transition hover:-translate-y-1"
         style={{ backgroundColor: 'var(--u)', boxShadow: '0 12px 28px -8px rgba(79,168,245,0.6)' }}
-        title="Deck-Assistent öffnen"
+        title="Schnellhilfe öffnen"
       >
         💬
       </button>
@@ -102,7 +102,9 @@ export default function ChatWidget({ commander, cards, onAction, contextNote, em
         className="flex items-center justify-between px-4 py-3 flex-shrink-0"
         style={{ borderBottom: '1px solid var(--border)' }}
       >
-        <div className="font-bold text-white text-sm">🤖 Deck-Assistent</div>
+        <div className="font-bold text-white text-sm">
+          {embedded ? '🤖 Deck bauen' : '💬 Schnellhilfe'}
+        </div>
         {!embedded && (
           <button onClick={() => setOpen(false)} className="text-cmd-muted hover:text-white text-lg leading-none">✕</button>
         )}
