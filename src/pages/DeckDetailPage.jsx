@@ -4,6 +4,7 @@ import CardTile from '../components/CardTile'
 import { loadCollection, getCardsForBinder, getAvailableCardNames } from '../lib/collection'
 import { getCommanderOverride, setCommanderOverride } from '../lib/commanderOverrides'
 import { getDeckPreferences, setDeckPreferences } from '../lib/deckPreferences'
+import { getSavedAudit, setSavedAudit } from '../lib/deckAudit'
 import CommanderAutocompleteInput from '../components/CommanderAutocompleteInput'
 import DeckAuditPage from './DeckAuditPage'
 import EditDeckPage from './EditDeckPage'
@@ -55,8 +56,16 @@ export default function DeckDetailPage() {
   // DeckAuditPage) so switching away and back to the Analyse tab doesn't silently re-run a
   // real AI call; editorHandoff carries an Analyse result's suggestions into the Editor tab.
   const [activeTab, setActiveTab] = useState('overview')
-  const [auditResult, setAuditResult] = useState(null)
+  // Hydrated from localStorage, not just in-memory — otherwise a page reload (not just a
+  // tab switch within the session) silently lost the last analysis, forcing a re-run even
+  // though nothing about the deck changed.
+  const [auditResult, setAuditResult] = useState(() => getSavedAudit(deckName))
   const [editorHandoff, setEditorHandoff] = useState(null)
+
+  const handleAuditComplete = (data) => {
+    setAuditResult(data)
+    setSavedAudit(deckName, data)
+  }
 
   const handlePowerLevelChange = (value) => {
     setPowerLevel(value)
@@ -244,7 +253,7 @@ export default function DeckDetailPage() {
             collectionSampleNames={collectionSampleNames}
             powerLevel={powerLevel}
             cachedAudit={auditResult}
-            onAuditComplete={setAuditResult}
+            onAuditComplete={handleAuditComplete}
             onOpenEditor={(cardsToAdd, cardsToCut) => {
               setEditorHandoff({ cardsToAdd, cardsToCut })
               setActiveTab('editor')
