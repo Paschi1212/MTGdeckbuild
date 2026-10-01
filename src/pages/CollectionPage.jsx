@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import CardTile from '../components/CardTile'
 import { loadCollection } from '../lib/collection'
+import { loadSecondaryCollections } from '../lib/secondaryCollections'
 
 const COLOR_OPTIONS = [
   { id: 'W', hex: '#F8F6D8' },
@@ -91,7 +92,13 @@ function CardModal({ card, resolved, onClose, onPrev, onNext }) {
 export default function CollectionPage() {
   const navigate = useNavigate()
 
-  const [collection] = useState(loadCollection)
+  const [myCollection] = useState(loadCollection)
+  const [secondaryCollections] = useState(loadSecondaryCollections)
+  // 'mine' or a friend collection's id — same search/filter UI works unchanged for either,
+  // since both are the same parseCollectionCsv() shape. Never merged, purely a view switch.
+  const [source, setSource] = useState('mine')
+  const collection = source === 'mine' ? myCollection : secondaryCollections.find(c => c.id === source) || myCollection
+
   const [search, setSearch] = useState('')
   const [imageMap, setImageMap] = useState({})
   const [loadingImages, setLoadingImages] = useState(true)
@@ -226,8 +233,34 @@ export default function CollectionPage() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <h1>🗂️ Meine Sammlung</h1>
+      <h1>🗂️ {source === 'mine' ? 'Meine Sammlung' : `${collection.label}s Sammlung`}</h1>
       <p className="text-cmd-muted mb-6">{collection.totalCards} Karten insgesamt</p>
+
+      {secondaryCollections.length > 0 && (
+        <div className="flex gap-2 mb-6 flex-wrap">
+          <button
+            onClick={() => setSource('mine')}
+            className="px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-colors"
+            style={source === 'mine'
+              ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' }
+              : { backgroundColor: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+          >
+            🗂️ Meine Sammlung
+          </button>
+          {secondaryCollections.map(col => (
+            <button
+              key={col.id}
+              onClick={() => setSource(col.id)}
+              className="px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-colors"
+              style={source === col.id
+                ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' }
+                : { backgroundColor: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+            >
+              👥 {col.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="card mb-6">
         <input
