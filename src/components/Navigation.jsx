@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useTheme } from '../hooks/useTheme'
+import { useAiMode } from '../hooks/useAiMode'
+import { setPreferredMode } from '../lib/aiMode'
 import CommanderSearchInput from './CommanderSearchInput'
 
 // "Entwürfe" lives as a tab inside "Meine Decks", and "Chat-Aufbau"/"Analysieren" as tabs
@@ -34,6 +36,41 @@ function NavTextLink({ to, label, onClick }) {
     >
       {label}
     </NavLink>
+  )
+}
+
+// Which AI answers right now — only on devices where the Claude-Modus was switched on
+// (/claude-modus). Click flips Claude ⇄ Gemini; without a running bridge it opens the setup page.
+function AiModeSwitch() {
+  const navigate = useNavigate()
+  const { enabled, bridge, claudeActive } = useAiMode()
+  if (!enabled) return null
+
+  const handleClick = () => {
+    if (!bridge.ready) navigate('/claude-modus')
+    else setPreferredMode(claudeActive ? 'gemini' : 'claude')
+  }
+  const title = claudeActive
+    ? 'Claude beantwortet die KI-Anfragen (lokale Brücke). Klick: zu Gemini wechseln.'
+    : bridge.ready
+      ? 'Gemini aktiv. Klick: zu Claude wechseln.'
+      : 'Gemini aktiv — Claude-Brücke nicht bereit. Klick: Status & Anleitung.'
+
+  return (
+    <button
+      onClick={handleClick}
+      title={title}
+      className="h-11 md:h-12 px-3 flex items-center gap-1.5 text-sm font-semibold whitespace-nowrap"
+      style={{
+        background: claudeActive ? 'var(--color-accent)' : 'var(--color-surface)',
+        color: claudeActive ? '#fff' : 'var(--color-text)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 'var(--radius-sm)'
+      }}
+    >
+      {claudeActive ? '🧠 Claude' : '✨ Gemini'}
+      {!bridge.ready && <span className="w-2 h-2 rounded-full" style={{ background: 'var(--color-text-muted)' }} />}
+    </button>
   )
 }
 
@@ -79,6 +116,8 @@ export default function Navigation({ user, onLogout }) {
       <div className="flex items-center gap-3 flex-shrink-0">
         {user && (
           <>
+            <AiModeSwitch />
+
             <div
               className="relative"
               onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setSearchOpen(false) }}

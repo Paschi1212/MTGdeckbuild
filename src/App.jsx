@@ -12,7 +12,9 @@ import AnalyzePage from './pages/AnalyzePage'
 import EditDeckPage from './pages/EditDeckPage'
 import ChatBuilderPage from './pages/ChatBuilderPage'
 import PrivacyPage from './pages/PrivacyPage'
+import ClaudeModePage from './pages/ClaudeModePage'
 import { pullFromCloud, scheduleCloudPush } from './lib/cloudSync'
+import { checkBridge } from './lib/aiMode'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -21,6 +23,11 @@ function App() {
   useEffect(() => {
     // Check if user is already logged in
     checkAuth()
+    // Claude-Modus: look for the local bridge — a no-op unless switched on for this device.
+    // Re-checked on focus, so starting/stopping the bridge shows up without a reload.
+    checkBridge()
+    window.addEventListener('focus', checkBridge)
+    return () => window.removeEventListener('focus', checkBridge)
   }, [])
 
   const checkAuth = async () => {
@@ -93,6 +100,7 @@ function App() {
             <Route path="/analyze" element={user ? <AnalyzePage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/edit-deck" element={user ? <EditDeckPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/chat-builder" element={user ? <ChatBuilderPage /> : <HomePage user={user} onLogin={handleLogin} />} />
+            <Route path="/claude-modus" element={user ? <ClaudeModePage /> : <HomePage user={user} onLogin={handleLogin} />} />
           </Routes>
         </main>
       </div>

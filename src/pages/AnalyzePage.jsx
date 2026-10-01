@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import CardTile from '../components/CardTile'
 import { loadCollection, getAvailableCardNames } from '../lib/collection'
 import { readApiError } from '../lib/apiError'
+import { aiFetch } from '../lib/aiMode'
 import { classifyType } from '../lib/cardType'
 import ChatWidget from '../components/ChatWidget'
 
@@ -78,7 +79,7 @@ export default function AnalyzePage() {
       }
 
       // Analyze deck
-      const analysisResponse = await fetch('/.netlify/functions/analyze-deck', {
+      const analysisResponse = await aiFetch('/.netlify/functions/analyze-deck', {
         method: 'POST',
         body: JSON.stringify({
           commander,

@@ -7,6 +7,7 @@
 const { GoogleGenAI } = require('@google/genai')
 const { getBulkPrices, getBudgetAlternatives, searchCardNames } = require('./scryfall-api.cjs')
 const { getCommanderData, extractRecommendations, extractSynergyCommanders } = require('./edhrec-api.cjs')
+const { isClaudeProvider, generateWithClaude } = require('./claude-cli.cjs')
 
 const GEMINI_MODEL = 'gemini-3.5-flash-lite'
 // The deck audit's strategy-read + cut/add judgment is the one call in this codebase where
@@ -42,6 +43,10 @@ function isQuotaExhaustedError(error) {
 // generateContent calls already runs inside a 30s Netlify function budget that's been hit
 // more than once this session, so retries must stay cheap, not turn one slow call into three.
 async function generateContentWithRetry(params, retries = 2) {
+  // "Claude-Modus" (local bridge only): same prompt, same schema, answered by Claude via the
+  // Claude Code CLI — see claude-cli.cjs. Every AI call in this file funnels through here.
+  if (isClaudeProvider()) return generateWithClaude(params)
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await ai.models.generateContent(params)
@@ -1269,7 +1274,8 @@ async function enforcePurchaseBudget(cards, collectionSampleNames, maxPurchaseBu
     return { cards: result, budgetNote: `\n\n🛒 Zukaufswert: ca. €${purchaseTotal.toFixed(2)} (innerhalb deines Budgets von €${maxPurchaseBudgetEur}).` }
   }
 
-  if (Date.now() - requestStartedAt > BUDGET_CORRECTION_DEADLINE_MS) {
+  // The deadline only exists because of Netlify's 30s limit — the local Claude bridge has none.
+  if (!isClaudeProvider() && Date.now() - requestStartedAt > BUDGET_CORRECTION_DEADLINE_MS) {
     console.warn('[Gemini] enforcePurchaseBudget: skipping correction, too close to the function timeout')
     return {
       cards: result,

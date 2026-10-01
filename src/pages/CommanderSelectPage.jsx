@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import CardTile from '../components/CardTile'
 import { readApiError } from '../lib/apiError'
+import { aiFetch } from '../lib/aiMode'
 import ChatWidget from '../components/ChatWidget'
 import ChatBuilderPage from './ChatBuilderPage'
 import AnalyzePage from './AnalyzePage'
@@ -158,7 +159,7 @@ export default function CommanderSelectPage() {
   const handleSuggestCommanders = async () => {
     setLoading(true)
     try {
-      const response = await fetch('/.netlify/functions/suggest-commanders', {
+      const response = await aiFetch('/.netlify/functions/suggest-commanders', {
         method: 'POST',
         body: JSON.stringify({
           colors: preferences.colors,

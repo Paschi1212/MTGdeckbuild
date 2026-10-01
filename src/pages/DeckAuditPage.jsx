@@ -4,6 +4,7 @@ import { readApiError } from '../lib/apiError'
 import ChatWidget from '../components/ChatWidget'
 import { getDeckPreferences, setDeckPreferences } from '../lib/deckPreferences'
 import { getSecondaryAvailability } from '../lib/secondaryCollections'
+import { aiFetch, isClaudeActive } from '../lib/aiMode'
 
 // Embedded as the "Analyse" tab of a deck's consolidated detail page — no longer a standalone
 // route. `cachedAudit`/`onAuditComplete` let the parent remember the last result across tab
@@ -35,7 +36,7 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
       setLoadingSuggestions(true)
       setSuggestionsError(null)
 
-      const response = await fetch('/.netlify/functions/audit-deck', {
+      const response = await aiFetch('/.netlify/functions/audit-deck', {
         method: 'POST',
         body: JSON.stringify({ commander, deckName, deckCards, collectionSampleNames, strategy, phase: 'suggestions' })
       })
@@ -67,14 +68,16 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
       setError(null)
       setSuggestionsError(null)
 
-      const response = await fetch('/.netlify/functions/audit-deck', {
+      // Remembered with the result, so a saved analysis still says which AI wrote it.
+      const engine = isClaudeActive() ? 'claude' : 'gemini'
+      const response = await aiFetch('/.netlify/functions/audit-deck', {
         method: 'POST',
         body: JSON.stringify({ commander, deckName, deckCards, strategyOverride, powerLevel, phase: 'strategy' })
       })
 
       if (response.ok) {
         const data = await response.json()
-        const partial = { ...data, cardsToAdd: [], cardsToBuy: [] }
+        const partial = { ...data, cardsToAdd: [], cardsToBuy: [], engine }
         setAudit(partial)
         onAuditComplete?.(partial)
         // A fresh AI read (no override) is persisted too, not just an explicit manual
@@ -122,7 +125,11 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
         <div className="text-center">
           <div className="animate-spin inline-block w-12 h-12 border-4 border-gray-600 border-t-mtg-blue rounded-full mb-4"></div>
           <p className="text-gray-300 mb-2">Analysiere {deckName}...</p>
-          <p className="text-sm text-gray-400">Dies kann eine Minute dauern</p>
+          <p className="text-sm text-gray-400">
+            {isClaudeActive()
+              ? '🧠 Claude prüft Kartentexte auf Scryfall & EDHREC — das dauert 1–3 Minuten'
+              : 'Dies kann eine Minute dauern'}
+          </p>
         </div>
       </div>
     )
@@ -197,7 +204,14 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
       )}
 
       <div className="card mb-6">
-        <h2 className="text-2xl font-bold mb-4 text-mtg-gold">Analyse-Ergebnis</h2>
+        <h2 className="text-2xl font-bold mb-4 text-mtg-gold">
+          Analyse-Ergebnis
+          {audit?.engine && (
+            <span className="ml-3 align-middle text-xs font-semibold px-2 py-1 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+              {audit.engine === 'claude' ? '🧠 von Claude' : '✨ von Gemini'}
+            </span>
+          )}
+        </h2>
 
         {audit?.summary && (
           <p className="text-gray-300 leading-relaxed whitespace-pre-wrap mb-2">{audit.summary}</p>
@@ -228,7 +242,9 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
       {loadingSuggestions && (
         <div className="card mb-8 flex items-center gap-3">
           <div className="animate-spin w-5 h-5 border-2 border-gray-600 border-t-mtg-blue rounded-full flex-shrink-0"></div>
-          <p className="text-sm text-gray-300">Lade Kaufvorschläge & Sammlungs-Treffer…</p>
+          <p className="text-sm text-gray-300">
+            Lade Kaufvorschläge & Sammlungs-Treffer…{isClaudeActive() && ' (🧠 Claude, 1–3 Minuten)'}
+          </p>
         </div>
       )}
 

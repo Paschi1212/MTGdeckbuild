@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "functions:dev": "netlify functions:serve --port 9000",
-    "dev:all": "concurrently \"npm run dev\" \"npm run functions:dev\""
+    "dev:all": "concurrently \"npm run dev\" \"npm run functions:dev\"",
+    "claude-bridge": "node scripts/claude-bridge.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.20.0",
