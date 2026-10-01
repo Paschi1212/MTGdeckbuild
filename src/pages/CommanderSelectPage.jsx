@@ -63,8 +63,10 @@ export default function CommanderSelectPage() {
   const [themes, setThemes] = useState([])
   const [themesLoading, setThemesLoading] = useState(false)
   const [themeFilter, setThemeFilter] = useState('')
-  const [selectedTheme, setSelectedTheme] = useState(null)
-  const [themeCommanders, setThemeCommanders] = useState([])
+  // Multi-select, not single-click-and-navigate — the point is pooling ideas from several
+  // themes at once (e.g. Aristocrats + Sacrifice), not picking one theme in isolation.
+  const [selectedThemeSlugs, setSelectedThemeSlugs] = useState([])
+  const [themeCommanders, setThemeCommanders] = useState(null) // null = not fetched yet
   const [themeCommandersLoading, setThemeCommandersLoading] = useState(false)
 
   useEffect(() => {
@@ -83,16 +85,54 @@ export default function CommanderSelectPage() {
     return themes.filter(t => t.name.toLowerCase().includes(q))
   }, [themes, themeFilter])
 
-  const handleSelectTheme = (theme) => {
-    setSelectedTheme(theme)
+  const toggleThemeSelection = (theme) => {
+    setThemeCommanders(null) // selection changed — stale results, force a fresh fetch
+    setSelectedThemeSlugs(prev =>
+      prev.includes(theme.slug) ? prev.filter(s => s !== theme.slug) : [...prev, theme.slug]
+    )
+  }
+
+  // Fetches every selected theme's commander list in parallel and merges them into one
+  // deduplicated list, ranked by HOW MANY of the selected themes a commander matches first
+  // (a commander that shows up for both "Aristocrats" and "Sacrifice" is a real cross-theme
+  // signal, not just popular in one bucket) and total deck count as the tiebreaker.
+  const handleShowThemeCommanders = async () => {
+    if (selectedThemeSlugs.length === 0) return
     setStep('themeResults')
     setThemeCommandersLoading(true)
-    setThemeCommanders([])
-    fetch(`/.netlify/functions/get-theme-commanders?theme=${encodeURIComponent(theme.slug)}`)
-      .then(res => (res.ok ? res.json() : { commanders: [] }))
-      .then(data => setThemeCommanders(data.commanders || []))
-      .catch(() => setThemeCommanders([]))
-      .finally(() => setThemeCommandersLoading(false))
+    setThemeCommanders(null)
+
+    try {
+      const results = await Promise.all(
+        selectedThemeSlugs.map(slug =>
+          fetch(`/.netlify/functions/get-theme-commanders?theme=${encodeURIComponent(slug)}`)
+            .then(res => (res.ok ? res.json() : { commanders: [] }))
+            .then(data => ({ slug, commanders: data.commanders || [] }))
+            .catch(() => ({ slug, commanders: [] }))
+        )
+      )
+
+      const byName = new Map()
+      for (const { slug, commanders } of results) {
+        const themeName = themes.find(t => t.slug === slug)?.name || slug
+        for (const c of commanders) {
+          const existing = byName.get(c.name)
+          if (existing) {
+            existing.themeNames.push(themeName)
+            existing.numDecks = Math.max(existing.numDecks, c.numDecks)
+          } else {
+            byName.set(c.name, { name: c.name, numDecks: c.numDecks, themeNames: [themeName] })
+          }
+        }
+      }
+
+      const merged = [...byName.values()].sort((a, b) =>
+        b.themeNames.length - a.themeNames.length || b.numDecks - a.numDecks
+      )
+      setThemeCommanders(merged)
+    } finally {
+      setThemeCommandersLoading(false)
+    }
   }
 
   const contextNote = buildCommanderSearchContextNote(preferences)
@@ -421,12 +461,15 @@ export default function CommanderSelectPage() {
       )
     }
 
-    // Step 5: Browse EDHREC themes
+    // Step 5: Browse EDHREC themes (multi-select — pool ideas from several at once)
     if (step === 'theme') {
       return (
         <div className="max-w-3xl mx-auto">
           <div className="card mb-6">
-            <h2 className="text-xl font-bold mb-4">🏷️ Nach Thema suchen</h2>
+            <h2 className="text-xl font-bold mb-1">🏷️ Nach Thema suchen</h2>
+            <p className="text-cmd-muted text-sm mb-4">
+              Wähle ein oder mehrere Themen — ein Commander, der in mehreren davon beliebt ist, deckt mehrere deiner Ideen gleichzeitig ab.
+            </p>
             <input
               type="text"
               value={themeFilter}
@@ -442,60 +485,85 @@ export default function CommanderSelectPage() {
             ) : filteredThemes.length === 0 ? (
               <p className="text-cmd-muted text-sm py-6 text-center">Kein Thema gefunden.</p>
             ) : (
-              <div className="flex flex-wrap gap-2 max-h-[420px] overflow-y-auto pr-1">
-                {filteredThemes.map(theme => (
-                  <button
-                    key={theme.slug}
-                    onClick={() => handleSelectTheme(theme)}
-                    className="px-3 py-2 rounded-xl text-sm text-left transition hover:brightness-125"
-                    style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
-                  >
-                    <span className="text-white font-medium">{theme.name}</span>
-                    <span className="text-cmd-muted text-xs ml-2">{theme.numDecks.toLocaleString('de-DE')} Decks</span>
-                  </button>
-                ))}
+              <div className="flex flex-wrap gap-2 max-h-[380px] overflow-y-auto pr-1">
+                {filteredThemes.map(theme => {
+                  const selected = selectedThemeSlugs.includes(theme.slug)
+                  return (
+                    <button
+                      key={theme.slug}
+                      onClick={() => toggleThemeSelection(theme)}
+                      className="px-3 py-2 rounded-xl text-sm text-left transition hover:brightness-125"
+                      style={selected
+                        ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' }
+                        : { backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
+                    >
+                      <span className="font-medium">{selected ? '✓ ' : ''}{theme.name}</span>
+                      <span className={selected ? 'text-xs ml-2 opacity-70' : 'text-cmd-muted text-xs ml-2'}>
+                        {theme.numDecks.toLocaleString('de-DE')} Decks
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
 
-          <button
-            onClick={() => setStep('method')}
-            className="btn-secondary w-full"
-          >
-            ← Zurück
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setStep('method')}
+              className="btn-secondary flex-1"
+            >
+              ← Zurück
+            </button>
+            <button
+              onClick={handleShowThemeCommanders}
+              disabled={selectedThemeSlugs.length === 0}
+              className="btn-primary flex-1"
+            >
+              Commander anzeigen {selectedThemeSlugs.length > 0 ? `(${selectedThemeSlugs.length} Thema/Themen)` : ''}
+            </button>
+          </div>
 
           <ChatWidget contextNote={contextNote} />
         </div>
       )
     }
 
-    // Step 6: Commanders for the selected theme
+    // Step 6: Merged, deduplicated commander list across all selected themes
     if (step === 'themeResults') {
       return (
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-xl font-bold mb-1">🏷️ {selectedTheme?.name}</h2>
+        <div className="max-w-3xl mx-auto">
+          <h2 className="text-xl font-bold mb-1">🏷️ {selectedThemeSlugs.length} Thema/Themen ausgewählt</h2>
           <p className="text-cmd-muted mb-6">
-            Die auf EDHREC beliebtesten Commander für dieses Thema, nach echter Deck-Zahl sortiert.
+            Echte EDHREC-Commander für deine gewählten Themen — Treffer in mehreren Themen stehen oben.
           </p>
 
           {themeCommandersLoading ? (
-            <p className="text-cmd-muted text-sm py-10 text-center">Lade Commander für "{selectedTheme?.name}"…</p>
-          ) : themeCommanders.length === 0 ? (
-            <p className="text-cmd-muted text-sm py-10 text-center">Keine Commander-Daten für dieses Thema gefunden.</p>
+            <p className="text-cmd-muted text-sm py-10 text-center">Lade Commander…</p>
+          ) : !themeCommanders?.length ? (
+            <p className="text-cmd-muted text-sm py-10 text-center">Keine Commander-Daten gefunden.</p>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mb-8">
-              {themeCommanders.map(card => (
-                <div key={card.name}>
-                  <CardTile card={card} />
-                  <p className="text-xs text-cmd-muted text-center mt-1">{card.numDecks.toLocaleString('de-DE')} Decks</p>
-                  <button
-                    onClick={() => handleSelectCommander(card.name)}
-                    className="btn-primary w-full mt-2 text-xs px-2 py-1.5"
-                  >
-                    Auswählen
-                  </button>
-                </div>
+            <div className="space-y-2 mb-8 max-h-[480px] overflow-y-auto pr-1">
+              {themeCommanders.map(c => (
+                <button
+                  key={c.name}
+                  onClick={() => handleSelectCommander(c.name)}
+                  className="w-full flex items-center justify-between gap-3 p-3 rounded-xl text-left transition hover:brightness-125"
+                  style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
+                >
+                  <div className="min-w-0">
+                    <div className="text-white font-medium truncate">{c.name}</div>
+                    <div className="text-xs text-cmd-muted truncate">{c.themeNames.join(' · ')}</div>
+                  </div>
+                  <div className="flex-shrink-0 text-right">
+                    <div className="text-xs text-cmd-muted">{c.numDecks.toLocaleString('de-DE')} Decks</div>
+                    {c.themeNames.length > 1 && (
+                      <div className="text-xs font-semibold" style={{ color: 'var(--g)' }}>
+                        {c.themeNames.length}x Treffer
+                      </div>
+                    )}
+                  </div>
+                </button>
               ))}
             </div>
           )}

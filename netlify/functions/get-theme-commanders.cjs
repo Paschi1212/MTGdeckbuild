@@ -5,7 +5,6 @@
  */
 
 const { getTagCommanders } = require('./lib/edhrec-api.cjs')
-const { getBulkPrices } = require('./lib/scryfall-api.cjs')
 
 exports.handler = async (event) => {
   try {
@@ -20,17 +19,11 @@ exports.handler = async (event) => {
 
     console.log(`[API] Fetching EDHREC commanders for theme: ${theme}`)
 
-    const tagCommanders = await getTagCommanders(theme)
-
-    // Same enrichment every other commander list in this app gets (CardTile needs a real
-    // image to render anything other than a blank box) — EDHREC's tag data itself has no
-    // image, only name/slug/deck count.
-    const prices = await getBulkPrices(tagCommanders.map(c => c.name))
-    const commanders = tagCommanders.map(c => ({
-      ...c,
-      image: prices[c.name]?.image,
-      colors: prices[c.name]?.colorIdentity
-    }))
+    // Deliberately no Scryfall image enrichment here (unlike suggest-commanders.cjs) — the
+    // frontend only ever needs the name/deck-count list itself, often merged across several
+    // themes at once, and the enrichment step was both slow (one more network round-trip per
+    // commander) and an extra failure mode with no real upside for this specific view.
+    const commanders = await getTagCommanders(theme)
 
     return {
       statusCode: 200,
