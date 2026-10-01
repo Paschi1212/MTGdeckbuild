@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGri
 import { loadCollection, getCardsForBinder, getAvailableQuantities, getAvailableCardNames } from '../lib/collection'
 import { saveDraftDeck } from '../lib/draftDecks'
 import { classifyType, BASIC_LAND_NAMES } from '../lib/cardType'
+import { getSecondaryAvailability } from '../lib/secondaryCollections'
 import { CardZoomModal } from '../components/CardTile'
 import ChatWidget from '../components/ChatWidget'
 import PlaytestModal from '../components/PlaytestModal'
@@ -72,6 +73,11 @@ function CardRow({ card, compact, onUpdateCount, onRemove, cutReason, onZoom, dr
                 🛒 {card.missingCount > 1 ? `${card.missingCount}x kaufen` : 'kaufen'}
               </span>
             )}
+            {card.missingCount > 0 && card.friendAvailability?.length > 0 && (
+              <span className="text-[10px] ml-1.5" style={{ color: 'var(--u)' }} title={`Bei: ${card.friendAvailability.map(h => h.label).join(', ')}`}>
+                📦 bei {card.friendAvailability.map(h => h.label).join(', ')}
+              </span>
+            )}
           </div>
           <input
             type="number"
@@ -110,6 +116,11 @@ function CardRow({ card, compact, onUpdateCount, onRemove, cutReason, onZoom, dr
           {card.missingCount > 0 && (
             <span className="text-[10px] font-semibold" style={{ color: 'var(--r)' }}>
               🛒 {card.missingCount > 1 ? `${card.missingCount}x kaufen` : 'kaufen'}
+            </span>
+          )}
+          {card.missingCount > 0 && card.friendAvailability?.length > 0 && (
+            <span className="text-[10px] ml-1.5" style={{ color: 'var(--u)' }} title={`Bei: ${card.friendAvailability.map(h => h.label).join(', ')}`}>
+              📦 bei {card.friendAvailability.map(h => h.label).join(', ')}
             </span>
           )}
         </div>
@@ -267,6 +278,9 @@ export default function EditDeckPage(embeddedState) {
     return cards.map((card, index) => {
       const byId = byIdMap[card.scryfallId]
       const byName = priceMap[card.name]
+      // Only meaningful for a non-real deck (AI proposal/chat build) — a real ManaBox
+      // deck's cards are inherently already owned, no point marking that.
+      const missingCount = deckName ? undefined : Math.max(card.count - (availableQuantities.get(card.name)?.available || 0), 0)
       return {
         ...card,
         index,
@@ -278,9 +292,10 @@ export default function EditDeckPage(embeddedState) {
         type: card.categoryOverride || (card.isLand === true ? 'Land' : classifyType(byId?.typeLine ?? byName?.typeLine)),
         cmc: byId?.cmc ?? byName?.cmc ?? 0,
         colors: byId?.colors ?? '',
-        // Only meaningful for a non-real deck (AI proposal/chat build) — a real ManaBox
-        // deck's cards are inherently already owned, no point marking that.
-        missingCount: deckName ? undefined : Math.max(card.count - (availableQuantities.get(card.name)?.available || 0), 0)
+        missingCount,
+        // A separately-uploaded friend's collection has this card — only worth checking (and
+        // showing) for a card the user actually still needs to buy.
+        friendAvailability: missingCount > 0 ? getSecondaryAvailability(card.name) : []
       }
     })
   }, [cards, byIdMap, priceMap, availableQuantities, deckName])
@@ -642,9 +657,16 @@ export default function EditDeckPage(embeddedState) {
           </p>
           <div className="space-y-1 max-h-[220px] overflow-y-auto pr-1">
             {shoppingList.map(c => (
-              <div key={c.name} className="flex justify-between text-sm text-gray-300">
-                <span>{c.missingCount}x {c.name}</span>
-                <span className="text-cmd-muted">€{(c.missingCount * c.price).toFixed(2)}</span>
+              <div key={c.name} className="flex justify-between items-baseline text-sm text-gray-300 gap-2">
+                <span className="truncate">
+                  {c.missingCount}x {c.name}
+                  {c.friendAvailability?.length > 0 && (
+                    <span className="text-[11px] ml-1.5" style={{ color: 'var(--u)' }}>
+                      📦 bei {c.friendAvailability.map(h => h.label).join(', ')}
+                    </span>
+                  )}
+                </span>
+                <span className="text-cmd-muted flex-shrink-0">€{(c.missingCount * c.price).toFixed(2)}</span>
               </div>
             ))}
           </div>

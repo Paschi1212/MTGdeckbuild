@@ -3,6 +3,7 @@ import CardTile from '../components/CardTile'
 import { readApiError } from '../lib/apiError'
 import ChatWidget from '../components/ChatWidget'
 import { getDeckPreferences, setDeckPreferences } from '../lib/deckPreferences'
+import { getSecondaryAvailability } from '../lib/secondaryCollections'
 
 // Embedded as the "Analyse" tab of a deck's consolidated detail page — no longer a standalone
 // route. `cachedAudit`/`onAuditComplete` let the parent remember the last result across tab
@@ -258,7 +259,7 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
           <p className="text-xs text-cmd-muted mb-3">Nicht in deiner Sammlung — unabhängig davon starke Verbesserungen für dieses Deck.</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
             {audit.cardsToBuy.map(card => (
-              <CardTile key={card.name} card={card} />
+              <CardTile key={card.name} card={{ ...card, friendAvailability: getSecondaryAvailability(card.name) }} />
             ))}
           </div>
         </div>

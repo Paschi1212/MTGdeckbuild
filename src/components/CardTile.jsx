@@ -123,6 +123,14 @@ export default function CardTile({ card, onClick, size = 'default' }) {
           {card.estimatedCost || `€${card.eur.toFixed(2)}`}
         </div>
       )}
+
+      {/* A card to buy that happens to already be in a friend's (separately uploaded)
+          collection — purely informational, never affects ownership/availability elsewhere. */}
+      {card.friendAvailability?.length > 0 && (
+        <div className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--u)' }} title={`Bei: ${card.friendAvailability.map(h => h.label).join(', ')}`}>
+          📦 bei {card.friendAvailability.map(h => h.label).join(', ')}
+        </div>
+      )}
     </div>
     {!onClick && zoomed && (
       <CardZoomModal card={card} letters={letters} onClose={() => setZoomed(false)} />

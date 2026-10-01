@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import ChatWidget from '../components/ChatWidget'
 import { loadCollection, getAvailableQuantities, getAvailableCardNames } from '../lib/collection'
 import { BASIC_LAND_NAMES, classifyType } from '../lib/cardType'
+import { getSecondaryAvailability } from '../lib/secondaryCollections'
 import { saveDraftDeck } from '../lib/draftDecks'
 
 const TYPE_ORDER = ['Creature', 'Planeswalker', 'Battle', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Land', 'Sonstige']
@@ -121,6 +122,7 @@ export default function ChatBuilderPage({ initialCommander, initialMessage } = {
   const enrichedCards = cards
     .map(c => {
       const available = availableQuantities.get(c.name)?.available || 0
+      const missingCount = Math.max(c.count - available, 0)
       return {
         ...c,
         price: priceMap[c.name]?.eur || 0,
@@ -130,7 +132,8 @@ export default function ChatBuilderPage({ initialCommander, initialMessage } = {
         // which arrives async and can leave the count looking wrong for a moment (or longer,
         // for any name that fails to resolve) right after a big build lands all at once.
         type: c.isLand === true ? 'Land' : classifyType(priceMap[c.name]?.typeLine),
-        missingCount: Math.max(c.count - available, 0)
+        missingCount,
+        friendAvailability: missingCount > 0 ? getSecondaryAvailability(c.name) : []
       }
     })
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -316,9 +319,16 @@ export default function ChatBuilderPage({ initialCommander, initialMessage } = {
                             <div className="flex items-center gap-1.5">
                               <span className="text-xs text-cmd-muted">€{(card.count * card.price).toFixed(2)}</span>
                               {card.missingCount > 0 ? (
-                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(239,106,99,0.15)', color: 'var(--r)' }}>
-                                  🛒 {card.missingCount > 1 ? `${card.missingCount}x kaufen` : 'kaufen'}
-                                </span>
+                                <>
+                                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(239,106,99,0.15)', color: 'var(--r)' }}>
+                                    🛒 {card.missingCount > 1 ? `${card.missingCount}x kaufen` : 'kaufen'}
+                                  </span>
+                                  {card.friendAvailability?.length > 0 && (
+                                    <span className="text-[10px]" style={{ color: 'var(--u)' }}>
+                                      📦 bei {card.friendAvailability.map(h => h.label).join(', ')}
+                                    </span>
+                                  )}
+                                </>
                               ) : (
                                 <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(78,214,137,0.15)', color: 'var(--g)' }}>
                                   ✅ in Sammlung
