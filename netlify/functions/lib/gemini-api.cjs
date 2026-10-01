@@ -749,13 +749,31 @@ const FULL_DECK_TOP_UP_ATTEMPTS = 2
 // just hope the model got it right. A replacement is pulled from the EDHREC pool already
 // fetched for this commander (guaranteed legal + genuinely recommended, not a random swap),
 // falling back to a basic land in an identity color only if that pool is exhausted.
-async function enforceColorIdentity(commander, lands, spells, edhecData) {
-  const info = await getBulkPrices([commander, ...lands.map(c => c.name), ...spells.map(c => c.name)])
+// A partner/background commander pair is often passed around this codebase as one combined
+// string ("Zurgo and Ojutai", "Thrasios + Tymna") rather than two separate card names — no
+// single Scryfall card matches that string. Looking it up as-is either misses entirely (safe,
+// the check below just skips) or — worse — silently fuzzy-matches to ONE unrelated/partial
+// card, producing a too-narrow identity that then wrongly flags half the deck as illegal
+// (observed live: 16-21 "illegal" cards on a real partner-commander build). Splitting on the
+// common separators and unioning each piece's own identity avoids both failure modes.
+function splitCommanderNames(commander) {
+  return commander
+    .split(/\s*(?:\/\/|\+|&|\band\b)\s*/i)
+    .map(s => s.trim())
+    .filter(Boolean)
+}
 
-  // No Scryfall match for the commander name itself — nothing to validate against, better to
-  // skip the check than wrongly flag an otherwise-legal deck.
-  if (!info[commander]) return { lands, spells, illegal: [] }
-  const commanderIdentity = new Set((info[commander].colorIdentity || '').split(' ').filter(Boolean))
+async function enforceColorIdentity(commander, lands, spells, edhecData) {
+  const commanderNames = splitCommanderNames(commander)
+  const info = await getBulkPrices([...commanderNames, ...lands.map(c => c.name), ...spells.map(c => c.name)])
+
+  const commanderIdentity = new Set()
+  for (const name of commanderNames) {
+    for (const c of (info[name]?.colorIdentity || '').split(' ').filter(Boolean)) commanderIdentity.add(c)
+  }
+  // No Scryfall match for any piece of the commander name — nothing reliable to validate
+  // against, better to skip the check than wrongly flag an otherwise-legal deck.
+  if (commanderNames.every(name => !info[name])) return { lands, spells, illegal: [] }
 
   const isLegalName = (name) => {
     const entry = info[name]
