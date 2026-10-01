@@ -17,40 +17,80 @@ function buildLibrary(cards) {
   let id = 0
   for (const card of cards) {
     for (let i = 0; i < (card.count || 1); i++) {
-      library.push({ id: id++, name: card.name, image: card.image })
+      library.push({ id: id++, name: card.name, image: card.image, tapped: false })
     }
   }
   return library
 }
 
-function MiniCard({ card, onClick, label }) {
+// On the battlefield, clicking a card taps/untaps it (the actual in-game action you do most
+// often) — moving between zones is drag-and-drop, with a small arrow button as a
+// touch-friendly fallback where dragging is awkward.
+function MiniCard({ card, onDragStart, onMove, moveLabel, onToggleTap }) {
   return (
-    <button
-      onClick={onClick}
-      className="rounded-lg overflow-hidden bg-black/30 flex-shrink-0 text-left"
-      style={{ width: 110 }}
+    <div
+      draggable
+      onDragStart={(e) => onDragStart(e, card)}
+      onClick={onToggleTap ? () => onToggleTap(card) : undefined}
+      className="relative rounded-lg overflow-hidden bg-black/30 flex-shrink-0"
+      style={{ width: 110, cursor: onToggleTap ? 'pointer' : 'grab' }}
       title={card.name}
     >
-      <div className="aspect-[5/7] w-full bg-black/40">
-        {card.image && <img src={card.image} alt={card.name} className="w-full h-full object-cover" loading="lazy" />}
+      <div
+        className="aspect-[5/7] w-full bg-black/40"
+        style={{ transform: card.tapped ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }}
+      >
+        {card.image && <img src={card.image} alt={card.name} className="w-full h-full object-cover" loading="lazy" draggable={false} />}
       </div>
-      {label && <div className="text-[10px] text-cmd-muted text-center py-0.5 truncate px-1">{card.name}</div>}
-    </button>
+      <div className="text-[10px] text-cmd-muted text-center py-0.5 truncate px-1">{card.name}</div>
+      <button
+        onClick={(e) => { e.stopPropagation(); onMove(card) }}
+        className="absolute top-1 right-1 w-5 h-5 rounded-full text-xs flex items-center justify-center"
+        style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#fff' }}
+        title={moveLabel}
+      >
+        {moveLabel}
+      </button>
+    </div>
+  )
+}
+
+function DropZone({ title, cards, onDrop, onDragStartCard, onMoveCard, moveLabel, onToggleTap, emptyText, isOver, onDragOver, onDragLeave }) {
+  return (
+    <div
+      className="mb-4 flex-shrink-0 rounded-xl p-2 transition"
+      style={isOver ? { backgroundColor: 'rgba(79,168,245,0.08)', border: '1px dashed var(--u)' } : { border: '1px dashed transparent' }}
+      onDragOver={(e) => { e.preventDefault(); onDragOver() }}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => { e.preventDefault(); onDrop(e) }}
+    >
+      <div className="text-xs text-cmd-muted uppercase tracking-wide mb-1">{title} ({cards.length})</div>
+      {cards.length === 0 ? (
+        <p className="text-sm text-cmd-muted py-2">{emptyText}</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {cards.map(card => (
+            <MiniCard key={card.id} card={card} onDragStart={onDragStartCard} onMove={onMoveCard} moveLabel={moveLabel} onToggleTap={onToggleTap} />
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
 export default function PlaytestModal({ cards, commanderCard, onClose }) {
   const [library, setLibrary] = useState([])
   const [hand, setHand] = useState([])
-  const [played, setPlayed] = useState([])
+  const [battlefield, setBattlefield] = useState([])
   const [mulligans, setMulligans] = useState(0)
+  const [dragOverZone, setDragOverZone] = useState(null)
 
   const dealOpeningHand = (newLibrary) => {
     const lib = [...newLibrary]
     const newHand = lib.splice(0, 7)
     setLibrary(lib)
     setHand(newHand)
-    setPlayed([])
+    setBattlefield([])
   }
 
   const handleNewGame = () => {
@@ -79,14 +119,35 @@ export default function PlaytestModal({ cards, commanderCard, onClose }) {
     setHand(h => [...h, drawn])
   }
 
-  const handlePlayCard = (card) => {
-    setHand(h => h.filter(c => c.id !== card.id))
-    setPlayed(p => [...p, card])
+  const moveCard = (card, fromZone, toZone) => {
+    if (fromZone === toZone) return
+    const setFrom = fromZone === 'hand' ? setHand : setBattlefield
+    const setTo = toZone === 'hand' ? setHand : setBattlefield
+    setFrom(prev => prev.filter(c => c.id !== card.id))
+    // Untap on the way back to hand — a card never stays "tapped" once it leaves play.
+    setTo(prev => [...prev, toZone === 'hand' ? { ...card, tapped: false } : card])
   }
 
-  const handleReturnCard = (card) => {
-    setPlayed(p => p.filter(c => c.id !== card.id))
-    setHand(h => [...h, card])
+  const handleToggleTap = (card) => {
+    setBattlefield(prev => prev.map(c => (c.id === card.id ? { ...c, tapped: !c.tapped } : c)))
+  }
+
+  const handleDragStart = (e, card, zone) => {
+    e.dataTransfer.setData('text/plain', JSON.stringify({ id: card.id, zone }))
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDrop = (e, targetZone) => {
+    setDragOverZone(null)
+    let payload
+    try {
+      payload = JSON.parse(e.dataTransfer.getData('text/plain'))
+    } catch {
+      return
+    }
+    const source = payload.zone === 'hand' ? hand : battlefield
+    const card = source.find(c => c.id === payload.id)
+    if (card) moveCard(card, payload.zone, targetZone)
   }
 
   return (
@@ -113,41 +174,44 @@ export default function PlaytestModal({ cards, commanderCard, onClose }) {
       {commanderCard && (
         <div className="mb-4 flex-shrink-0">
           <div className="text-xs text-cmd-muted uppercase tracking-wide mb-1">Commander</div>
-          <div className="flex gap-2">
-            <MiniCard card={commanderCard} />
+          <div className="rounded-lg overflow-hidden bg-black/30" style={{ width: 110 }}>
+            <div className="aspect-[5/7] w-full bg-black/40">
+              {commanderCard.image && <img src={commanderCard.image} alt={commanderCard.name} className="w-full h-full object-cover" loading="lazy" />}
+            </div>
           </div>
         </div>
       )}
 
-      <div className="mb-4 flex-shrink-0">
-        <div className="text-xs text-cmd-muted uppercase tracking-wide mb-1">
-          Hand ({hand.length}) — Karte anklicken zum Ausspielen
-        </div>
-        {hand.length === 0 ? (
-          <p className="text-sm text-cmd-muted">Keine Karten auf der Hand.</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {hand.map(card => (
-              <MiniCard key={card.id} card={card} label onClick={() => handlePlayCard(card)} />
-            ))}
-          </div>
-        )}
-      </div>
+      <p className="text-xs text-cmd-muted mb-2 flex-shrink-0">
+        Auf das Spielfeld ziehen zum Ausspielen (oder den kleinen Pfeil nutzen) · auf dem Spielfeld anklicken zum Tappen/Untappen
+      </p>
 
-      <div className="flex-shrink-0">
-        <div className="text-xs text-cmd-muted uppercase tracking-wide mb-1">
-          Ausgespielt ({played.length}) — Karte anklicken, um sie zurück auf die Hand zu nehmen
-        </div>
-        {played.length === 0 ? (
-          <p className="text-sm text-cmd-muted">Noch nichts gespielt.</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {played.map(card => (
-              <MiniCard key={card.id} card={card} label onClick={() => handleReturnCard(card)} />
-            ))}
-          </div>
-        )}
-      </div>
+      <DropZone
+        title="Hand"
+        cards={hand}
+        emptyText="Keine Karten auf der Hand."
+        onDragStartCard={(e, card) => handleDragStart(e, card, 'hand')}
+        onMoveCard={(card) => moveCard(card, 'hand', 'battlefield')}
+        moveLabel="▶"
+        isOver={dragOverZone === 'hand'}
+        onDragOver={() => setDragOverZone('hand')}
+        onDragLeave={() => setDragOverZone(null)}
+        onDrop={(e) => handleDrop(e, 'hand')}
+      />
+
+      <DropZone
+        title="🎴 Spielfeld"
+        cards={battlefield}
+        emptyText="Noch nichts ausgespielt — Karte von der Hand hierher ziehen."
+        onDragStartCard={(e, card) => handleDragStart(e, card, 'battlefield')}
+        onMoveCard={(card) => moveCard(card, 'battlefield', 'hand')}
+        moveLabel="◀"
+        onToggleTap={handleToggleTap}
+        isOver={dragOverZone === 'battlefield'}
+        onDragOver={() => setDragOverZone('battlefield')}
+        onDragLeave={() => setDragOverZone(null)}
+        onDrop={(e) => handleDrop(e, 'battlefield')}
+      />
     </div>
   )
 }
