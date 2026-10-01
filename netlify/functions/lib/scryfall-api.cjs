@@ -71,7 +71,8 @@ async function getCardPrice(cardName) {
     tix: parseFloat(data.prices?.tix || 0),
     image: data.image_uris?.normal ?? data.card_faces?.[0]?.image_uris?.normal,
     typeLine: data.type_line,
-    cmc: data.cmc ?? 0
+    cmc: data.cmc ?? 0,
+    colorIdentity: (data.color_identity ?? []).join(' ')
   }
 }
 
@@ -166,7 +167,12 @@ async function getBulkPrices(cardNames) {
             tix: parseFloat(card.prices?.tix || 0),
             image: card.image_uris?.normal ?? card.card_faces?.[0]?.image_uris?.normal,
             typeLine: card.type_line,
-            cmc: card.cmc ?? 0
+            cmc: card.cmc ?? 0,
+            // Not the same as `colors` (a card's own mana cost) — color_identity also covers
+            // colors referenced in rules text (hybrid/Phyrexian symbols, color indicators) and
+            // is the field Commander's "must match the commander's color identity" rule
+            // actually uses. Needed to verify deck legality deterministically.
+            colorIdentity: (card.color_identity ?? []).join(' ')
           }
           result[name] = entry
           cache.set(`name:${name.toLowerCase()}`, { data: entry, timestamp: Date.now() })

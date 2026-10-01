@@ -742,6 +742,55 @@ const FULL_DECK_TOP_UP_ATTEMPTS = 2
  * around 36-38, but a genuine lands-matter/extreme-ramp archetype legitimately wants much
  * more) — once decided it's enforced like any other hard target, never just neglected.
  */
+// Commander's single most important legality rule — every nonland card (and most nonbasic
+// lands) must be within the commander's color identity — had NO deterministic check
+// anywhere in this pipeline before; the build simply trusted Gemini never to violate it.
+// Same philosophy as every other fix in this file: verify against real Scryfall data, don't
+// just hope the model got it right. A replacement is pulled from the EDHREC pool already
+// fetched for this commander (guaranteed legal + genuinely recommended, not a random swap),
+// falling back to a basic land in an identity color only if that pool is exhausted.
+async function enforceColorIdentity(commander, lands, spells, edhecData) {
+  const info = await getBulkPrices([commander, ...lands.map(c => c.name), ...spells.map(c => c.name)])
+
+  // No Scryfall match for the commander name itself — nothing to validate against, better to
+  // skip the check than wrongly flag an otherwise-legal deck.
+  if (!info[commander]) return { lands, spells, illegal: [] }
+  const commanderIdentity = new Set((info[commander].colorIdentity || '').split(' ').filter(Boolean))
+
+  const isLegalName = (name) => {
+    const entry = info[name]
+    if (!entry) return true // unmatched name (lookup miss) — don't punish what we can't verify
+    return (entry.colorIdentity || '').split(' ').filter(Boolean).every(c => commanderIdentity.has(c))
+  }
+
+  const edhecPool = [...(edhecData?.highSynergyCards || []), ...(edhecData?.topCards || [])].map(c => c.name)
+  const existingNames = new Set([...lands, ...spells].map(c => normalizeCardName(c.name)))
+  const fallbackColor = [...commanderIdentity][0]
+  const fallbackBasic = { W: 'Plains', U: 'Island', B: 'Swamp', R: 'Mountain', G: 'Forest' }[fallbackColor] || 'Wastes'
+
+  const illegal = []
+  const fixCard = (card) => {
+    if (isLegalName(card.name)) return card
+    illegal.push(card.name)
+    existingNames.delete(normalizeCardName(card.name))
+    const replacement = edhecPool.find(name => isLegalName(name) && !existingNames.has(normalizeCardName(name)))
+    const newName = replacement || fallbackBasic
+    existingNames.add(normalizeCardName(newName))
+    return { ...card, name: newName, reason: `Automatisch ersetzt — "${card.name}" liegt außerhalb der Farbidentität von ${commander}.` }
+  }
+
+  // Routed through mergeDeckCards so a fallback-basic replacement stacks onto an existing
+  // copy instead of creating a separate duplicate row.
+  const fixedLands = mergeDeckCards([], lands.map(fixCard))
+  const fixedSpells = mergeDeckCards([], spells.map(fixCard))
+
+  if (illegal.length) {
+    console.warn(`[Gemini] buildFullDeckFromChat: replaced ${illegal.length} color-identity-illegal card(s) for ${commander}:`, illegal)
+  }
+
+  return { lands: fixedLands, spells: fixedSpells, illegal }
+}
+
 async function buildFullDeckFromChat({ commander, strategyHint, collectionSampleNames, edhecData }) {
   let lands = []
   let spells = []
@@ -805,12 +854,21 @@ async function buildFullDeckFromChat({ commander, strategyHint, collectionSample
     lands = padWithBasicLands(lands, landShortfall)
   }
 
+  // Legality check runs last, after count/budget are already settled — a swap preserves the
+  // card's slot (and quantity), so it doesn't disturb the land/spell counts just finalized.
+  const identityResult = await enforceColorIdentity(commander, lands, spells, edhecData)
+  lands = identityResult.lands
+  spells = identityResult.spells
+  const identityNote = identityResult.illegal.length
+    ? `\n\n⚠️ ${identityResult.illegal.length} Karte(n) außerhalb der Farbidentität von ${commander} automatisch ersetzt: ${identityResult.illegal.join(', ')}.`
+    : ''
+
   const finalLandCount = lands.reduce((s, c) => s + c.quantity, 0)
   const finalSpellCount = spells.reduce((s, c) => s + c.quantity, 0)
   console.log(`[Gemini] buildFullDeckFromChat: FINAL lands=${finalLandCount}, spells=${finalSpellCount}, total=${finalLandCount + finalSpellCount}`)
 
   return {
-    summary,
+    summary: summary + identityNote,
     // Tagged here (not re-derived later from Scryfall type_line, which arrives async and
     // can lag behind for a large batch) — the backend already knows this with certainty,
     // no reason to make the frontend guess again from external data that hasn't loaded yet.
