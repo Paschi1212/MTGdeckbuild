@@ -189,7 +189,8 @@ async function getBulkPrices(cardNames) {
             // colors referenced in rules text (hybrid/Phyrexian symbols, color indicators) and
             // is the field Commander's "must match the commander's color identity" rule
             // actually uses. Needed to verify deck legality deterministically.
-            colorIdentity: (card.color_identity ?? []).join(' ')
+            colorIdentity: (card.color_identity ?? []).join(' '),
+            oracleText: card.oracle_text ?? card.card_faces?.[0]?.oracle_text ?? ''
           }
           result[name] = entry
           cache.set(`name:${name.toLowerCase()}`, { data: entry, timestamp: Date.now() })

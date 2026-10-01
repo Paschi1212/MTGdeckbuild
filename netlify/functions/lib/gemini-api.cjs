@@ -223,13 +223,22 @@ function parseStrategyOverride(text) {
  */
 async function auditDeckStrategy({ commander, deckCards, edhecData, strategyOverride, powerLevel }) {
   const cardInfo = await getBulkPrices(deckCards.map(c => c.name))
+  // A short oracle-text snippet, not just [Typ, CMC] — observed live: without it, the model
+  // judged less-famous cards from memory alone and got some outright wrong (e.g. called
+  // Extraordinary Journey, an exile-and-recast value/flicker enchantment, a "removal
+  // enchantment unrelated to the deck's creature synergies" — a real, confidently-wrong
+  // misread of what the card actually does, leading to a bad cardsToCut call). Truncated to
+  // ~100 chars/card to keep the added INPUT size sane for a 99-card deck — input tokens are
+  // cheap and weren't the source of any prior timeout (output generation/thinking was).
   const deckListText = deckCards
     .map(c => {
       const info = cardInfo[c.name]
       const typeInfo = info?.typeLine ? ` [${info.typeLine}${info.cmc != null ? `, CMC ${info.cmc}` : ''}]` : ''
-      return `${c.quantity > 1 ? `${c.quantity}x ` : ''}${c.name}${typeInfo}`
+      const oracle = info?.oracleText ? info.oracleText.replace(/\s+/g, ' ').trim() : ''
+      const oracleSnippet = oracle ? ` — "${oracle.slice(0, 100)}${oracle.length > 100 ? '…' : ''}"` : ''
+      return `${c.quantity > 1 ? `${c.quantity}x ` : ''}${c.name}${typeInfo}${oracleSnippet}`
     })
-    .join(', ')
+    .join('\n')
 
   const edhecContext = edhecData?.allCards?.length
     ? `\nEDHREC-DATEN (echte Decks mit ${commander}):\n- High Synergy Cards: ${(edhecData.highSynergyCards || []).slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n- Meistgespielte Karten insgesamt: ${edhecData.topCards?.slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n`
@@ -249,14 +258,14 @@ async function auditDeckStrategy({ commander, deckCards, edhecData, strategyOver
 
 COMMANDER: ${commander}
 
-AKTUELLE DECKLISTE (${deckCards.length} Karten, [Typ, Manawert] wo bekannt):
+AKTUELLE DECKLISTE (${deckCards.length} Karten, [Typ, Manawert] und Kartentext-Auszug wo bekannt — verlass dich auf DIESEN Text, nicht auf dein eigenes Gedächtnis der Karte, falls sie dir unbekannt vorkommt):
 ${deckListText}
 ${edhecContext}${edhecCutSignal}${strategyContext}${powerLevelContext}
 AUFGABE:
 Bewerte dieses BEREITS GEBAUTE Deck. Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
-- "strategy": ${strategyOverride ? 'übernimm die vom Nutzer bestätigte Strategie oben unverändert in winCondition/gamePlan/weaknesses.' : 'lies aus der Deckliste (Kartentypen, Manawerte, Commander-Fähigkeiten) das TATSÄCHLICHE Spielplan des Decks heraus, BEVOR du irgendeine Karte bewertest — "winCondition" (wie gewinnt dieses Deck konkret), "gamePlan" (Früh-/Mittel-/Spätspiel-Ablauf, Kernrollen: Ramp, Kartenvorteil, Removal/Interaktion, Payoffs — mit welchen Karten sie abgedeckt sind), "weaknesses" (welche dieser Rollen fehlen oder sind unterbesetzt — UND GLEICHBERECHTIGT DAZU: falls die Strategie auf einer bestimmten Kartenkategorie/Synergie basiert, die der Commander direkt belohnt oder verstärkt (z.B. X-Spells, Token-Erzeugung, +1/+1-Counter, Artefakte, ein Tribal-Typ), zähle die Karten dieser Kategorie im Deck AUSDRÜCKLICH durch und benenne "zu wenig [Kategorie]-Karten" explizit als eigene Schwäche, wenn die Dichte für eine konsequente Strategie zu gering ist — das ist für ein Synergie-Deck oft die wichtigste Schwäche überhaupt, nicht nur eine generische Rolle unter vielen). Das ist die Grundlage für ALLES danach.'}
+- "strategy": ${strategyOverride ? 'übernimm die vom Nutzer bestätigte Strategie oben unverändert in winCondition/gamePlan/weaknesses.' : `lies aus der Deckliste (Kartentypen, Manawerte, Commander-Fähigkeiten) das TATSÄCHLICHE Spielplan des Decks heraus, BEVOR du irgendeine Karte bewertest. WICHTIG: "winCondition" und "gamePlan" müssen sich um die FÄHIGKEIT VON ${commander} selbst drehen, nicht um eine andere (auch wenn bekanntere/stärkere) Karte im Deck — eine starke Synergiekarte ist ein Baustein DER Commander-Strategie, niemals deren Ersatz. — "winCondition" (wie gewinnt dieses Deck konkret, ausgehend von ${commander}s eigener Fähigkeit), "gamePlan" (Früh-/Mittel-/Spätspiel-Ablauf, Kernrollen: Ramp, Kartenvorteil, Removal/Interaktion, Payoffs — mit welchen Karten sie abgedeckt sind), "weaknesses" (welche dieser Rollen fehlen oder sind unterbesetzt — UND GLEICHBERECHTIGT DAZU: falls die Strategie auf einer bestimmten Kartenkategorie/Synergie basiert, die der Commander direkt belohnt oder verstärkt (z.B. X-Spells, Token-Erzeugung, +1/+1-Counter, Artefakte, ein Tribal-Typ), zähle die Karten dieser Kategorie im Deck AUSDRÜCKLICH durch und benenne "zu wenig [Kategorie]-Karten" explizit als eigene Schwäche, wenn die Dichte für eine konsequente Strategie zu gering ist — das ist für ein Synergie-Deck oft die wichtigste Schwäche überhaupt, nicht nur eine generische Rolle unter vielen). Das ist die Grundlage für ALLES danach.`}
 - "summary": kurze deutsche Fließtext-Bewertung basierend auf der obigen Strategie-Einschätzung, 3-5 Sätze
-- "cardsToCut": Schwächste Karten AUS DER OBIGEN DECKLISTE mit Begründung (EIN kurzer Satz), warum sie raus sollten. KRITISCH: jede Begründung muss sich auf die oben festgelegte "strategy" beziehen (z.B. "trägt nichts zu [winCondition] bei" oder "redundant zu [andere Karte], die dieselbe Rolle besser erfüllt") — keine generischen "das ist eine schwache Karte"-Begründungen ohne Bezug zu DIESEM Deck.${edhecCutSignal ? ' Die oben genannten, bei EDHREC nicht gelisteten Karten sind bevorzugte (aber nicht zwingende) Kandidaten — nenne bei Bedarf auch andere.' : ''} KEINE feste Obergrenze — wenn das Deck wirklich viele Schwachstellen hat, nenne entsprechend viele; wenn es schon stark ist, nenne weniger oder auch gar keine. "name" muss EXAKT und WORTWÖRTLICH einem Eintrag aus der Deckliste oben entsprechen (ohne den [Typ, Manawert]-Zusatz) — erfinde niemals eine Karte, die dort nicht steht, und ändere keine Namen.
+- "cardsToCut": Schwächste Karten AUS DER OBIGEN DECKLISTE mit Begründung (EIN kurzer Satz), warum sie raus sollten. KRITISCH: jede Begründung muss sich auf die oben festgelegte "strategy" beziehen (z.B. "trägt nichts zu [winCondition] bei" oder "redundant zu [andere Karte], die dieselbe Rolle besser erfüllt") — keine generischen "das ist eine schwache Karte"-Begründungen ohne Bezug zu DIESEM Deck. STÜTZE DICH AUSSCHLIESSLICH auf den tatsächlichen Kartentext oben, nicht auf eine vage Erinnerung an die Karte — wenn du den genauen Effekt einer Karte aus dem mitgelieferten Text nicht sicher einordnen kannst, cutte sie NICHT (lieber eine eindeutig schwache Karte nennen als eine unklare falsch zu beschreiben).${edhecCutSignal ? ' Die oben genannten, bei EDHREC nicht gelisteten Karten sind bevorzugte (aber nicht zwingende) Kandidaten — nenne bei Bedarf auch andere.' : ''} KEINE feste Obergrenze — wenn das Deck wirklich viele Schwachstellen hat, nenne entsprechend viele; wenn es schon stark ist, nenne weniger oder auch gar keine. "name" muss EXAKT und WORTWÖRTLICH einem Eintrag aus der Deckliste oben entsprechen (ohne den [Typ, Manawert]-Zusatz) — erfinde niemals eine Karte, die dort nicht steht, und ändere keine Namen.
 
 Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
 
