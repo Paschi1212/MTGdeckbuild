@@ -50,6 +50,13 @@ function Dashboard() {
   const [gainers, setGainers] = useState(null)
   const [scanning, setScanning] = useState(false)
   const [scanError, setScanError] = useState(null)
+  const [scanProgress, setScanProgress] = useState(null)
+
+  // A large collection (observed live: 2790 unique priced cards) blew straight through the
+  // function's 30s budget in one request — each chunk of ~400 names stays comfortably inside
+  // that budget on its own (a handful of Scryfall batches), and the frontend just does
+  // several sequential chunk requests instead of one huge one, merging the results after.
+  const SCAN_CHUNK_SIZE = 400
 
   const runGainerScan = async () => {
     const pricedCards = getPricedCardNames(collection)
@@ -59,21 +66,36 @@ function Dashboard() {
     }
     setScanning(true)
     setScanError(null)
+    setGainers(null)
+
+    const chunks = []
+    for (let i = 0; i < pricedCards.length; i += SCAN_CHUNK_SIZE) {
+      chunks.push(pricedCards.slice(i, i + SCAN_CHUNK_SIZE))
+    }
+
     try {
-      const response = await fetch('/.netlify/functions/get-price-gainers', {
-        method: 'POST',
-        body: JSON.stringify({ cards: pricedCards })
-      })
-      if (response.ok) {
-        const data = await response.json()
-        setGainers(data.gainers)
-      } else {
-        setScanError('Scan fehlgeschlagen — versuch es gleich nochmal.')
+      let allGainers = []
+      for (let i = 0; i < chunks.length; i++) {
+        setScanProgress({ current: i + 1, total: chunks.length })
+        const response = await fetch('/.netlify/functions/get-price-gainers', {
+          method: 'POST',
+          body: JSON.stringify({ cards: chunks[i] })
+        })
+        if (response.ok) {
+          const data = await response.json()
+          allGainers = allGainers.concat(data.gainers)
+        } else {
+          setScanError(`Scan bei Teil ${i + 1}/${chunks.length} fehlgeschlagen — bisherige Treffer werden trotzdem angezeigt.`)
+          break
+        }
       }
+      allGainers.sort((a, b) => b.gain - a.gain)
+      setGainers(allGainers.slice(0, 50))
     } catch (err) {
       setScanError(err.message)
     } finally {
       setScanning(false)
+      setScanProgress(null)
     }
   }
 
@@ -140,7 +162,11 @@ function Dashboard() {
 
         {scanError && <p className="text-sm mb-3" style={{ color: 'var(--r)' }}>{scanError}</p>}
 
-        {scanning && <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Scanne deine Sammlung — bei vielen Karten kann das etwas dauern…</p>}
+        {scanning && (
+          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            Scanne deine Sammlung{scanProgress ? ` — Teil ${scanProgress.current} von ${scanProgress.total}` : ''}…
+          </p>
+        )}
 
         {gainers && !scanning && (
           gainers.length === 0 ? (
