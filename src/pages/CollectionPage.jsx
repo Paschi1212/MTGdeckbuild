@@ -99,11 +99,25 @@ export default function CollectionPage() {
   const [selectedType, setSelectedType] = useState('')
   const [availability, setAvailability] = useState('all') // all | free | built
   const [minQuantity, setMinQuantity] = useState('')
+  const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [minCmc, setMinCmc] = useState('')
   const [maxCmc, setMaxCmc] = useState('')
   const [sortBy, setSortBy] = useState('none')
+  const [selectedBinder, setSelectedBinder] = useState('')
   const [modalIndex, setModalIndex] = useState(null)
+
+  // Built from whatever binders/decks actually exist in this collection — not hardcoded, so
+  // it works for any ManaBox export, not just folder names like "Nr 2"/"Nr 3" this app
+  // happened to be tested with.
+  const binderOptions = useMemo(() => {
+    if (!collection?.cards) return []
+    const typeByName = new Map()
+    for (const c of collection.cards) {
+      if (c.binderName && !typeByName.has(c.binderName)) typeByName.set(c.binderName, c.binderType)
+    }
+    return [...typeByName.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [collection])
 
   useEffect(() => {
     if (!collection?.cards?.length) {
@@ -164,8 +178,16 @@ export default function CollectionPage() {
       result = result.filter(c => c.binderType === 'deck')
     }
 
+    if (selectedBinder) {
+      result = result.filter(c => c.binderName === selectedBinder)
+    }
+
     if (minQuantity) {
       result = result.filter(c => c.quantity >= Number(minQuantity))
+    }
+
+    if (minPrice) {
+      result = result.filter(c => c.purchasePrice >= Number(minPrice))
     }
 
     if (maxPrice) {
@@ -186,7 +208,7 @@ export default function CollectionPage() {
     }
 
     return result
-  }, [collection, search, selectedColors, selectedType, availability, minQuantity, maxPrice, minCmc, maxCmc, sortBy, imageMap])
+  }, [collection, search, selectedColors, selectedType, availability, selectedBinder, minQuantity, minPrice, maxPrice, minCmc, maxCmc, sortBy, imageMap])
 
   if (!collection) {
     return (
@@ -272,6 +294,21 @@ export default function CollectionPage() {
           </div>
 
           <div>
+            <label className="text-xs text-cmd-muted block mb-2">Ordner / Deck</label>
+            <select
+              value={selectedBinder}
+              onChange={(e) => setSelectedBinder(e.target.value)}
+              className="text-white rounded-xl p-2 text-sm max-w-[180px]"
+              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+            >
+              <option value="">Alle</option>
+              {binderOptions.map(([name, type]) => (
+                <option key={name} value={name}>{type === 'deck' ? '🃏' : '📁'} {name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
             <label className="text-xs text-cmd-muted block mb-2">Min. Anzahl</label>
             <input
               type="number"
@@ -285,17 +322,30 @@ export default function CollectionPage() {
           </div>
 
           <div>
-            <label className="text-xs text-cmd-muted block mb-2">Max. Preis (€)</label>
-            <input
-              type="number"
-              min="0"
-              step="0.5"
-              placeholder="z.B. 10"
-              value={maxPrice}
-              onChange={(e) => setMaxPrice(e.target.value)}
-              className="w-28 text-white rounded-xl p-2 text-sm"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
-            />
+            <label className="text-xs text-cmd-muted block mb-2">Preis (€)</label>
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                placeholder="min"
+                value={minPrice}
+                onChange={(e) => setMinPrice(e.target.value)}
+                className="w-20 text-white rounded-xl p-2 text-sm"
+                style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+              />
+              <span className="text-cmd-muted text-xs">–</span>
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                placeholder="max"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value)}
+                className="w-20 text-white rounded-xl p-2 text-sm"
+                style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+              />
+            </div>
           </div>
 
           <div>
@@ -337,14 +387,16 @@ export default function CollectionPage() {
             </select>
           </div>
 
-          {(selectedColors.length > 0 || selectedType || availability !== 'all' || minQuantity || maxPrice || minCmc || maxCmc || sortBy !== 'none' || search) && (
+          {(selectedColors.length > 0 || selectedType || availability !== 'all' || selectedBinder || minQuantity || minPrice || maxPrice || minCmc || maxCmc || sortBy !== 'none' || search) && (
             <button
               onClick={() => {
                 setSearch('')
                 setSelectedColors([])
                 setSelectedType('')
                 setAvailability('all')
+                setSelectedBinder('')
                 setMinQuantity('')
+                setMinPrice('')
                 setMaxPrice('')
                 setMinCmc('')
                 setMaxCmc('')
