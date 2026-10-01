@@ -188,6 +188,30 @@ function formatStrategyForPrompt(strategy) {
   return `- winCondition: ${strategy.winCondition}\n- gamePlan: ${strategy.gamePlan}\n- weaknesses: ${strategy.weaknesses}`
 }
 
+// The user's correction (DeckAuditPage's "✏️ Korrigieren" box) is a single free-text blob in
+// the client's "Win Condition: X\n\nSpielplan: Y\n\nSchwächen: Z" format (see
+// DeckAuditPage.jsx's formatStrategy()). The model was previously just told to echo it back
+// into the 3 structured fields "unverändert" — not actually guaranteed, and observed live
+// losing/rewording a user's edit despite the instruction. Parsing it deterministically here
+// instead means whatever the user wrote is GUARANTEED to show up exactly as typed.
+function parseStrategyOverride(text) {
+  const winMatch = text.match(/Win Condition:\s*([\s\S]*?)(?=\n\s*\n\s*Spielplan:|\n\s*\n\s*Schwächen:|$)/i)
+  const planMatch = text.match(/Spielplan:\s*([\s\S]*?)(?=\n\s*\n\s*Schwächen:|$)/i)
+  const weakMatch = text.match(/Schwächen:\s*([\s\S]*)$/i)
+
+  if (winMatch || planMatch || weakMatch) {
+    return {
+      winCondition: (winMatch?.[1] || '').trim(),
+      gamePlan: (planMatch?.[1] || '').trim(),
+      weaknesses: (weakMatch?.[1] || '').trim()
+    }
+  }
+
+  // Doesn't match the expected labeled format (user rewrote it freeform) — rather than
+  // silently dropping part of it or guessing where to split, keep the whole text visible.
+  return { winCondition: '', gamePlan: text.trim(), weaknesses: '' }
+}
+
 /**
  * Audit phase 1/2: strategy read + cardsToCut only. Kept deliberately light (no collection
  * list, bounded output) — this call used to also produce the uncapped cardsToAdd/cardsToBuy
@@ -308,8 +332,12 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
 
     const cardsToCut = await enrichWithImages(validCardsToCut)
 
+    // Deterministic override, not the model's own (unreliable) echo of it — see
+    // parseStrategyOverride()'s comment above.
+    const strategy = strategyOverride ? parseStrategyOverride(strategyOverride) : parsed.strategy
+
     return {
-      strategy: parsed.strategy,
+      strategy,
       summary: parsed.summary,
       cardsToCut,
       usage: mapUsage(result)
