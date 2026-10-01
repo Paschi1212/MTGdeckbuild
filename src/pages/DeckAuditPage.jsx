@@ -58,9 +58,14 @@ export default function DeckAuditPage() {
       if (response.ok) {
         const data = await response.json()
         setAudit(data)
-        // Only seed the draft from a fresh AI read — a re-run using the user's own
-        // (possibly edited) override shouldn't silently overwrite what they just typed.
-        if (!strategyOverride) setStrategyDraft(formatStrategy(data.strategy))
+        // A fresh AI read (no override) is persisted too, not just an explicit manual
+        // correction — otherwise running "Analysieren" once leaves nothing to show on the
+        // deck's own page, since that page only ever read the remembered override.
+        if (!strategyOverride) {
+          const formatted = formatStrategy(data.strategy)
+          setStrategyDraft(formatted)
+          if (formatted) setDeckPreferences(deckName, { strategyOverride: formatted })
+        }
         setEditingStrategy(false)
       } else {
         setError(await readApiError(response))

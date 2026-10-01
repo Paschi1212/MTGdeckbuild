@@ -43,12 +43,12 @@ function loadInitialCards(deckName, commanderName, proposedCards) {
   return proposedCards || []
 }
 
-function CardRow({ card, compact, onUpdateCount, onRemove, cutReason, onZoom, draggable, onDragStart }) {
+function CardRow({ card, compact, onUpdateCount, onRemove, cutReason, onZoom, draggable, onDragStart, onDragEnd }) {
   const cutStyle = cutReason
     ? { backgroundColor: 'rgba(239,106,99,0.08)', border: '1px solid rgba(239,106,99,0.35)' }
     : { backgroundColor: 'var(--surface)' }
   const dragProps = draggable
-    ? { draggable: true, onDragStart: (e) => onDragStart(e, card.index), style: { ...cutStyle, cursor: 'grab' } }
+    ? { draggable: true, onDragStart: (e) => onDragStart(e, card.index), onDragEnd, style: { ...cutStyle, cursor: 'grab' } }
     : { style: cutStyle }
 
   if (compact) {
@@ -189,6 +189,9 @@ export default function EditDeckPage() {
   const [groupBy, setGroupBy] = useState('type')
   const [viewMode, setViewMode] = useState('columns')
   const [dragOverGroup, setDragOverGroup] = useState(null)
+  // Empty categories only earn their keep as visible drop targets while a drag is actually
+  // in progress — otherwise they're just clutter (e.g. "Battle (0)" on a deck with none).
+  const [isDragging, setIsDragging] = useState(false)
   const [showManualAdd, setShowManualAdd] = useState(false)
   const [newCard, setNewCard] = useState({ name: '', count: 1, price: 0 })
   const [searchQuery, setSearchQuery] = useState('')
@@ -347,8 +350,11 @@ export default function EditDeckPage() {
     cardsByCategory[key].push(card)
   }
 
+  // Empty categories stay hidden by default — they only reappear as visible drop targets
+  // while actively dragging a card, so recategorizing into a currently-empty type is still
+  // possible without permanently cluttering the view with "Battle (0)"-style empty headers.
   const categories = groupBy === 'type'
-    ? groupOrder.filter(cat => cat !== 'Sonstige' || cardsByCategory[cat]?.length)
+    ? groupOrder.filter(cat => cardsByCategory[cat]?.length || (isDragging && cat !== 'Sonstige'))
     : groupOrder.filter(cat => cardsByCategory[cat]?.length)
 
   const filteredCards = filter === 'all' ? enrichedCards : (cardsByCategory[filter] || [])
@@ -460,6 +466,12 @@ export default function EditDeckPage() {
   const handleDragStart = (e, index) => {
     e.dataTransfer.setData('text/plain', String(index))
     e.dataTransfer.effectAllowed = 'move'
+    setIsDragging(true)
+  }
+
+  const handleDragEnd = () => {
+    setIsDragging(false)
+    setDragOverGroup(null)
   }
 
   const handleDropOnCategory = (index, categoryName) => {
@@ -812,7 +824,7 @@ export default function EditDeckPage() {
               </h2>
               <div className="space-y-2">
                 {group.cards.map(card => (
-                  <CardRow key={card.index} card={card} compact onUpdateCount={handleUpdateCount} onRemove={handleRemoveCard} cutReason={cutReasonMap.get(card.name)} onZoom={setZoomedCard} draggable={groupBy === 'type'} onDragStart={handleDragStart} />
+                  <CardRow key={card.index} card={card} compact onUpdateCount={handleUpdateCount} onRemove={handleRemoveCard} cutReason={cutReasonMap.get(card.name)} onZoom={setZoomedCard} draggable={groupBy === 'type'} onDragStart={handleDragStart} onDragEnd={handleDragEnd} />
                 ))}
                 {group.cards.length === 0 && groupBy === 'type' && (
                   <p className="text-xs text-cmd-muted italic py-2 text-center">Karten hierher ziehen</p>
@@ -838,7 +850,7 @@ export default function EditDeckPage() {
             <h2 className="text-lg font-bold mb-4">{group.label} <span className="text-cmd-muted text-sm font-normal">({group.cards.length})</span></h2>
             <div className="space-y-2">
               {group.cards.map(card => (
-                <CardRow key={card.index} card={card} onUpdateCount={handleUpdateCount} onRemove={handleRemoveCard} cutReason={cutReasonMap.get(card.name)} onZoom={setZoomedCard} draggable={groupBy === 'type'} onDragStart={handleDragStart} />
+                <CardRow key={card.index} card={card} onUpdateCount={handleUpdateCount} onRemove={handleRemoveCard} cutReason={cutReasonMap.get(card.name)} onZoom={setZoomedCard} draggable={groupBy === 'type'} onDragStart={handleDragStart} onDragEnd={handleDragEnd} />
               ))}
               {group.cards.length === 0 && groupBy === 'type' && (
                 <p className="text-xs text-cmd-muted italic py-2 text-center">Karten hierher ziehen</p>
