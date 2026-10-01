@@ -15,16 +15,16 @@ exports.handler = async (event) => {
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ names: [] })
+        body: JSON.stringify({ commanders: [] })
       }
     }
 
-    const names = await searchCommanders(q.trim())
+    const commanders = await searchCommanders(q.trim())
 
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' },
-      body: JSON.stringify({ names })
+      body: JSON.stringify({ commanders })
     }
   } catch (error) {
     console.error('[API] Error searching commanders:', error)

@@ -320,6 +320,8 @@ async function getBudgetAlternatives(cardName, maxPrice = 10) {
  * `is:commander` filter correctly covers every way a card can legally be a commander
  * (legendary creatures, planeswalkers with "can be your commander" text, backgrounds, ...),
  * not just "legendary creature", and `order=edhrec` surfaces well-known commanders first.
+ * Returns images too — a name-only list doesn't help tell apart several versions of the same
+ * character (e.g. multiple commander-eligible Vraska planeswalkers).
  */
 async function searchCommanders(query) {
   const q = `is:commander ${query}`
@@ -329,7 +331,11 @@ async function searchCommanders(query) {
   if (!response.ok) return [] // Scryfall 404s a search with zero matches — not a real error
 
   const data = await response.json()
-  return (data.data || []).slice(0, 10).map(card => card.name)
+  return (data.data || []).slice(0, 24).map(card => ({
+    name: card.name,
+    image: card.image_uris?.normal ?? card.card_faces?.[0]?.image_uris?.normal,
+    colors: (card.color_identity ?? []).join(' ')
+  }))
 }
 
 module.exports = {
