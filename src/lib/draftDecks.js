@@ -1,6 +1,13 @@
 import { scheduleCloudPush } from './cloudSync'
+import { deleteSavedAudit } from './deckAudit'
 
 const STORAGE_KEY = 'mtg_draft_decks'
+
+// Key for a draft's saved analysis + strategy correction (deckAudit.js / deckPreferences.js),
+// prefixed so it can never collide with a real ManaBox deck that has the same name.
+export function draftStorageKey(id) {
+  return `draft:${id}`
+}
 
 export function loadDraftDecks() {
   try {
@@ -55,4 +62,5 @@ export function saveDraftDeck({ id, name, commander, cards, strategyNote }) {
 
 export function deleteDraftDeck(id) {
   persist(loadDraftDecks().filter(d => d.id !== id))
+  deleteSavedAudit(draftStorageKey(id))
 }

@@ -10,8 +10,10 @@ import { aiFetch, isClaudeActive, getClaudeModelLabel, formatModelId } from '../
 // route. `cachedAudit`/`onAuditComplete` let the parent remember the last result across tab
 // switches (so hopping to another tab and back doesn't silently re-run a real AI call), and
 // `onOpenEditor`/`onBack` switch tabs on that page instead of navigating to a separate route.
-export default function DeckAuditPage({ commander, deckName, deckCards, collectionSampleNames, powerLevel, cachedAudit, onAuditComplete, onOpenEditor, onBack }) {
-  const rememberedStrategy = getDeckPreferences(deckName).strategyOverride || ''
+// `storageKey` (default: deckName) is where the strategy correction is remembered — a draft
+// passes "draft:<id>" so it never collides with a real ManaBox deck of the same name.
+export default function DeckAuditPage({ commander, deckName, storageKey = deckName, deckCards, collectionSampleNames, powerLevel, cachedAudit, onAuditComplete, onOpenEditor, onBack, backLabel = '← Zurück zur Übersicht' }) {
+  const rememberedStrategy = getDeckPreferences(storageKey).strategyOverride || ''
 
   const [audit, setAudit] = useState(cachedAudit || null)
   const [loading, setLoading] = useState(false)
@@ -88,7 +90,7 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
         if (!strategyOverride) {
           const formatted = formatStrategy(data.strategy)
           setStrategyDraft(formatted)
-          if (formatted) setDeckPreferences(deckName, { strategyOverride: formatted })
+          if (formatted) setDeckPreferences(storageKey, { strategyOverride: formatted })
         }
         setEditingStrategy(false)
         setLoading(false)
@@ -177,7 +179,7 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
               />
               <div className="flex gap-2 mt-3">
                 <button
-                  onClick={() => { setDeckPreferences(deckName, { strategyOverride: strategyDraft }); runAudit(strategyDraft) }}
+                  onClick={() => { setDeckPreferences(storageKey, { strategyOverride: strategyDraft }); runAudit(strategyDraft) }}
                   className="btn-primary text-sm flex-1"
                 >
                   🔄 Neu bewerten mit diesem Spielplan
@@ -194,7 +196,7 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
               <p><strong>Schwächen:</strong> {audit.strategy.weaknesses}</p>
               {rememberedStrategy && (
                 <button
-                  onClick={() => { setDeckPreferences(deckName, { strategyOverride: '' }); runAudit() }}
+                  onClick={() => { setDeckPreferences(storageKey, { strategyOverride: '' }); runAudit() }}
                   className="text-xs text-cmd-muted underline"
                 >
                   Gemerkte Korrektur verwerfen & KI neu raten lassen
@@ -291,7 +293,7 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
           ✏️ Deck Editieren
         </button>
         <button onClick={onBack} className="btn-secondary flex-1">
-          ← Zurück zur Übersicht
+          {backLabel}
         </button>
       </div>
 

@@ -27,3 +27,11 @@ export function setSavedAudit(deckName, audit) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(all))
   scheduleCloudPush()
 }
+
+export function deleteSavedAudit(deckName) {
+  const all = loadAll()
+  if (!(deckName in all)) return
+  delete all[deckName]
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(all))
+  scheduleCloudPush()
+}

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { loadCollection } from '../lib/collection'
-import { loadDraftDecks, deleteDraftDeck, saveDraftDeck } from '../lib/draftDecks'
+import { loadDraftDecks, deleteDraftDeck, saveDraftDeck, draftStorageKey } from '../lib/draftDecks'
+import { getSavedAudit } from '../lib/deckAudit'
 import { parseDeckListText } from '../lib/deckListImport'
 
 function formatDate(iso) {
@@ -182,6 +183,8 @@ export default function DecksPage() {
               {drafts.map(draft => {
                 const deckSize = (draft.cards || []).reduce((sum, c) => sum + (c.count || 1), 0)
                 const deckTotal = (draft.cards || []).reduce((sum, c) => sum + (c.count || 1) * (c.price || 0), 0)
+                const savedAudit = getSavedAudit(draftStorageKey(draft.id))
+                const auditOutdated = savedAudit?.draftUpdatedAt && savedAudit.draftUpdatedAt !== draft.updatedAt
 
                 return (
                   <div key={draft.id} className="card">
@@ -197,10 +200,22 @@ export default function DecksPage() {
                         <span style={{ color: 'var(--g)' }}>€{deckTotal.toFixed(2)}</span>
                       </div>
                       <p className="text-xs text-cmd-muted">Zuletzt geändert: {formatDate(draft.updatedAt)}</p>
+                      {savedAudit && (
+                        <p className="text-xs mt-1" style={{ color: auditOutdated ? 'var(--color-text-muted)' : 'var(--g)' }}>
+                          {auditOutdated ? '📊 Analyse vorhanden (Entwurf seitdem geändert)' : '📊 Analyse vorhanden'}
+                        </p>
+                      )}
                     </button>
                     <div className="flex gap-2 mt-3">
                       <button onClick={() => handleOpenDraft(draft)} className="btn-secondary flex-1 text-xs px-3 py-2">
                         ✏️ Öffnen
+                      </button>
+                      <button
+                        onClick={() => navigate(`/drafts/${draft.id}/analyse`)}
+                        disabled={deckSize === 0}
+                        className="btn-secondary flex-1 text-xs px-3 py-2"
+                      >
+                        📊 Analysieren
                       </button>
                       <button
                         onClick={() => handleDeleteDraft(draft.id, draft.name || draft.commander)}

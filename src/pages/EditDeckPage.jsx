@@ -540,6 +540,24 @@ export default function EditDeckPage(embeddedState) {
     }
   }
 
+  const saveAsDraft = () => {
+    const saved = saveDraftDeck({
+      id: draftId,
+      name: commanderCard?.name || commanderName || 'Unbenannter Entwurf',
+      commander: commanderCard?.name || commanderName,
+      cards: cards.map(c => ({ name: c.name, count: c.count, price: c.price || 0, isLand: c.isLand })),
+      strategyNote
+    })
+    setDraftId(saved.id)
+    return saved
+  }
+
+  // Saves first, so the analysis always sees exactly what's on screen right now.
+  const handleSaveAndAnalyze = () => {
+    const saved = saveAsDraft()
+    navigate(`/drafts/${saved.id}/analyse`)
+  }
+
   const handleSave = () => {
     if (deckName) {
       // A real ManaBox deck's persistence would mean rewriting the actual imported
@@ -550,14 +568,7 @@ export default function EditDeckPage(embeddedState) {
       return
     }
 
-    const saved = saveDraftDeck({
-      id: draftId,
-      name: commanderCard?.name || commanderName || 'Unbenannter Entwurf',
-      commander: commanderCard?.name || commanderName,
-      cards: cards.map(c => ({ name: c.name, count: c.count, price: c.price || 0, isLand: c.isLand })),
-      strategyNote
-    })
-    setDraftId(saved.id)
+    saveAsDraft()
     navigate('/decks', { state: { tab: 'drafts' } })
   }
 
@@ -929,6 +940,11 @@ export default function EditDeckPage(embeddedState) {
         >
           🎲 Live Tester
         </button>
+        {!deckName && (
+          <button onClick={handleSaveAndAnalyze} disabled={cards.length === 0} className="btn-secondary flex-1">
+            📊 Speichern & analysieren
+          </button>
+        )}
         <button onClick={handleSave} className="btn-primary flex-1">
           {deckName ? '✓ Fertig' : '💾 Als Entwurf speichern'}
         </button>

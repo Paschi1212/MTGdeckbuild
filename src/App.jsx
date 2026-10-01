@@ -13,6 +13,7 @@ import EditDeckPage from './pages/EditDeckPage'
 import ChatBuilderPage from './pages/ChatBuilderPage'
 import PrivacyPage from './pages/PrivacyPage'
 import ClaudeModePage from './pages/ClaudeModePage'
+import DraftAnalysisPage from './pages/DraftAnalysisPage'
 import { pullFromCloud, scheduleCloudPush } from './lib/cloudSync'
 import { checkBridge } from './lib/aiMode'
 
@@ -101,6 +102,7 @@ function App() {
             <Route path="/edit-deck" element={user ? <EditDeckPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/chat-builder" element={user ? <ChatBuilderPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/claude-modus" element={user ? <ClaudeModePage /> : <HomePage user={user} onLogin={handleLogin} />} />
+            <Route path="/drafts/:id/analyse" element={user ? <DraftAnalysisPage /> : <HomePage user={user} onLogin={handleLogin} />} />
           </Routes>
         </main>
       </div>
