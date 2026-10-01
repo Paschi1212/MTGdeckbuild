@@ -4,6 +4,7 @@ import CardTile from '../components/CardTile'
 import { loadCollection, getCardsForBinder, getAvailableCardNames } from '../lib/collection'
 import { getCommanderOverride, setCommanderOverride } from '../lib/commanderOverrides'
 import { getDeckPreferences, setDeckPreferences } from '../lib/deckPreferences'
+import CommanderAutocompleteInput from '../components/CommanderAutocompleteInput'
 
 const SAMPLE_CARD_LIMIT = 150
 const POWER_LEVELS = ['Casual', 'Semi-Casual', 'Semi-Competitive', 'Competitive']
@@ -124,14 +125,15 @@ export default function DeckDetailPage() {
       <div className="card mb-6">
         <label className="text-sm text-cmd-muted block mb-2">Commander (zur Analyse)</label>
         <div className="flex flex-col sm:flex-row gap-3">
-          <input
-            type="text"
-            placeholder="z.B. Wrexial, the Pet-Devourer"
-            value={commander}
-            onChange={(e) => setCommander(e.target.value)}
-            className="flex-1 text-white rounded-xl p-3"
-            style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
-          />
+          <div className="flex-1">
+            <CommanderAutocompleteInput
+              value={commander}
+              onChange={setCommander}
+              cardNames={collection?.uniqueCardNames || []}
+              placeholder="z.B. Wrexial, the Pet-Devourer"
+              className="w-full text-white rounded-xl p-3"
+            />
+          </div>
           <button
             onClick={handleSaveCommander}
             disabled={!commander.trim() || commander.trim() === savedOverride}
