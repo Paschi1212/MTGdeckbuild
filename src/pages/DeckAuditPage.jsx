@@ -1,45 +1,21 @@
-import { useState, useEffect, useRef } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import CardTile from '../components/CardTile'
 import { readApiError } from '../lib/apiError'
 import ChatWidget from '../components/ChatWidget'
 import { getDeckPreferences, setDeckPreferences } from '../lib/deckPreferences'
 
-export default function DeckAuditPage() {
-  const location = useLocation()
-  const navigate = useNavigate()
-
-  const { commander, deckName, deckCards, collectionSampleNames, powerLevel } = location.state || {}
-  // A strategy the user already confirmed/corrected on a previous visit is remembered — no
-  // reason to make them re-teach the tool their deck's game plan every single time.
+// Embedded as the "Analyse" tab of a deck's consolidated detail page — no longer a standalone
+// route. `cachedAudit`/`onAuditComplete` let the parent remember the last result across tab
+// switches (so hopping to another tab and back doesn't silently re-run a real AI call), and
+// `onOpenEditor`/`onBack` switch tabs on that page instead of navigating to a separate route.
+export default function DeckAuditPage({ commander, deckName, deckCards, collectionSampleNames, powerLevel, cachedAudit, onAuditComplete, onOpenEditor, onBack }) {
   const rememberedStrategy = getDeckPreferences(deckName).strategyOverride || ''
 
-  const [audit, setAudit] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [audit, setAudit] = useState(cachedAudit || null)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  // Once the AI's own read of the deck's strategy comes back, this holds the editable text
-  // version of it — the user can correct it before asking for a re-evaluation, instead of
-  // the cuts/adds being anchored to a strategy read they never got to see or fix.
   const [strategyDraft, setStrategyDraft] = useState(rememberedStrategy)
   const [editingStrategy, setEditingStrategy] = useState(false)
-  // React 18 StrictMode (dev only) intentionally double-invokes a mount effect — without
-  // this guard, that fired two full audit requests (EDHREC + Gemini) on every page load,
-  // competing for the same rate limits and making a 30s timeout much more likely. Also
-  // guards against a real double-click firing this same initial request twice.
-  const hasStartedRef = useRef(false)
-
-  useEffect(() => {
-    if (hasStartedRef.current) return
-    hasStartedRef.current = true
-
-    if (!commander || !deckCards) {
-      setError('Ungültige Eingaben')
-      setLoading(false)
-      return
-    }
-
-    runAudit(rememberedStrategy || undefined)
-  }, [])
 
   const formatStrategy = (strategy) => strategy
     ? `Win Condition: ${strategy.winCondition}\n\nSpielplan: ${strategy.gamePlan}\n\nSchwächen: ${strategy.weaknesses}`
@@ -58,6 +34,7 @@ export default function DeckAuditPage() {
       if (response.ok) {
         const data = await response.json()
         setAudit(data)
+        onAuditComplete?.(data)
         // A fresh AI read (no override) is persisted too, not just an explicit manual
         // correction — otherwise running "Analysieren" once leaves nothing to show on the
         // deck's own page, since that page only ever read the remembered override.
@@ -78,14 +55,16 @@ export default function DeckAuditPage() {
     }
   }
 
-  const backToDeck = () => navigate(`/decks/${encodeURIComponent(deckName || '')}`)
-
   if (!commander || !deckCards) {
+    return <p className="text-red-400">Keine Daten zum Analysieren</p>
+  }
+
+  if (!audit && !loading && !error) {
     return (
-      <div className="max-w-2xl mx-auto">
-        <p className="text-red-400 mb-4">Keine Daten zum Analysieren</p>
-        <button onClick={() => navigate('/decks')} className="btn-primary">
-          ← Zurück zu Meine Decks
+      <div className="max-w-2xl mx-auto text-center py-10">
+        <p className="text-cmd-muted mb-4">Noch keine Analyse für dieses Deck gelaufen.</p>
+        <button onClick={() => runAudit(rememberedStrategy || undefined)} className="btn-primary">
+          🔍 Jetzt analysieren
         </button>
       </div>
     )
@@ -93,7 +72,7 @@ export default function DeckAuditPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+      <div className="flex flex-col items-center justify-center min-h-[40vh]">
         <div className="text-center">
           <div className="animate-spin inline-block w-12 h-12 border-4 border-gray-600 border-t-mtg-blue rounded-full mb-4"></div>
           <p className="text-gray-300 mb-2">Analysiere {deckName}...</p>
@@ -109,21 +88,15 @@ export default function DeckAuditPage() {
         <div className="card bg-red-900/20 border-red-700 mb-6">
           <p className="text-red-300">❌ {error}</p>
         </div>
-        <button onClick={() => runAudit()} className="btn-primary w-full mb-3">
+        <button onClick={() => runAudit()} className="btn-primary w-full">
           Erneut versuchen
-        </button>
-        <button onClick={backToDeck} className="btn-secondary w-full">
-          ← Zurück
         </button>
       </div>
     )
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <h1>📊 Deck-Analyse: {deckName}</h1>
-      <p className="text-cmd-muted mb-6">Commander: {commander}</p>
-
+    <div>
       {audit?.strategy && (
         <div className="card mb-6" style={{ borderColor: 'var(--u)' }}>
           <div className="flex items-center justify-between mb-3">
@@ -189,6 +162,10 @@ export default function DeckAuditPage() {
             Hinweis: Die strukturierte Antwort konnte nicht vollständig geparst werden — es wird nur der Rohtext angezeigt.
           </p>
         )}
+
+        <button onClick={() => runAudit(rememberedStrategy || undefined)} className="btn-secondary text-xs mt-3">
+          🔄 Neu analysieren
+        </button>
       </div>
 
       {audit?.cardsToCut?.length > 0 && (
@@ -228,20 +205,13 @@ export default function DeckAuditPage() {
 
       <div className="flex gap-3">
         <button
-          onClick={() => navigate('/edit-deck', {
-            state: {
-              deckName,
-              commander,
-              cardsToAdd: [...(audit?.cardsToAdd || []), ...(audit?.cardsToBuy || [])],
-              cardsToCut: audit?.cardsToCut
-            }
-          })}
+          onClick={() => onOpenEditor?.([...(audit?.cardsToAdd || []), ...(audit?.cardsToBuy || [])], audit?.cardsToCut)}
           className="btn-primary flex-1"
         >
           ✏️ Deck Editieren
         </button>
-        <button onClick={backToDeck} className="btn-secondary flex-1">
-          ← Zurück zum Deck
+        <button onClick={onBack} className="btn-secondary flex-1">
+          ← Zurück zur Übersicht
         </button>
       </div>
 

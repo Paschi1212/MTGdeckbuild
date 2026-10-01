@@ -6,6 +6,7 @@ import { saveDraftDeck } from '../lib/draftDecks'
 import { classifyType, BASIC_LAND_NAMES } from '../lib/cardType'
 import { CardZoomModal } from '../components/CardTile'
 import ChatWidget from '../components/ChatWidget'
+import PlaytestModal from '../components/PlaytestModal'
 
 const CMC_BUCKETS = ['0', '1', '2', '3', '4', '5', '6', '7+']
 
@@ -165,21 +166,32 @@ function SuggestionCard({ card, onAdd, onZoom }) {
   )
 }
 
-export default function EditDeckPage() {
+// Standalone route usage (AI-proposed drafts from ChatBuilderPage/AnalyzePage/DeckAuditPage)
+// reads everything from router location.state, as before. Embedded usage (a real deck's
+// "Editor" tab on its consolidated detail page) passes the same shape directly as props —
+// there's no route navigation into a tab, so there's no location.state to read there.
+export default function EditDeckPage(embeddedState) {
   const location = useLocation()
   const navigate = useNavigate()
-  const deckName = location.state?.deckName
-  const suggestedCardsToAdd = location.state?.cardsToAdd || []
-  const suggestedCardsToCut = location.state?.cardsToCut || []
-  const proposedCards = location.state?.cards
-  const [strategyNote, setStrategyNote] = useState(location.state?.strategyNote || '')
+  // Set only by the embedded "Editor" tab on a deck's consolidated page — lets "Zurück"/
+  // "Fertig" switch back to that page's own Übersicht tab instead of navigating away to a
+  // whole different route, which would otherwise exit the deck entirely.
+  const onBack = embeddedState?.onBack
+  const state = embeddedState?.deckName !== undefined || embeddedState?.cards !== undefined
+    ? embeddedState
+    : (location.state || {})
+  const deckName = state.deckName
+  const suggestedCardsToAdd = state.cardsToAdd || []
+  const suggestedCardsToCut = state.cardsToCut || []
+  const proposedCards = state.cards
+  const [strategyNote, setStrategyNote] = useState(state.strategyNote || '')
   // Re-saving a draft you opened from "Meine Entwürfe" overwrites it in place instead of
   // piling up duplicates — only set when this session actually started from a saved draft.
-  const [draftId, setDraftId] = useState(location.state?.draftId || null)
+  const [draftId, setDraftId] = useState(state.draftId || null)
 
   // For a real ManaBox deck (deckName set), the commander is a fact about that binder —
   // don't let chat's set_commander action rewrite it, only the free-form proposal flow.
-  const [commanderName, setCommanderName] = useState(location.state?.commander || '')
+  const [commanderName, setCommanderName] = useState(state.commander || '')
   const [cards, setCards] = useState(() => loadInitialCards(deckName, commanderName, proposedCards))
   const [collection] = useState(loadCollection)
   const [commanderCard, setCommanderCard] = useState(null)
@@ -198,6 +210,7 @@ export default function EditDeckPage() {
   const [priceMap, setPriceMap] = useState({})
   const [byIdMap, setByIdMap] = useState({})
   const [zoomedCard, setZoomedCard] = useState(null)
+  const [showPlaytest, setShowPlaytest] = useState(false)
 
   useEffect(() => {
     if (!commanderName) return
@@ -498,7 +511,8 @@ export default function EditDeckPage() {
       // A real ManaBox deck's persistence would mean rewriting the actual imported
       // collection data — a separate, bigger feature, deliberately not built yet.
       alert('Änderungen an echten ManaBox-Decks werden aktuell noch nicht dauerhaft gespeichert — diese Ansicht dient zum Durchsehen/Ausprobieren.')
-      navigate('/collection')
+      if (onBack) onBack()
+      else navigate('/collection')
       return
     }
 
@@ -862,10 +876,17 @@ export default function EditDeckPage() {
 
       <div className="flex gap-3">
         <button
-          onClick={() => navigate(deckName ? '/collection' : '/analyze')}
+          onClick={() => (onBack ? onBack() : navigate(deckName ? '/collection' : '/analyze'))}
           className="btn-secondary flex-1"
         >
           ← Zurück
+        </button>
+        <button
+          onClick={() => setShowPlaytest(true)}
+          disabled={enrichedCards.length === 0}
+          className="btn-secondary flex-1"
+        >
+          🎲 Live Tester
         </button>
         <button onClick={handleSave} className="btn-primary flex-1">
           {deckName ? '✓ Fertig' : '💾 Als Entwurf speichern'}
@@ -874,6 +895,14 @@ export default function EditDeckPage() {
 
       {zoomedCard && (
         <CardZoomModal card={zoomedCard} onClose={() => setZoomedCard(null)} />
+      )}
+
+      {showPlaytest && (
+        <PlaytestModal
+          cards={enrichedCards}
+          commanderCard={commanderCard}
+          onClose={() => setShowPlaytest(false)}
+        />
       )}
 
       <ChatWidget

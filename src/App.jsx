@@ -6,7 +6,6 @@ import UploadPage from './pages/UploadPage'
 import CollectionPage from './pages/CollectionPage'
 import DecksPage from './pages/DecksPage'
 import DeckDetailPage from './pages/DeckDetailPage'
-import DeckAuditPage from './pages/DeckAuditPage'
 import CommanderSelectPage from './pages/CommanderSelectPage'
 import StrategyPage from './pages/StrategyPage'
 import AnalyzePage from './pages/AnalyzePage'
@@ -74,7 +73,6 @@ function App() {
             <Route path="/collection" element={user ? <CollectionPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/decks" element={user ? <DecksPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/decks/:deckName" element={user ? <DeckDetailPage /> : <HomePage user={user} onLogin={handleLogin} />} />
-            <Route path="/deck-audit" element={user ? <DeckAuditPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/select-commander" element={user ? <CommanderSelectPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/strategy" element={user ? <StrategyPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/analyze" element={user ? <AnalyzePage /> : <HomePage user={user} onLogin={handleLogin} />} />
