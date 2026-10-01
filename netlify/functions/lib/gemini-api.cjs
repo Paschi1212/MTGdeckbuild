@@ -28,6 +28,16 @@ function isRetryableGeminiError(error) {
   return error?.status === 503 || text.includes('"code":503') || text.includes('UNAVAILABLE') || text.includes('overloaded')
 }
 
+// A 429 RESOURCE_EXHAUSTED on the free tier's PER-DAY quota (observed live: 20
+// requests/day for gemini-3.5-flash) is a dead end for THAT model until the quota resets —
+// retrying the same model just wastes the request budget further. Not covered by
+// isRetryableGeminiError on purpose: that one is for transient "try again in a moment"
+// errors, this one means "this model is done for today, switch models instead".
+function isQuotaExhaustedError(error) {
+  const text = String(error?.message ?? error ?? '')
+  return error?.status === 429 && (text.includes('RESOURCE_EXHAUSTED') || text.includes('GenerateRequestsPerDayPerProjectPerModel'))
+}
+
 // Kept deliberately short (2 retries, ~0.6s/1.2s backoff) — every one of this file's
 // generateContent calls already runs inside a 30s Netlify function budget that's been hit
 // more than once this session, so retries must stay cheap, not turn one slow call into three.
@@ -229,24 +239,46 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
   try {
     console.log('[Gemini] Auditing deck (phase 1/2: strategy+cuts):', commander, `(model: ${GEMINI_MODEL_AUDIT})`)
 
-    const result = await generateContentWithRetry({
-      model: GEMINI_MODEL_AUDIT,
-      contents: prompt,
-      config: {
-        temperature: 0.35,
-        responseMimeType: 'application/json',
-        responseSchema: AUDIT_STRATEGY_SCHEMA,
-        maxOutputTokens: 3500,
-        // gemini-3.5-flash has "thinking" enabled by default, which burns hidden reasoning
-        // tokens out of the SAME maxOutputTokens budget as the visible JSON — observed live:
-        // a 72-card deck's strategy+cuts call (well within the visible-output budget) still
-        // got truncated at MAX_TOKENS and took 24s wall-clock, with the hidden thinking
-        // tokens being the only explanation. This is a single structured-JSON analytical
-        // call under a hard 30s Netlify ceiling — reliability matters far more here than the
-        // marginal reasoning-quality gain from letting the model "think" before answering.
-        thinkingConfig: { thinkingBudget: 0 }
-      }
-    })
+    let result
+    try {
+      result = await generateContentWithRetry({
+        model: GEMINI_MODEL_AUDIT,
+        contents: prompt,
+        config: {
+          temperature: 0.35,
+          responseMimeType: 'application/json',
+          responseSchema: AUDIT_STRATEGY_SCHEMA,
+          maxOutputTokens: 3500,
+          // gemini-3.5-flash has "thinking" enabled by default, which burns hidden reasoning
+          // tokens out of the SAME maxOutputTokens budget as the visible JSON — observed live:
+          // a 72-card deck's strategy+cuts call (well within the visible-output budget) still
+          // got truncated at MAX_TOKENS and took 24s wall-clock, with the hidden thinking
+          // tokens being the only explanation. This is a single structured-JSON analytical
+          // call under a hard 30s Netlify ceiling — reliability matters far more here than the
+          // marginal reasoning-quality gain from letting the model "think" before answering.
+          thinkingConfig: { thinkingBudget: 0 }
+        }
+      })
+    } catch (error) {
+      if (!isQuotaExhaustedError(error)) throw error
+      // gemini-3.5-flash's free-tier quota is PER DAY (observed live: 20 requests/day) —
+      // once it's gone, it's gone until tomorrow, no amount of retrying helps. Falling back
+      // to the lite model (same one phase 2 already uses) keeps the audit WORKING today,
+      // at a modest cost to reasoning depth, instead of hard-failing the whole feature until
+      // the quota resets. Lite has no "thinking" variant to configure — it 400s if sent
+      // thinkingConfig at all (verified live), so that option is dropped for this call only.
+      console.warn(`[Gemini] auditDeckStrategy: ${GEMINI_MODEL_AUDIT} daily quota exhausted, falling back to ${GEMINI_MODEL} for this request`)
+      result = await generateContentWithRetry({
+        model: GEMINI_MODEL,
+        contents: prompt,
+        config: {
+          temperature: 0.35,
+          responseMimeType: 'application/json',
+          responseSchema: AUDIT_STRATEGY_SCHEMA,
+          maxOutputTokens: 3500
+        }
+      })
+    }
 
     const parsed = parseJson(result.text)
 
