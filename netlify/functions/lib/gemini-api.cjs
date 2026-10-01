@@ -727,14 +727,17 @@ const FULL_DECK_BASIC_LAND_NAMES = new Set(['plains', 'island', 'swamp', 'mounta
 // build — so it's still a deliberate per-deck choice, just never neglected once made.
 const FULL_DECK_DEFAULT_LAND_TARGET = 37
 
+// No per-card "reason" field: the chat build relays only name/quantity/isLand to the
+// frontend, so a generated reason for every one of ~99 cards was pure wasted output —
+// thousands of tokens per round, on the call that kept blowing the live function timeout
+// (observed: >30s live, 504). The deck-level "summary" still carries the actual strategy.
 const DECK_CARD_ITEM_SCHEMA = {
   type: 'object',
   properties: {
     name: { type: 'string' },
-    quantity: { type: 'integer' },
-    reason: { type: 'string' }
+    quantity: { type: 'integer' }
   },
-  required: ['name', 'quantity', 'reason']
+  required: ['name', 'quantity']
 }
 
 const FULL_DECK_SCHEMA = {
@@ -882,6 +885,7 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
 }
 
 const FULL_DECK_TOP_UP_ATTEMPTS = 2
+const FULL_DECK_SMALL_SHORTFALL = 6
 
 /**
  * Builds a complete, schema-validated 99-card decklist — the same reliable structured-
@@ -979,6 +983,17 @@ async function buildFullDeckFromChat({ commander, strategyHint, collectionSample
     const landsNeeded = isFirstRound ? undefined : Math.max(landTarget - lands.reduce((sum, c) => sum + c.quantity, 0), 0)
     const spellsNeeded = isFirstRound ? undefined : Math.max((99 - landTarget) - spells.reduce((sum, c) => sum + c.quantity, 0), 0)
     if (!isFirstRound && landsNeeded <= 0 && spellsNeeded <= 0) break
+    // A whole extra AI round (5-12s) to add a handful of cards isn't worth it — observed live:
+    // a full round just to add ONE basic land, pushing the build to 29s against a 30s limit.
+    // Small gaps go straight to the deterministic padding below (basics / EDHREC pool);
+    // top-up rounds are reserved for a real undershoot (e.g. 64/99), which they were built for.
+    // (Missing lands are always fillable with basics; missing spells only if there's an EDHREC
+    // pool to draw from — without one, fall through to the AI round as before.)
+    const canPadDeterministically = spellsNeeded === 0 || edhecData?.allCards?.length > 0
+    if (!isFirstRound && canPadDeterministically && landsNeeded + spellsNeeded <= FULL_DECK_SMALL_SHORTFALL) {
+      console.log(`[Gemini] buildFullDeckFromChat: only ${landsNeeded + spellsNeeded} card(s) short, padding deterministically instead of another AI round`)
+      break
+    }
 
     const batch = await generateDeckRound({
       commander,
@@ -1008,13 +1023,24 @@ async function buildFullDeckFromChat({ commander, strategyHint, collectionSample
         : FULL_DECK_DEFAULT_LAND_TARGET
       console.log(`[Gemini] buildFullDeckFromChat: Gemini proposed landCount=${batch.landCount} -> using target ${landTarget}`)
     }
+    const totalBefore = [...lands, ...spells].reduce((s, c) => s + c.quantity, 0)
     lands = mergeDeckCards(lands, batch.lands)
     spells = mergeDeckCards(spells, batch.spells)
     totalUsage = {
       prompt_tokens: totalUsage.prompt_tokens + batch.usage.prompt_tokens,
       completion_tokens: totalUsage.completion_tokens + batch.usage.completion_tokens
     }
+    const totalAfter = [...lands, ...spells].reduce((s, c) => s + c.quantity, 0)
     console.log(`[Gemini] buildFullDeckFromChat: after round ${round} — lands=${lands.reduce((s, c) => s + c.quantity, 0)}, spells=${spells.reduce((s, c) => s + c.quantity, 0)}`)
+
+    // A top-up round that added nothing (observed live: the model re-suggests cards already
+    // in the deck, which the singleton guard then drops) won't do better on a second try —
+    // each extra round is several seconds of a call that was already pushing the live 30s
+    // function limit. Stop here and let the deterministic padding below close the gap.
+    if (!isFirstRound && totalAfter === totalBefore) {
+      console.log(`[Gemini] buildFullDeckFromChat: round ${round} added nothing, stopping top-up rounds early`)
+      break
+    }
   }
 
   const finalLandTarget = landTarget ?? FULL_DECK_DEFAULT_LAND_TARGET
@@ -1028,6 +1054,31 @@ async function buildFullDeckFromChat({ commander, strategyHint, collectionSample
   if (landShortfall > 0) {
     console.log(`[Gemini] buildFullDeckFromChat: padding ${landShortfall} basic lands to reach target ${finalLandTarget}`)
     lands = padWithBasicLands(lands, landShortfall)
+  }
+
+  // Same guarantee for spells, from EDHREC's real pool for this commander (nonland lists
+  // only) instead of yet another AI round — the top-up loop now stops as soon as a round
+  // makes no progress, so a small shortfall is closed here deterministically.
+  const spellShortfall = (99 - finalLandTarget) - spells.reduce((sum, c) => sum + c.quantity, 0)
+  if (spellShortfall > 0 && edhecData) {
+    const inDeck = new Set([...lands, ...spells].map(c => normalizeCardName(c.name)))
+    const pool = [
+      ...(edhecData.highSynergyCards || []), ...(edhecData.gameChangers || []), ...(edhecData.creatures || []),
+      ...(edhecData.instants || []), ...(edhecData.sorceries || []), ...(edhecData.artifacts || []),
+      ...(edhecData.enchantments || []), ...(edhecData.planeswalkers || [])
+    ]
+    const additions = []
+    for (const card of pool) {
+      if (additions.length >= spellShortfall) break
+      const key = normalizeCardName(card.name)
+      if (!card.name || inDeck.has(key)) continue
+      inDeck.add(key)
+      additions.push({ name: card.name, quantity: 1 })
+    }
+    if (additions.length) {
+      console.log(`[Gemini] buildFullDeckFromChat: padding ${additions.length} spell(s) from EDHREC pool:`, additions.map(c => c.name))
+      spells = [...spells, ...additions]
+    }
   }
 
   // Legality check runs last, after count/budget are already settled — a swap preserves the
