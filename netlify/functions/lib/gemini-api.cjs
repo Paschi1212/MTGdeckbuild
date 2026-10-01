@@ -254,18 +254,26 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
         temperature: 0.35,
         responseMimeType: 'application/json',
         responseSchema: AUDIT_SCHEMA,
-        // Raised again for the added strategy fields on top of the no-longer-capped lists.
-        maxOutputTokens: 3500
+        // Raised twice now — the strategy sub-fields plus uncapped, EDHREC-grounded
+        // cut/add/buy reasoning on a large, complex deck genuinely needs more room. Observed
+        // live at 3500: the response got cut off mid-sentence (an unterminated JSON string),
+        // which failed to parse and displayed as raw broken text to the user.
+        maxOutputTokens: 6000
       }
     })
 
     const parsed = parseJson(result.text)
 
     if (!parsed) {
-      console.warn('[Gemini] auditDeck: could not parse structured JSON, falling back to raw text')
+      const truncated = result.candidates?.[0]?.finishReason === 'MAX_TOKENS'
+      console.warn(`[Gemini] auditDeck: could not parse structured JSON (truncated: ${truncated}), falling back`)
       return {
         strategy: null,
-        summary: result.text,
+        // Showing the raw, likely mid-sentence-cut JSON text as if it were a readable
+        // summary was worse than no summary at all — an honest message instead.
+        summary: truncated
+          ? 'Die Analyse wurde wegen Längenlimit abgeschnitten, bevor sie fertig war — bitte "Erneut versuchen" klicken.'
+          : 'Die Antwort konnte nicht als strukturierte Analyse gelesen werden — bitte "Erneut versuchen" klicken.',
         cardsToAdd: [],
         cardsToBuy: [],
         cardsToCut: [],

@@ -158,9 +158,9 @@ export default function DeckAuditPage({ commander, deckName, deckCards, collecti
         )}
 
         {audit?.parseError && (
-          <p className="text-cmd-muted text-xs mt-2">
-            Hinweis: Die strukturierte Antwort konnte nicht vollständig geparst werden — es wird nur der Rohtext angezeigt.
-          </p>
+          <button onClick={() => runAudit(rememberedStrategy || undefined)} className="btn-primary text-sm mt-2">
+            🔄 Erneut versuchen
+          </button>
         )}
 
         <button onClick={() => runAudit(rememberedStrategy || undefined)} className="btn-secondary text-xs mt-3">
