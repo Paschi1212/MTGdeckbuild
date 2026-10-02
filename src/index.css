@@ -65,6 +65,24 @@
   --b: #2b2b2b;
   --r: #c13832;
   --g: #00a651;
+
+  /* Mana-symbol tints as printed on the cards (the pips in a card's cost line) — used for
+     the editor's mana-cost pips and color bars. Same in light and dark: they are card ink. */
+  --pip-w: #f8f6d8;
+  --pip-u: #c1d7e9;
+  --pip-b: #bab1ab;
+  --pip-r: #e49977;
+  --pip-g: #a3c095;
+  --pip-c: #cbc2bf;
+  --pip-ink: #1a1a1a;
+
+  /* Height of the sticky site header (Navigation: py-4/md:py-6 + 44/48px controls + 3px
+     rule) — sticky elements below it (the editor's deck bar) start here. */
+  --nav-h: 79px;
+}
+
+@media (min-width: 768px) {
+  :root { --nav-h: 99px; }
 }
 
 [data-theme="dark"] {

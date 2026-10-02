@@ -1,26 +1,32 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts'
 import { loadCollection, getCardsForBinder, getAvailableQuantities, getAvailableCardNames } from '../lib/collection'
 import { saveDraftDeck } from '../lib/draftDecks'
 import { classifyType, BASIC_LAND_NAMES } from '../lib/cardType'
 import { getSecondaryAvailability } from '../lib/secondaryCollections'
 import { getDeckPreferences } from '../lib/deckPreferences'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import { CardZoomModal } from '../components/CardTile'
 import ChatWidget from '../components/ChatWidget'
 import PlaytestModal from '../components/PlaytestModal'
+import DeckList from '../components/editor/DeckList'
+import CardSearch from '../components/editor/CardSearch'
+import { SuggestionsPanel, ShoppingPanel, StatsPanel, StrategyPanel } from '../components/editor/EditorPanels'
 
 const CMC_BUCKETS = ['0', '1', '2', '3', '4', '5', '6', '7+']
+const DECK_TARGET = 99
 
-// Same hex set CollectionPage's color filter already uses — keeps color meaning consistent
-// across the app instead of inventing a second palette.
-const COLOR_PIE_COLORS = { W: '#F8F6D8', U: '#4FA8F5', B: '#1A1A1A', R: '#E8524A', G: '#4ED689', Multicolor: '#c9a6f0', Colorless: '#9CA3AF' }
 const COLOR_NAMES = { W: 'Weiß', U: 'Blau', B: 'Schwarz', R: 'Rot', G: 'Grün', Multicolor: 'Mehrfarbig', Colorless: 'Farblos' }
 
 // Fixed, always-rendered set (deckstats-style) when grouping by type — cards can be dragged
 // into an empty category, so every category needs a visible drop target, not just ones that
 // already happen to have a card in them.
 const TYPE_GROUP_ORDER = ['Creature', 'Planeswalker', 'Battle', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Land', 'Sonstige']
+// German names as printed on German cards — the keys stay English (classifyType's output).
+const TYPE_LABELS = {
+  Creature: 'Kreaturen', Planeswalker: 'Planeswalker', Battle: 'Schlachten', Instant: 'Spontanzauber',
+  Sorcery: 'Hexereien', Artifact: 'Artefakte', Enchantment: 'Verzauberungen', Land: 'Länder', Sonstige: 'Sonstige'
+}
 
 function colorGroupKey(colors) {
   const list = (colors || '').split(' ').filter(Boolean)
@@ -44,138 +50,6 @@ function loadInitialCards(deckName, commanderName, proposedCards) {
 
   // No real deck — this is a fresh AI-proposed decklist from AnalyzePage, if any.
   return proposedCards || []
-}
-
-function CardRow({ card, compact, onUpdateCount, onRemove, cutReason, onZoom, draggable, onDragStart, onDragEnd }) {
-  const cutStyle = cutReason
-    ? { backgroundColor: 'rgba(239,106,99,0.08)', border: '1px solid rgba(239,106,99,0.35)' }
-    : { backgroundColor: 'var(--surface)' }
-  const dragProps = draggable
-    ? { draggable: true, onDragStart: (e) => onDragStart(e, card.index), onDragEnd, style: { ...cutStyle, cursor: 'grab' } }
-    : { style: cutStyle }
-
-  if (compact) {
-    return (
-      <div className="rounded-lg p-2" {...dragProps}>
-        <div className="flex items-center gap-2">
-          <div
-            className="w-8 h-11 rounded overflow-hidden bg-black/30 flex-shrink-0 cursor-pointer"
-            onClick={() => onZoom(card)}
-          >
-            {card.image && (
-              <img src={card.image} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm text-white truncate">{card.name}</div>
-            <div className="text-xs text-cmd-muted">CMC {card.cmc} · €{(card.count * card.price).toFixed(2)}</div>
-            {card.missingCount > 0 && (
-              <span className="text-[10px] font-semibold" style={{ color: 'var(--r)' }}>
-                🛒 {card.missingCount > 1 ? `${card.missingCount}x kaufen` : 'kaufen'}
-              </span>
-            )}
-            {card.missingCount > 0 && card.friendAvailability?.length > 0 && (
-              <span className="text-[10px] ml-1.5" style={{ color: 'var(--u)' }} title={`Bei: ${card.friendAvailability.map(h => h.label).join(', ')}`}>
-                📦 bei {card.friendAvailability.map(h => h.label).join(', ')}
-              </span>
-            )}
-          </div>
-          <input
-            type="number"
-            min="1"
-            value={card.count}
-            onChange={(e) => onUpdateCount(card.index, parseInt(e.target.value))}
-            className="w-12 text-white text-center text-xs rounded p-1"
-            style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)' }}
-          />
-          <button onClick={() => onRemove(card.index)} className="text-red-400 hover:text-red-300 text-sm">✕</button>
-        </div>
-        {cutReason && (
-          <div className="text-[11px] mt-1.5 leading-snug" style={{ color: 'var(--r)' }}>
-            ✂️ {cutReason}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <div className="rounded-xl p-3" {...dragProps}>
-      <div className="flex items-center justify-between gap-3">
-        <div
-          className="w-10 h-14 rounded overflow-hidden bg-black/30 flex-shrink-0 cursor-pointer"
-          onClick={() => onZoom(card)}
-        >
-          {card.image && (
-            <img src={card.image} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
-          )}
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-white truncate">{card.name}</div>
-          <div className="text-xs text-gray-400">CMC {card.cmc}</div>
-          {card.missingCount > 0 && (
-            <span className="text-[10px] font-semibold" style={{ color: 'var(--r)' }}>
-              🛒 {card.missingCount > 1 ? `${card.missingCount}x kaufen` : 'kaufen'}
-            </span>
-          )}
-          {card.missingCount > 0 && card.friendAvailability?.length > 0 && (
-            <span className="text-[10px] ml-1.5" style={{ color: 'var(--u)' }} title={`Bei: ${card.friendAvailability.map(h => h.label).join(', ')}`}>
-              📦 bei {card.friendAvailability.map(h => h.label).join(', ')}
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-3 mr-4">
-          <input
-            type="number"
-            min="1"
-            value={card.count}
-            onChange={(e) => onUpdateCount(card.index, parseInt(e.target.value))}
-            className="w-16 text-white text-center rounded-lg p-1"
-            style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)' }}
-          />
-          <span className="text-gray-300">€{(card.count * card.price).toFixed(2)}</span>
-        </div>
-
-        <button onClick={() => onRemove(card.index)} className="text-red-400 hover:text-red-300 text-lg">✕</button>
-      </div>
-      {cutReason && (
-        <div className="text-xs mt-2 leading-snug" style={{ color: 'var(--r)' }}>
-          ✂️ KI-Vorschlag: {cutReason}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function SuggestionCard({ card, onAdd, onZoom }) {
-  return (
-    <div className="rounded-xl p-3 flex gap-3" style={{ backgroundColor: 'rgba(78,214,137,0.08)', border: '1px solid rgba(78,214,137,0.3)' }}>
-      <div
-        className="w-10 h-14 rounded overflow-hidden bg-black/30 flex-shrink-0 cursor-pointer"
-        onClick={() => onZoom(card)}
-      >
-        {card.image && (
-          <img src={card.image} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
-        )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="font-semibold text-white truncate">{card.name}</div>
-        {card.reason && <p className="text-xs text-cmd-muted leading-snug mt-0.5 line-clamp-2">{card.reason}</p>}
-        <div className="flex items-center justify-between mt-2">
-          <span className="text-xs" style={{ color: 'var(--g)' }}>{card.eur != null ? `€${card.eur.toFixed(2)}` : ''}</span>
-          <button
-            onClick={() => onAdd(card)}
-            className="text-xs font-semibold px-2 py-1 rounded-lg"
-            style={{ backgroundColor: 'var(--g)', color: '#000' }}
-          >
-            + Hinzufügen
-          </button>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 // Standalone route usage (AI-proposed drafts from ChatBuilderPage/AnalyzePage/DeckAuditPage)
@@ -216,17 +90,29 @@ export default function EditDeckPage(embeddedState) {
   const [collection] = useState(loadCollection)
   const [commanderCard, setCommanderCard] = useState(null)
 
-  const [filter, setFilter] = useState('all')
-  const [sortBy, setSortBy] = useState('price')
+  // Mana value then name — the order decklists are read in; price stays one click away.
+  const [sortBy, setSortBy] = useState('cmc')
   const [groupBy, setGroupBy] = useState('type')
-  const [viewMode, setViewMode] = useState('columns')
   const [dragOverGroup, setDragOverGroup] = useState(null)
   // Empty categories only earn their keep as visible drop targets while a drag is actually
   // in progress — otherwise they're just clutter (e.g. "Battle (0)" on a deck with none).
   const [isDragging, setIsDragging] = useState(false)
-  const [showManualAdd, setShowManualAdd] = useState(false)
-  const [newCard, setNewCard] = useState({ name: '', count: 1, price: 0 })
-  const [searchQuery, setSearchQuery] = useState('')
+  // Desktop: side panel next to the list. Phone: one tab bar, the deck itself first.
+  const isDesktop = useMediaQuery('(min-width: 1024px)')
+  const [panel, setPanel] = useState(null)
+  const [mobileTab, setMobileTab] = useState('deck')
+  const [showStrategy, setShowStrategy] = useState(false)
+  // The side panel sticks just below the deck bar, whose height changes (strategy shown,
+  // notice for ManaBox decks) — measured instead of guessed.
+  const deckBarRef = useRef(null)
+  const [deckBarHeight, setDeckBarHeight] = useState(88)
+  useEffect(() => {
+    const bar = deckBarRef.current
+    if (!bar) return
+    const observer = new ResizeObserver(() => setDeckBarHeight(bar.offsetHeight))
+    observer.observe(bar)
+    return () => observer.disconnect()
+  }, [])
   const [priceMap, setPriceMap] = useState({})
   const [byIdMap, setByIdMap] = useState({})
   const [zoomedCard, setZoomedCard] = useState(null)
@@ -293,6 +179,10 @@ export default function EditDeckPage(embeddedState) {
       return {
         ...card,
         index,
+        // A real deck's cards carry what the user paid (ManaBox purchase price); drafts,
+        // chat builds and imported lists don't — they used to show €0.00 everywhere, which
+        // also zeroed the shopping list. Fall back to the current Scryfall price.
+        price: card.price || byId?.eur || byName?.eur || 0,
         image: byId?.image ?? byName?.image,
         // If this card came from the chat full-deck builder, the backend already knows
         // for certain whether it's a land (built as a separate, verified list) — trust
@@ -300,7 +190,10 @@ export default function EditDeckPage(embeddedState) {
         // A manual drag-drop recategorization (categoryOverride) wins over both.
         type: card.categoryOverride || (card.isLand === true ? 'Land' : classifyType(byId?.typeLine ?? byName?.typeLine)),
         cmc: byId?.cmc ?? byName?.cmc ?? 0,
-        colors: byId?.colors ?? '',
+        manaCost: byId?.manaCost ?? byName?.manaCost ?? '',
+        // By-name lookups (every draft card) only carry color identity — still the right
+        // signal for the color chart, which showed whole Temur decks as "colorless" before.
+        colors: byId?.colors ?? byName?.colorIdentity ?? '',
         missingCount,
         // A separately-uploaded friend's collection has this card — only worth checking (and
         // showing) for a card the user actually still needs to buy.
@@ -347,17 +240,21 @@ export default function EditDeckPage(embeddedState) {
     return buckets
   }, [enrichedCards])
 
-  const colorPieData = useMemo(() => {
+  // Nonland cards per color — the color bars in the Statistik panel.
+  const colorCounts = useMemo(() => {
     const totals = {}
     for (const card of enrichedCards) {
       if (card.type === 'Land') continue
       const key = colorGroupKey(card.colors)
       totals[key] = (totals[key] || 0) + card.count
     }
-    return Object.entries(totals)
-      .filter(([, count]) => count > 0)
-      .map(([key, count]) => ({ key, name: COLOR_NAMES[key] || key, count }))
+    return totals
   }, [enrichedCards])
+
+  const nonlandCards = enrichedCards.filter(c => c.type !== 'Land')
+  const nonlandCount = nonlandCards.reduce((sum, c) => sum + c.count, 0)
+  const averageCmc = nonlandCount ? nonlandCards.reduce((sum, c) => sum + c.cmc * c.count, 0) / nonlandCount : 0
+  const landCount = deckSize - nonlandCount
 
   // "type" grouping always shows every standard category (even empty ones) so there's
   // always a drop target to drag a card into — matches deckstats' "Drop cards here" columns.
@@ -378,7 +275,11 @@ export default function EditDeckPage(embeddedState) {
       ? [...CMC_BUCKETS, 'Land']
       : TYPE_GROUP_ORDER
 
-  const groupLabel = (key) => (groupBy === 'color' ? (COLOR_NAMES[key] || key) : key)
+  const groupLabel = (key) => {
+    if (groupBy === 'color') return COLOR_NAMES[key] || key
+    if (groupBy === 'cmc') return key === 'Land' ? 'Länder' : `Manawert ${key}`
+    return TYPE_LABELS[key] || key
+  }
 
   const cardsByCategory = {}
   for (const card of enrichedCards) {
@@ -394,20 +295,20 @@ export default function EditDeckPage(embeddedState) {
     ? groupOrder.filter(cat => cardsByCategory[cat]?.length || (isDragging && cat !== 'Sonstige'))
     : groupOrder.filter(cat => cardsByCategory[cat]?.length)
 
-  const filteredCards = filter === 'all' ? enrichedCards : (cardsByCategory[filter] || [])
-
   const sortWithin = (list) => [...list].sort((a, b) => {
-    if (sortBy === 'price') return (b.price * b.count) - (a.price * a.count)
-    if (sortBy === 'name') return a.name.localeCompare(b.name)
-    if (sortBy === 'cmc') return a.cmc - b.cmc
-    return 0
+    if (sortBy === 'price') return (b.price * b.count) - (a.price * a.count) || a.name.localeCompare(b.name)
+    if (sortBy === 'cmc') return a.cmc - b.cmc || a.name.localeCompare(b.name)
+    return a.name.localeCompare(b.name)
   })
 
-  const displayGroups = filter === 'all'
-    ? categories.map(cat => ({ name: cat, label: groupLabel(cat), cards: sortWithin(cardsByCategory[cat] || []) }))
-    : [{ name: filter, label: groupLabel(filter), cards: sortWithin(filteredCards) }]
+  const displayGroups = categories.map(cat => ({ key: cat, label: groupLabel(cat), cards: sortWithin(cardsByCategory[cat] || []) }))
 
-  const existingNames = new Set(cards.map(c => c.name))
+  // Always per card type, whatever the list is grouped by — for the Statistik panel.
+  const typeCounts = TYPE_GROUP_ORDER
+    .map(type => ({ label: TYPE_LABELS[type], count: enrichedCards.filter(c => c.type === type).reduce((sum, c) => sum + c.count, 0) }))
+    .filter(t => t.count > 0)
+
+  const existingNames = useMemo(() => new Set(cards.map(c => c.name)), [cards])
 
   const cutReasonMap = useMemo(() => {
     const map = new Map()
@@ -415,33 +316,38 @@ export default function EditDeckPage(embeddedState) {
     return map
   }, [suggestedCardsToCut])
 
+  // Cut suggestions still in the deck (one disappears from the panel once removed).
+  const cutsInDeck = enrichedCards
+    .filter(card => cutReasonMap.has(card.name))
+    .map(card => ({ name: card.name, reason: cutReasonMap.get(card.name), card }))
+
   const pendingSuggestions = useMemo(() => {
     return suggestedCardsToAdd.filter(c => c.name !== commanderName && !existingNames.has(c.name))
-  }, [suggestedCardsToAdd, commanderName, cards])
+  }, [suggestedCardsToAdd, commanderName, existingNames])
 
-  const searchResults = useMemo(() => {
-    if (!searchQuery.trim() || !collection?.cards) return []
-    const q = searchQuery.trim().toLowerCase()
-    const seen = new Set()
-    const results = []
-    for (const row of collection.cards) {
-      if (row.name === commanderName || existingNames.has(row.name) || seen.has(row.name)) continue
-      if (!row.name.toLowerCase().includes(q)) continue
-      if (!availableQuantities.get(row.name)?.available) continue
-      seen.add(row.name)
-      results.push(row)
-      if (results.length >= 8) break
-    }
-    return results
-  }, [searchQuery, collection, commanderName, cards, availableQuantities])
+  const isOwned = (name) => (availableQuantities.get(name)?.available || 0) > 0
 
   const handleAddFromSearch = (row) => {
-    setCards([...cards, { name: row.name, count: 1, price: row.purchasePrice, scryfallId: row.scryfallId }])
-    setSearchQuery('')
+    setCards(prev => [...prev, { name: row.name, count: 1, price: row.purchasePrice, scryfallId: row.scryfallId }])
+  }
+
+  // Any card by name (not owned, or owned but committed elsewhere) — price, image and type
+  // arrive with the by-name Scryfall lookup.
+  const handleAddByName = (name) => {
+    setCards(prev => (prev.some(c => c.name === name) ? prev : [...prev, { name, count: 1, price: 0 }]))
   }
 
   const handleAddSuggestion = (card) => {
-    setCards([...cards, { name: card.name, count: 1, price: card.eur || 0 }])
+    setCards(prev => (prev.some(c => c.name === card.name) ? prev : [...prev, { name: card.name, count: 1, price: card.eur || 0 }]))
+  }
+
+  const handleAddAllOwnedSuggestions = () => {
+    const owned = pendingSuggestions.filter(card => isOwned(card.name))
+    setCards(prev => [...prev, ...owned.filter(card => !prev.some(c => c.name === card.name)).map(card => ({ name: card.name, count: 1, price: card.eur || 0 }))])
+  }
+
+  const handleRemoveAllCuts = () => {
+    setCards(prev => prev.filter(card => !cutReasonMap.has(card.name)))
   }
 
   // The chat assistant can act on the deck directly (Gemini function calling) — it only
@@ -498,13 +404,12 @@ export default function EditDeckPage(embeddedState) {
   }
 
   const handleRemoveCard = (index) => {
-    setCards(cards.filter((_, i) => i !== index))
+    setCards(prev => prev.filter((_, i) => i !== index))
   }
 
   const handleUpdateCount = (index, value) => {
-    const updated = [...cards]
-    updated[index] = { ...updated[index], count: value }
-    setCards(updated)
+    if (!Number.isFinite(value) || value < 1) return
+    setCards(prev => prev.map((card, i) => (i === index ? { ...card, count: value } : card)))
   }
 
   // Drag-and-drop recategorization (type grouping only — color/CMC are facts about the
@@ -530,14 +435,6 @@ export default function EditDeckPage(embeddedState) {
       updated[index] = { ...current, categoryOverride: categoryName }
       return updated
     })
-  }
-
-  const handleAddManualCard = () => {
-    if (newCard.name && newCard.count > 0) {
-      setCards([...cards, newCard])
-      setNewCard({ name: '', count: 1, price: 0 })
-      setShowManualAdd(false)
-    }
   }
 
   const saveAsDraft = () => {
@@ -572,383 +469,226 @@ export default function EditDeckPage(embeddedState) {
     navigate('/decks', { state: { tab: 'drafts' } })
   }
 
-  return (
-    <div className="max-w-7xl mx-auto">
-      <h1>✏️ {deckName ? `Deck Editieren: ${deckName}` : 'Deck Editieren'}</h1>
+  const goBack = () => (onBack ? onBack() : navigate(-1))
 
-      {deckName && (
-        <p className="text-cmd-muted text-xs mb-4">
-          Änderungen werden aktuell nicht gespeichert — diese Ansicht dient zum Durchsehen/Ausprobieren.
-        </p>
-      )}
+  const shoppingCount = shoppingList.reduce((sum, c) => sum + c.missingCount, 0)
+  const suggestionCount = cutsInDeck.length + pendingSuggestions.length
+  const countTone = deckSize === DECK_TARGET ? 'var(--g)' : deckSize > DECK_TARGET ? 'var(--r)' : 'var(--w)'
+  const countHint = deckSize === DECK_TARGET
+    ? 'Genau 99 Karten plus Commander'
+    : deckSize > DECK_TARGET ? `${deckSize - DECK_TARGET} zu viel` : `${DECK_TARGET - deckSize} fehlen noch`
 
-      {commanderCard && (
-        <div className="card mb-6 flex gap-4 items-center">
-          {commanderCard.image && (
-            <img src={commanderCard.image} alt={commanderCard.name} className="w-16 h-auto rounded-lg flex-shrink-0" />
-          )}
-          <div>
-            <div className="text-xs text-cmd-muted uppercase tracking-wide">Commander</div>
-            <div className="text-lg font-bold text-white">{commanderCard.name}</div>
-          </div>
-        </div>
-      )}
+  const panels = [
+    { id: 'suggestions', label: 'Vorschläge', count: suggestionCount },
+    ...(deckName ? [] : [{ id: 'shopping', label: 'Einkauf', count: shoppingCount }]),
+    { id: 'stats', label: 'Statistik' }
+  ]
+  const defaultPanel = suggestionCount > 0 ? 'suggestions' : shoppingCount > 0 ? 'shopping' : 'stats'
+  const activePanel = panels.some(p => p.id === panel) ? panel : defaultPanel
 
-      {strategyNote && (
-        <div className="card mb-6" style={{ borderColor: 'var(--g)' }}>
-          <h2 className="text-sm font-bold mb-2" style={{ color: 'var(--g)' }}>📋 Strategie</h2>
-          <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap max-h-[280px] overflow-y-auto pr-1">
-            {strategyNote}
-          </p>
-        </div>
-      )}
+  const renderPanel = (id) => {
+    if (id === 'suggestions') {
+      return (
+        <SuggestionsPanel
+          cuts={cutsInDeck}
+          adds={pendingSuggestions}
+          isOwned={isOwned}
+          friendsFor={getSecondaryAvailability}
+          onRemove={handleRemoveCard}
+          onRemoveAll={handleRemoveAllCuts}
+          onAdd={handleAddSuggestion}
+          onAddAllOwned={handleAddAllOwnedSuggestions}
+          onZoom={setZoomedCard}
+          emptyHint={deckName
+            ? 'Keine offenen Vorschläge. Streich- und Ergänzungsvorschläge liefert der Tab „Analyse“.'
+            : 'Keine offenen Vorschläge. „Speichern & analysieren“ liefert Streich- und Ergänzungsvorschläge.'}
+        />
+      )
+    }
+    if (id === 'shopping') return <ShoppingPanel items={shoppingList} total={shoppingTotal} onExport={handleExportShoppingList} />
+    return (
+      <StatsPanel
+        manaCurve={manaCurveData}
+        colorCounts={colorCounts}
+        typeCounts={typeCounts}
+        averageCmc={averageCmc}
+        landCount={landCount}
+        deckValue={deckTotal}
+        valuePerCard={deckSize ? deckTotal / deckSize : 0}
+      />
+    )
+  }
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        <div className="card">
-          <div className="text-sm text-gray-400">Deck-Größe</div>
-          <div className="text-3xl font-bold text-mtg-gold">
-            {deckSize} <span className="text-base text-cmd-muted">/ 99</span>
-          </div>
-        </div>
+  const selectStyle = { background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)', borderRadius: 'var(--radius-sm)' }
 
-        <div className="card">
-          <div className="text-sm text-gray-400">Deck-Kosten</div>
-          <div className="text-3xl font-bold text-mtg-green">
-            €{deckTotal.toFixed(2)}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="text-sm text-gray-400">Durchschnitt pro Karte</div>
-          <div className="text-3xl font-bold text-mtg-blue">
-            €{cards.length > 0 ? (deckTotal / cards.length).toFixed(2) : '0.00'}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <div className="card">
-          <h2 className="text-lg font-bold mb-3">Mana-Kurve</h2>
-          <div style={{ width: '100%', height: 160 }}>
-            <ResponsiveContainer>
-              <BarChart data={manaCurveData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="cmc" tick={{ fill: '#a99fc4', fontSize: 12 }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} />
-                <YAxis allowDecimals={false} tick={{ fill: '#a99fc4', fontSize: 12 }} axisLine={false} tickLine={false} width={28} />
-                <Tooltip contentStyle={{ backgroundColor: '#171129', border: '1px solid var(--border)', borderRadius: 8 }} labelStyle={{ color: '#f3eefc' }} />
-                <Bar dataKey="count" fill="#4fa8f5" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="card">
-          <h2 className="text-lg font-bold mb-3">Farbverteilung</h2>
-          {colorPieData.length === 0 ? (
-            <p className="text-sm text-cmd-muted py-8 text-center">Noch keine Farbdaten geladen</p>
-          ) : (
-            <div style={{ width: '100%', height: 160 }}>
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie data={colorPieData} dataKey="count" nameKey="name" innerRadius={35} outerRadius={65} paddingAngle={2}>
-                    {colorPieData.map(entry => (
-                      <Cell key={entry.key} fill={COLOR_PIE_COLORS[entry.key] || '#9CA3AF'} stroke="var(--surface-solid)" />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: '#171129', border: '1px solid var(--border)', borderRadius: 8 }} labelStyle={{ color: '#f3eefc' }} />
-                  <Legend wrapperStyle={{ fontSize: 12, color: '#a99fc4' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {shoppingList.length > 0 && (
-        <div className="card mb-6" style={{ borderColor: 'var(--r)' }}>
-          <div className="flex items-center justify-between mb-1">
-            <h2 className="text-lg font-bold" style={{ color: 'var(--r)' }}>🛒 Einkaufsliste</h2>
-            <button onClick={handleExportShoppingList} className="btn-secondary text-xs px-3 py-1.5">
-              ⬇️ Exportieren (.txt)
-            </button>
-          </div>
-          <p className="text-xs text-cmd-muted mb-3">
-            {shoppingList.reduce((sum, c) => sum + c.missingCount, 0)} Karte(n) nicht in deiner Sammlung — geschätzt €{shoppingTotal.toFixed(2)}
-          </p>
-          <div className="space-y-1 max-h-[220px] overflow-y-auto pr-1">
-            {shoppingList.map(c => (
-              <div key={c.name} className="flex justify-between items-baseline text-sm text-gray-300 gap-2">
-                <span className="truncate">
-                  {c.missingCount}x {c.name}
-                  {c.friendAvailability?.length > 0 && (
-                    <span className="text-[11px] ml-1.5" style={{ color: 'var(--u)' }}>
-                      📦 bei {c.friendAvailability.map(h => h.label).join(', ')}
-                    </span>
-                  )}
-                </span>
-                <span className="text-cmd-muted flex-shrink-0">€{(c.missingCount * c.price).toFixed(2)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {pendingSuggestions.length > 0 && (
-        <div className="card mb-6">
-          <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--g)' }}>🤖 KI-Vorschläge zum Hinzufügen</h2>
-          <p className="text-xs text-cmd-muted mb-4">Aus der letzten Analyse — mit Begründung, warum die Karte das Deck verbessern würde.</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {pendingSuggestions.map(card => (
-              <SuggestionCard key={card.name} card={card} onAdd={handleAddSuggestion} onZoom={setZoomedCard} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="card mb-6">
-        <label className="text-sm text-gray-400 block mb-2">
-          {collection ? 'Karte aus deiner Sammlung hinzufügen' : 'Karte hinzufügen'}
+  const deckArea = (
+    <>
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <CardSearch
+          collection={collection}
+          availableQuantities={availableQuantities}
+          existingNames={existingNames}
+          commanderName={commanderCard?.name || commanderName}
+          onAddOwned={handleAddFromSearch}
+          onAddByName={handleAddByName}
+        />
+        <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <span className="hidden sm:inline">Gruppieren</span>
+          <select aria-label="Gruppieren" value={groupBy} onChange={(e) => setGroupBy(e.target.value)} className="text-sm px-2 py-1.5" style={selectStyle}>
+            <option value="type">nach Typ</option>
+            <option value="color">nach Farbe</option>
+            <option value="cmc">nach Manawert</option>
+          </select>
         </label>
-        {collection && (
-          <p className="text-xs text-cmd-muted mb-2">
-            Zeigt nur Karten, die nicht schon in einem anderen Deck verbaut sind.
-          </p>
-        )}
-
-        {collection ? (
-          <>
-            <input
-              type="text"
-              placeholder="Kartennamen suchen…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full text-white rounded-xl p-3"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
-            />
-            {searchResults.length > 0 && (
-              <div className="mt-2 rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-                {searchResults.map(row => (
-                  <button
-                    key={row.scryfallId || row.name}
-                    onClick={() => handleAddFromSearch(row)}
-                    className="w-full flex items-center justify-between gap-3 p-2 text-left hover:brightness-125 transition"
-                    style={{ backgroundColor: 'var(--surface)' }}
-                  >
-                    <span className="text-sm text-white truncate">{row.name}</span>
-                    <span className="text-xs text-cmd-muted whitespace-nowrap">€{row.purchasePrice.toFixed(2)}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            <button
-              onClick={() => setShowManualAdd(!showManualAdd)}
-              className="text-xs text-cmd-muted underline mt-3"
-            >
-              {showManualAdd ? 'Manuellen Eintrag ausblenden' : 'Karte nicht in deiner Sammlung? Manuell hinzufügen'}
-            </button>
-          </>
-        ) : (
-          <button onClick={() => setShowManualAdd(!showManualAdd)} className="btn-success w-full">
-            {showManualAdd ? '✕ Abbrechen' : '+ Karte hinzufügen'}
-          </button>
-        )}
-
-        {showManualAdd && (
-          <div className="mt-4 p-4 rounded-xl" style={{ backgroundColor: 'var(--surface)' }}>
-            <div className="space-y-3">
-              <input
-                type="text"
-                placeholder="Kartennamen"
-                value={newCard.name}
-                onChange={(e) => setNewCard({ ...newCard, name: e.target.value })}
-                className="w-full text-white rounded-xl p-2"
-                style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)' }}
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  type="number"
-                  min="1"
-                  value={newCard.count}
-                  onChange={(e) => setNewCard({ ...newCard, count: parseInt(e.target.value) })}
-                  className="text-white rounded-xl p-2"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)' }}
-                  placeholder="Anzahl"
-                />
-                <input
-                  type="number"
-                  step="0.01"
-                  value={newCard.price}
-                  onChange={(e) => setNewCard({ ...newCard, price: parseFloat(e.target.value) })}
-                  className="text-white rounded-xl p-2"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)' }}
-                  placeholder="Preis (€)"
-                />
-              </div>
-              <button onClick={handleAddManualCard} className="btn-primary w-full">
-                ✓ Hinzufügen
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="card mb-6">
-        <div className="flex gap-3 mb-4">
-          <div>
-            <label className="text-sm text-gray-400 block mb-2">Ansicht</label>
-            <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-              <button
-                onClick={() => setViewMode('columns')}
-                className="px-3 py-2 text-sm whitespace-nowrap transition"
-                style={viewMode === 'columns'
-                  ? { backgroundColor: 'var(--u)', color: '#000', fontWeight: 600 }
-                  : { backgroundColor: 'rgba(255,255,255,0.04)', color: 'var(--text)' }}
-              >
-                ▥ Typen nebeneinander
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className="px-3 py-2 text-sm whitespace-nowrap transition"
-                style={viewMode === 'list'
-                  ? { backgroundColor: 'var(--u)', color: '#000', fontWeight: 600 }
-                  : { backgroundColor: 'rgba(255,255,255,0.04)', color: 'var(--text)' }}
-              >
-                ☰ Liste
-              </button>
-            </div>
-          </div>
-
-          <div className="flex-1">
-            <label className="text-sm text-gray-400 block mb-2">Gruppieren</label>
-            <select
-              value={groupBy}
-              onChange={(e) => { setGroupBy(e.target.value); setFilter('all') }}
-              className="w-full text-white rounded-xl p-2"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
-            >
-              <option value="type">Nach Typ</option>
-              <option value="color">Nach Farbe</option>
-              <option value="cmc">Nach Mana-Wert</option>
-            </select>
-          </div>
-
-          <div className="flex-1">
-            <label className="text-sm text-gray-400 block mb-2">Filter</label>
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="w-full text-white rounded-xl p-2"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
-            >
-              <option value="all">Alle</option>
-              {categories.map(cat => (
-                <option key={cat} value={cat}>{groupLabel(cat)} ({cardsByCategory[cat]?.length || 0})</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex-1">
-            <label className="text-sm text-gray-400 block mb-2">Sortieren</label>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="w-full text-white rounded-xl p-2"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
-            >
-              <option value="price">Nach Preis (Höchste zuerst)</option>
-              <option value="name">Nach Name</option>
-              <option value="cmc">Nach Mana-Wert</option>
-            </select>
-          </div>
-        </div>
+        <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <span className="hidden sm:inline">Sortieren</span>
+          <select aria-label="Sortieren" value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="text-sm px-2 py-1.5" style={selectStyle}>
+            <option value="cmc">nach Manawert</option>
+            <option value="name">nach Name</option>
+            <option value="price">nach Preis</option>
+          </select>
+        </label>
       </div>
 
       {enrichedCards.length === 0 ? (
-        <div className="card mb-6">
-          <p className="text-gray-400 text-center py-8">Noch keine Karten im Deck</p>
-        </div>
-      ) : viewMode === 'columns' ? (
-        <div
-          className="grid gap-4 mb-6"
-          style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', alignItems: 'start' }}
-        >
-          {displayGroups.map(group => (
-            <div
-              key={group.name}
-              className="card"
-              style={groupBy === 'type' && dragOverGroup === group.name ? { borderColor: 'var(--u)', backgroundColor: 'rgba(79,168,245,0.08)' } : undefined}
-              onDragOver={(e) => { if (groupBy === 'type') { e.preventDefault(); setDragOverGroup(group.name) } }}
-              onDragLeave={() => setDragOverGroup(null)}
-              onDrop={(e) => {
-                if (groupBy !== 'type') return
-                e.preventDefault()
-                handleDropOnCategory(Number(e.dataTransfer.getData('text/plain')), group.name)
-              }}
-            >
-              <h2 className="text-sm font-bold mb-3 text-cmd-muted uppercase tracking-wide">
-                {group.label} <span className="font-normal">({group.cards.length})</span>
-              </h2>
-              <div className="space-y-2">
-                {group.cards.map(card => (
-                  <CardRow key={card.index} card={card} compact onUpdateCount={handleUpdateCount} onRemove={handleRemoveCard} cutReason={cutReasonMap.get(card.name)} onZoom={setZoomedCard} draggable={groupBy === 'type'} onDragStart={handleDragStart} onDragEnd={handleDragEnd} />
-                ))}
-                {group.cards.length === 0 && groupBy === 'type' && (
-                  <p className="text-xs text-cmd-muted italic py-2 text-center">Karten hierher ziehen</p>
-                )}
-              </div>
-            </div>
-          ))}
+        <div className="py-16 text-center">
+          <p className="font-semibold mb-1" style={{ color: 'var(--color-text)' }}>Noch keine Karten im Deck</p>
+          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            Füge oben über die Suche Karten hinzu – oder lass dir im Chat unten rechts ein komplettes Deck bauen.
+          </p>
         </div>
       ) : (
-        displayGroups.map(group => (
-          <div
-            key={group.name}
-            className="card mb-6"
-            style={groupBy === 'type' && dragOverGroup === group.name ? { borderColor: 'var(--u)', backgroundColor: 'rgba(79,168,245,0.08)' } : undefined}
-            onDragOver={(e) => { if (groupBy === 'type') { e.preventDefault(); setDragOverGroup(group.name) } }}
-            onDragLeave={() => setDragOverGroup(null)}
-            onDrop={(e) => {
-              if (groupBy !== 'type') return
-              e.preventDefault()
-              handleDropOnCategory(Number(e.dataTransfer.getData('text/plain')), group.name)
-            }}
-          >
-            <h2 className="text-lg font-bold mb-4">{group.label} <span className="text-cmd-muted text-sm font-normal">({group.cards.length})</span></h2>
-            <div className="space-y-2">
-              {group.cards.map(card => (
-                <CardRow key={card.index} card={card} onUpdateCount={handleUpdateCount} onRemove={handleRemoveCard} cutReason={cutReasonMap.get(card.name)} onZoom={setZoomedCard} draggable={groupBy === 'type'} onDragStart={handleDragStart} onDragEnd={handleDragEnd} />
-              ))}
-              {group.cards.length === 0 && groupBy === 'type' && (
-                <p className="text-xs text-cmd-muted italic py-2 text-center">Karten hierher ziehen</p>
+        <DeckList
+          groups={displayGroups}
+          groupBy={groupBy}
+          cutReasonMap={cutReasonMap}
+          onUpdateCount={handleUpdateCount}
+          onRemove={handleRemoveCard}
+          onZoom={setZoomedCard}
+          isDragging={isDragging}
+          dragOverGroup={dragOverGroup}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragOverGroup={setDragOverGroup}
+          onDropOnGroup={handleDropOnCategory}
+        />
+      )}
+    </>
+  )
+
+  const actionButtons = [
+    { label: 'Zurück', onClick: goBack, className: 'btn-secondary' },
+    { label: 'Live Tester', mobileLabel: 'Testen', onClick: () => setShowPlaytest(true), disabled: enrichedCards.length === 0, className: 'btn-secondary' },
+    ...(deckName ? [] : [{ label: 'Speichern & analysieren', mobileLabel: 'Analysieren', onClick: handleSaveAndAnalyze, disabled: cards.length === 0, className: 'btn-secondary' }]),
+    { label: deckName ? 'Fertig' : 'Speichern', onClick: handleSave, className: 'btn-primary' }
+  ]
+
+  return (
+    <div className={`max-w-7xl mx-auto ${isDesktop ? '' : 'pb-24'}`}>
+      {/* Deck bar: stays in view while scrolling — the numbers that matter and every action. */}
+      <header ref={deckBarRef} className="sticky z-30 pt-2 pb-3 mb-5" style={{ top: 'var(--nav-h)', background: 'var(--color-bg)', borderBottom: '1px solid var(--color-border)' }}>
+        <div className="flex items-center gap-3 lg:gap-6">
+          {commanderCard?.image && (
+            <button type="button" onClick={() => setZoomedCard(commanderCard)} className="flex-shrink-0" aria-label={`${commanderCard.name} vergrößern`}>
+              <img src={commanderCard.image} alt="" className="w-9 md:w-10 rounded-sm block" />
+            </button>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>
+              {deckName ? `ManaBox-Deck · ${deckName}` : draftId ? 'Entwurf' : 'Neuer Entwurf'}
+              {strategyNote && (
+                <button
+                  type="button"
+                  onClick={() => setShowStrategy(open => !open)}
+                  aria-expanded={showStrategy}
+                  className="ml-2 underline underline-offset-2"
+                  style={{ color: 'var(--color-text-secondary)' }}
+                >
+                  Strategie {showStrategy ? 'ausblenden' : 'anzeigen'}
+                </button>
               )}
             </div>
+            <h1 className="m-0 font-semibold truncate" style={{ fontSize: isDesktop ? '1.25rem' : '1.05rem', letterSpacing: 0, lineHeight: 1.25 }}>
+              {commanderCard?.name || commanderName || 'Ohne Commander'}
+            </h1>
           </div>
-        ))
+          <dl className="flex items-baseline gap-4 lg:gap-6 flex-shrink-0">
+            <div title={countHint}>
+              <dt className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>Karten</dt>
+              <dd className="m-0 font-semibold tabular-nums" style={{ color: countTone }}>{deckSize}/{DECK_TARGET}</dd>
+            </div>
+            <div className="hidden sm:block">
+              <dt className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>Wert</dt>
+              <dd className="m-0 font-semibold tabular-nums" style={{ color: 'var(--color-text)' }}>€{deckTotal.toFixed(0)}</dd>
+            </div>
+            {shoppingCount > 0 && (
+              <div title={`${shoppingCount} ${shoppingCount === 1 ? 'Karte fehlt' : 'Karten fehlen'} in deiner Sammlung`}>
+                <dt className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>Zukauf</dt>
+                <dd className="m-0 font-semibold tabular-nums" style={{ color: 'var(--r)' }}>€{shoppingTotal.toFixed(0)}</dd>
+              </div>
+            )}
+          </dl>
+          {isDesktop && (
+            <div className="flex gap-2 flex-shrink-0">
+              {actionButtons.map(action => (
+                <button key={action.label} onClick={action.onClick} disabled={action.disabled} className={`${action.className} text-sm px-4 py-2`}>
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {deckName && (
+          <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
+            Änderungen an ManaBox-Decks werden nicht gespeichert – diese Ansicht ist zum Ausprobieren.
+          </p>
+        )}
+        {showStrategy && strategyNote && (
+          <div className="mt-3 p-3 max-h-[40vh] overflow-y-auto" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)' }}>
+            <StrategyPanel note={strategyNote} />
+          </div>
+        )}
+        {!isDesktop && (
+          <div className="mt-3">
+            <EditorTabs tabs={[{ id: 'deck', label: 'Deck', count: deckSize }, ...panels]} active={mobileTab} onChange={setMobileTab} />
+          </div>
+        )}
+      </header>
+
+      {isDesktop ? (
+        <div className="grid grid-cols-[minmax(0,1fr)_340px] gap-8 items-start">
+          <div className="min-w-0">{deckArea}</div>
+          <aside
+            className="sticky overflow-y-auto p-4"
+            style={{
+              top: `calc(var(--nav-h) + ${deckBarHeight + 12}px)`,
+              maxHeight: `calc(100vh - var(--nav-h) - ${deckBarHeight + 28}px)`,
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-md)'
+            }}
+          >
+            <EditorTabs tabs={panels} active={activePanel} onChange={setPanel} />
+            <div className="pt-4">{renderPanel(activePanel)}</div>
+          </aside>
+        </div>
+      ) : (
+        mobileTab === 'deck' ? deckArea : <div>{renderPanel(mobileTab)}</div>
       )}
 
-      <div className="flex gap-3">
-        <button
-          onClick={() => (onBack ? onBack() : navigate(deckName ? '/collection' : '/analyze'))}
-          className="btn-secondary flex-1"
+      {!isDesktop && (
+        <nav
+          className="fixed bottom-0 inset-x-0 z-40 grid gap-2 px-3 py-3"
+          style={{ gridTemplateColumns: `repeat(${actionButtons.length}, minmax(0, 1fr))`, background: 'var(--color-bg)', borderTop: '1px solid var(--color-border)' }}
+          aria-label="Deck-Aktionen"
         >
-          ← Zurück
-        </button>
-        <button
-          onClick={() => setShowPlaytest(true)}
-          disabled={enrichedCards.length === 0}
-          className="btn-secondary flex-1"
-        >
-          🎲 Live Tester
-        </button>
-        {!deckName && (
-          <button onClick={handleSaveAndAnalyze} disabled={cards.length === 0} className="btn-secondary flex-1">
-            📊 Speichern & analysieren
-          </button>
-        )}
-        <button onClick={handleSave} className="btn-primary flex-1">
-          {deckName ? '✓ Fertig' : '💾 Als Entwurf speichern'}
-        </button>
-      </div>
+          {actionButtons.map(action => (
+            <button key={action.label} onClick={action.onClick} disabled={action.disabled} className={`${action.className} text-xs px-2 py-2.5`}>
+              {action.mobileLabel || action.label}
+            </button>
+          ))}
+        </nav>
+      )}
 
       {zoomedCard && (
         <CardZoomModal card={zoomedCard} onClose={() => setZoomedCard(null)} />
@@ -968,7 +708,36 @@ export default function EditDeckPage(embeddedState) {
         onAction={handleChatAction}
         collectionSampleNames={availableCardNames}
         onReply={setStrategyNote}
+        floatingBottom={isDesktop ? 24 : 84}
       />
+    </div>
+  )
+}
+
+function EditorTabs({ tabs, active, onChange }) {
+  return (
+    <div role="tablist" className="flex overflow-x-auto" style={{ borderBottom: '1px solid var(--color-border)', scrollbarWidth: 'none' }}>
+      {tabs.map(tab => {
+        const selected = tab.id === active
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            onClick={() => onChange(tab.id)}
+            className="flex-1 px-2 py-2 text-[13px] whitespace-nowrap -mb-px"
+            style={{
+              color: selected ? 'var(--color-text)' : 'var(--color-text-muted)',
+              fontWeight: selected ? 600 : 400,
+              borderBottom: `2px solid ${selected ? 'var(--color-accent)' : 'transparent'}`
+            }}
+          >
+            {tab.label}
+            {tab.count > 0 && <span className="ml-1 text-[11px] tabular-nums" style={{ color: 'var(--color-text-muted)' }}>{tab.count}</span>}
+          </button>
+        )
+      })}
     </div>
   )
 }

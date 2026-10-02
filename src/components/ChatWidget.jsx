@@ -4,7 +4,8 @@ import { aiFetch, isClaudeActive, getClaudeModelLabel } from '../lib/aiMode'
 
 const HISTORY_LIMIT = 10
 
-export default function ChatWidget({ commander, cards, onAction, contextNote, embedded = false, collectionSampleNames, bulkBuild = false, onReply, autoSendMessage }) {
+// `floatingBottom` (px) lifts the floating button/panel above a page's own bottom bar.
+export default function ChatWidget({ commander, cards, onAction, contextNote, embedded = false, collectionSampleNames, bulkBuild = false, onReply, autoSendMessage, floatingBottom = 24 }) {
   const [open, setOpen] = useState(embedded)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -77,8 +78,8 @@ export default function ChatWidget({ commander, cards, onAction, contextNote, em
     return (
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-[90] w-14 h-14 rounded-full flex items-center justify-center text-2xl shadow-lg transition hover:-translate-y-1"
-        style={{ backgroundColor: 'var(--u)', boxShadow: '0 12px 28px -8px rgba(79,168,245,0.6)' }}
+        className="fixed right-6 z-[90] w-14 h-14 rounded-full flex items-center justify-center text-2xl shadow-lg transition hover:-translate-y-1"
+        style={{ bottom: floatingBottom, backgroundColor: 'var(--u)', boxShadow: '0 12px 28px -8px rgba(79,168,245,0.6)' }}
         title="Schnellhilfe öffnen"
       >
         💬
@@ -88,7 +89,7 @@ export default function ChatWidget({ commander, cards, onAction, contextNote, em
 
   return (
     <div
-      className={embedded ? 'flex flex-col rounded-2xl overflow-hidden' : 'fixed bottom-6 right-6 z-[90] flex flex-col rounded-2xl overflow-hidden'}
+      className={embedded ? 'flex flex-col rounded-2xl overflow-hidden' : 'fixed right-6 z-[90] flex flex-col rounded-2xl overflow-hidden'}
       style={embedded
         ? {
           width: '100%',
@@ -97,6 +98,7 @@ export default function ChatWidget({ commander, cards, onAction, contextNote, em
           border: '1px solid var(--border)'
         }
         : {
+          bottom: floatingBottom,
           width: 360,
           maxWidth: '90vw',
           height: 500,

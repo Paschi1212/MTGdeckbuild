@@ -266,7 +266,9 @@ async function getCardsByIds(scryfallIds) {
             usd: parseFloat(card.prices?.usd || 0),
             colors: (card.colors ?? card.card_faces?.[0]?.colors ?? []).join(' '),
             typeLine: card.type_line,
-            cmc: card.cmc ?? 0
+            cmc: card.cmc ?? 0,
+            // Shown as mana pips in the deck editor; a DFC/split card lists each face's cost.
+            manaCost: card.mana_cost ?? (card.card_faces || []).map(f => f.mana_cost).filter(Boolean).join(' // ')
           }
           result[card.id] = entry
           cache.set(`id:${card.id}`, { data: entry, timestamp: Date.now() })
