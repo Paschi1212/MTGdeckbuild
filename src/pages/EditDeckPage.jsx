@@ -9,7 +9,7 @@ import { useMediaQuery } from '../hooks/useMediaQuery'
 import { CardZoomModal } from '../components/CardTile'
 import ChatWidget from '../components/ChatWidget'
 import PlaytestModal from '../components/PlaytestModal'
-import DeckList from '../components/editor/DeckList'
+import DeckList, { DECK_VIEWS } from '../components/editor/DeckList'
 import CardSearch from '../components/editor/CardSearch'
 import { SuggestionsPanel, ShoppingPanel, StatsPanel, StrategyPanel } from '../components/editor/EditorPanels'
 
@@ -102,6 +102,14 @@ export default function EditDeckPage(embeddedState) {
   const [panel, setPanel] = useState(null)
   const [mobileTab, setMobileTab] = useState('deck')
   const [showStrategy, setShowStrategy] = useState(false)
+  // Liste / Bilder / Tabelle — remembered per device (a convenience, not deck data).
+  const [deckView, setDeckView] = useState(() => {
+    try { return localStorage.getItem('mtg_editor_view') || 'list' } catch { return 'list' }
+  })
+  const chooseDeckView = (view) => {
+    setDeckView(view)
+    try { localStorage.setItem('mtg_editor_view', view) } catch { /* storage blocked: keep it for this visit */ }
+  }
   // The side panel sticks just below the deck bar, whose height changes (strategy shown,
   // notice for ManaBox decks) — measured instead of guessed.
   const deckBarRef = useRef(null)
@@ -191,6 +199,7 @@ export default function EditDeckPage(embeddedState) {
         type: card.categoryOverride || (card.isLand === true ? 'Land' : classifyType(byId?.typeLine ?? byName?.typeLine)),
         cmc: byId?.cmc ?? byName?.cmc ?? 0,
         manaCost: byId?.manaCost ?? byName?.manaCost ?? '',
+        typeLine: byId?.typeLine ?? byName?.typeLine ?? '',
         // By-name lookups (every draft card) only carry color identity — still the right
         // signal for the color chart, which showed whole Temur decks as "colorless" before.
         colors: byId?.colors ?? byName?.colorIdentity ?? '',
@@ -532,6 +541,22 @@ export default function EditDeckPage(embeddedState) {
           onAddOwned={handleAddFromSearch}
           onAddByName={handleAddByName}
         />
+        <div role="group" aria-label="Ansicht" className="flex" style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+          {DECK_VIEWS.map(view => (
+            <button
+              key={view.id}
+              type="button"
+              onClick={() => chooseDeckView(view.id)}
+              aria-pressed={deckView === view.id}
+              className="text-sm px-3 py-1.5"
+              style={deckView === view.id
+                ? { background: 'var(--color-accent)', color: 'var(--color-bg)', fontWeight: 600 }
+                : { background: 'var(--color-surface)', color: 'var(--color-text)' }}
+            >
+              {view.label}
+            </button>
+          ))}
+        </div>
         <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>
           <span className="hidden sm:inline">Gruppieren</span>
           <select aria-label="Gruppieren" value={groupBy} onChange={(e) => setGroupBy(e.target.value)} className="text-sm px-2 py-1.5" style={selectStyle}>
@@ -559,6 +584,7 @@ export default function EditDeckPage(embeddedState) {
         </div>
       ) : (
         <DeckList
+          view={deckView}
           groups={displayGroups}
           groupBy={groupBy}
           cutReasonMap={cutReasonMap}

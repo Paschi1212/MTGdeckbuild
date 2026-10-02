@@ -51,7 +51,12 @@ farbiges Element in Listen; alles andere bleibt ruhig.
 - **Desktop:** links die Deckliste in fließenden Spalten (`columns`), rechts eine Seitenleiste mit
   Reitern *Vorschläge* (Streichen/Ergänzen mit einem Klick), *Einkauf*, *Statistik*.
 - **Handy:** dieselben Reiter, „Deck“ zuerst; Aktionen in einer festen Leiste unten.
-- Bedienelemente einer Zeile (−, +, ✕) erscheinen bei Hover/Fokus, auf Touch-Geräten immer.
+- Bedienelemente einer Zeile (−, +, ✕) erscheinen bei Hover/Fokus über dem Zeilenende (sie nehmen dem
+  Namen keinen Platz weg), auf Touch-Geräten stehen sie fest in der Zeile.
+- **Kartennamen werden nie abgeschnitten** – sie brechen um.
+- **Drei Ansichten** (Umschalter in der Werkzeugleiste, pro Gerät gemerkt): *Liste* (dichte
+  Deckliste, Standard), *Bilder* (Kartenbilder mit Namen und Preis darunter, Streichkandidaten rot
+  umrandet), *Tabelle* (Anzahl, Name, vollständiger Kartentyp, Kosten, Preis, Status).
 
 ## Bewegung
 
