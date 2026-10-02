@@ -18,6 +18,7 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import dotenv from 'dotenv'
+import { readBrain, appendDeckLog, vaultPath, vaultAvailable } from './obsidian-brain.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -130,7 +131,35 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/health') {
     if (!status.ready && !status.checking && Date.now() - lastSelfTestAt > SELF_TEST_RETRY_MS) selfTest()
-    return send(res, 200, { ok: true, provider: 'claude', model: MODEL, models: MODELS, ...status, activeRequests }, origin)
+    return send(res, 200, { ok: true, provider: 'claude', model: MODEL, models: MODELS, ...status, activeRequests, brain: await vaultAvailable() }, origin)
+  }
+
+  // ── Obsidian brain (scripts/obsidian-brain.mjs) ──────────────────────────────────────
+  if (req.method === 'GET' && url.pathname === '/brain') {
+    try {
+      const brain = await readBrain({ deck: url.searchParams.get('deck') || '', commander: url.searchParams.get('commander') || '' })
+      return send(res, 200, brain, origin)
+    } catch (error) {
+      return send(res, 500, { error: 'Obsidian lesen fehlgeschlagen', message: error.message }, origin)
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/brain/log') {
+    if (!String(req.headers['content-type'] || '').includes('application/json')) {
+      return send(res, 415, { error: 'Content-Type application/json erforderlich' }, origin)
+    }
+    try {
+      const { deck, commander, title, lines } = JSON.parse(await readBody(req))
+      const text = (value, max) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, max)
+      const entryLines = (Array.isArray(lines) ? lines : []).map(line => text(line, 600)).filter(Boolean).slice(0, 40)
+      if (!entryLines.length || (!deck && !commander)) return send(res, 400, { error: 'deck/commander und lines erforderlich' }, origin)
+      const file = await appendDeckLog({ deck: text(deck, 120), commander: text(commander, 120), title: text(title, 120) || 'Eintrag', lines: entryLines })
+      console.log(`[${time()}] 🧠 Logbuch → ${file}`)
+      return send(res, 200, { ok: true, file }, origin)
+    } catch (error) {
+      console.error(`[${time()}] 🧠 Logbuch fehlgeschlagen:`, error.message)
+      return send(res, 500, { error: 'Obsidian schreiben fehlgeschlagen', message: error.message }, origin)
+    }
   }
 
   const match = url.pathname.match(/^\/\.netlify\/functions\/([a-z-]+)$/)
@@ -203,5 +232,6 @@ server.on('error', error => {
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`🧠 Claude-Brücke läuft auf http://127.0.0.1:${PORT} — prüfe Claude-Login …`)
   console.log('   (Fenster offen lassen; beenden mit Strg+C)')
+  vaultAvailable().then(ok => console.log(ok ? `🧠 Obsidian-Gehirn: ${vaultPath()}` : `⚠️ Obsidian-Tresor nicht gefunden (${vaultPath()}) – Analysen laufen ohne Gehirn.`))
   selfTest()
 })

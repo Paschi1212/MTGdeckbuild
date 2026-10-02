@@ -318,7 +318,20 @@ function parseStrategyOverride(text) {
 // keptCards: cards the user added on an earlier analysis' recommendation (still in the deck).
 // Re-suggesting them as cuts one run later — observed live — makes the tool contradict itself;
 // they're a deliberate choice now and never cut candidates (prompt AND hard filter below).
-async function auditDeckStrategy({ commander, deckCards, edhecData, strategyOverride, powerLevel, keptCards = [] }) {
+// coreCards / brainNotes: the player's own deck memory from the Obsidian brain (core cards
+// with reasons, deck strategy & notes, global preferences) — core cards are protected like
+// commander synergies, the notes go into the prompt as the player's authoritative input.
+function brainPromptContext(brainNotes, coreCards = []) {
+  const core = coreCards.length
+    ? `\nKERNKARTEN DES SPIELERS (aus seinem Deck-Gedächtnis — NIE streichen, im Spielplan als tragende Teile behandeln):\n${coreCards.map(c => `- ${c.name}${c.reason ? `: ${c.reason}` : ''}`).join('\n')}\n`
+    : ''
+  const notes = brainNotes
+    ? `\nNOTIZEN UND VORLIEBEN DES SPIELERS (aus seinem Obsidian-Gedächtnis, vom Spieler selbst gepflegt — maßgeblich, gehen allgemeinen Faustregeln vor):\n${brainNotes}\n`
+    : ''
+  return core + notes
+}
+
+async function auditDeckStrategy({ commander, deckCards, edhecData, strategyOverride, powerLevel, keptCards = [], coreCards = [], brainNotes = '' }) {
   const cardInfo = await getBulkPrices(deckCards.map(c => c.name))
   // A short oracle-text snippet, not just [Typ, CMC] — observed live: without it, the model
   // judged less-famous cards from memory alone and got some outright wrong (e.g. called
@@ -384,7 +397,7 @@ COMMANDER: ${commander}${commanderText ? `\nEXAKTER KARTENTEXT DES COMMANDERS (m
 
 AKTUELLE DECKLISTE (${deckCards.length} Karten, [Typ, Manakosten] und Kartentext-Auszug wo bekannt — verlass dich auf DIESEN Text, nicht auf dein eigenes Gedächtnis der Karte, falls sie dir unbekannt vorkommt):
 ${deckListText}
-${synergyContext}${keptContext}${xSpellContext}${edhecContext}${edhecCutSignal}${strategyContext}${powerLevelContext}
+${synergyContext}${brainPromptContext(brainNotes, coreCards)}${keptContext}${xSpellContext}${edhecContext}${edhecCutSignal}${strategyContext}${powerLevelContext}
 AUFGABE:
 Bewerte dieses BEREITS GEBAUTE Deck. Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
 - "strategy": ${strategyOverride ? 'übernimm die vom Nutzer bestätigte Strategie oben unverändert in winCondition/gamePlan/weaknesses.' : `lies aus der Deckliste (Kartentypen, Manawerte, Commander-Fähigkeiten) das TATSÄCHLICHE Spielplan des Decks heraus, BEVOR du irgendeine Karte bewertest. WICHTIG: "winCondition" und "gamePlan" müssen sich um die FÄHIGKEIT VON ${commander} selbst drehen, nicht um eine andere (auch wenn bekanntere/stärkere) Karte im Deck — eine starke Synergiekarte ist ein Baustein DER Commander-Strategie, niemals deren Ersatz. — "winCondition" (wie gewinnt dieses Deck konkret, ausgehend von ${commander}s eigener Fähigkeit), "gamePlan" (Früh-/Mittel-/Spätspiel-Ablauf, Kernrollen: Ramp, Kartenvorteil, Removal/Interaktion, Payoffs — mit welchen Karten sie abgedeckt sind), "weaknesses" (welche dieser Rollen fehlen oder sind unterbesetzt — UND GLEICHBERECHTIGT DAZU: falls die Strategie auf einer bestimmten Kartenkategorie/Synergie basiert, die der Commander direkt belohnt oder verstärkt (z.B. X-Spells, Token-Erzeugung, +1/+1-Counter, Artefakte, ein Tribal-Typ), zähle die Karten dieser Kategorie im Deck AUSDRÜCKLICH durch und benenne "zu wenig [Kategorie]-Karten" explizit als eigene Schwäche, wenn die Dichte für eine konsequente Strategie zu gering ist — das ist für ein Synergie-Deck oft die wichtigste Schwäche überhaupt, nicht nur eine generische Rolle unter vielen). Das ist die Grundlage für ALLES danach.`}
@@ -464,7 +477,7 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
     }
     // Hard guard, not just the prompt hint: a card with a code-verified interaction with the
     // commander's own ability is never suggested as a cut.
-    const protectedNames = new Set([...commanderSynergy.keys(), ...keptCards].map(normalizeCardName))
+    const protectedNames = new Set([...commanderSynergy.keys(), ...keptCards, ...coreCards.map(c => c.name)].map(normalizeCardName))
     const validCardsToCut = inDeckCardsToCut.filter(c => !protectedNames.has(normalizeCardName(c.name)))
     if (validCardsToCut.length !== inDeckCardsToCut.length) {
       console.warn('[Gemini] auditDeckStrategy: kept commander-synergy / previously added cards out of cardsToCut:',
@@ -499,7 +512,7 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
  */
 // removedCards: cards the user cut on an earlier analysis' recommendation — not suggested
 // back as adds (prompt AND hard filter), the mirror image of keptCards above.
-async function auditDeckSuggestions({ commander, deckCards, collectionSampleNames, budget, edhecData, strategy, removedCards = [] }) {
+async function auditDeckSuggestions({ commander, deckCards, collectionSampleNames, budget, edhecData, strategy, removedCards = [], brainNotes = '' }) {
   const deckCardNames = new Set(deckCards.map(c => c.name))
   const deckListText = [...deckCardNames].join(', ')
 
@@ -536,7 +549,7 @@ async function auditDeckSuggestions({ commander, deckCards, collectionSampleName
 COMMANDER: ${commander}${commanderText ? `\nEXAKTER KARTENTEXT DES COMMANDERS (maßgeblich — schlage Karten vor, die mit GENAU dieser Fähigkeit interagieren):\n${commanderText}` : ''}
 
 AKTUELLE DECKLISTE (${deckCards.length} Karten): ${deckListText}
-${strategyContext}${removedContext}${categoryContext}${collectionContext}${edhecContext}${budgetContext}
+${strategyContext}${brainPromptContext(brainNotes)}${removedContext}${categoryContext}${collectionContext}${edhecContext}${budgetContext}
 AUFGABE:
 Schlage auf Basis der oben festgelegten Strategie und ihrer "weaknesses" Karten vor. Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
 - "cardsToAdd": ALLE Karten AUSSCHLIESSLICH aus der Sammlungs-Liste oben ("WEITERE KARTEN IN DER SAMMLUNG..."), die eine der in "weaknesses" identifizierten Lücken schließen würden — der Nutzer besitzt sie bereits, nichts davon muss gekauft werden. KEINE feste Obergrenze — geh die Sammlungs-Liste wirklich durch und nenne JEDE Karte, die strategisch passt, nicht nur ein paar Beispiele. KRITISCH: jeder "name" muss WORTWÖRTLICH in dieser Sammlungs-Liste stehen; wenn die Liste leer ist oder nichts davon wirklich passt, gib ein leeres Array zurück statt eine Karte zu erfinden oder eine zu nennen, die nicht dort steht.

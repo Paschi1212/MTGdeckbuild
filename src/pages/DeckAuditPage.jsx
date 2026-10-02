@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import CardTile from '../components/CardTile'
 import { readApiError } from '../lib/apiError'
 import ChatWidget from '../components/ChatWidget'
@@ -7,6 +7,8 @@ import { getSecondaryAvailability } from '../lib/secondaryCollections'
 import { aiFetch, isClaudeActive, getClaudeModelLabel, formatModelId } from '../lib/aiMode'
 import { loadCollection, buildLocationIndex, locationsFromIndex, formatCardLocations } from '../lib/collection'
 import { getDeckMemory, updateDeckMemory, forgetDeckMemoryEntry } from '../lib/deckMemory'
+import { getBrainMirror, refreshBrain, brainRequestFields, logToBrain } from '../lib/brain'
+import { useAiMode } from '../hooks/useAiMode'
 
 // Embedded as the "Analyse" tab of a deck's consolidated detail page — no longer a standalone
 // route. `cachedAudit`/`onAuditComplete` let the parent remember the last result across tab
@@ -31,6 +33,16 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
   // doesn't flip-flop on them. Updated from the previous result each time a new one starts.
   const [deckMemory, setDeckMemory] = useState(() => getDeckMemory(storageKey))
   const [showMemory, setShowMemory] = useState(false)
+  // Last known state of this deck's Obsidian note (core cards, notes) — see lib/brain.js.
+  const [brainMirror, setBrainMirror] = useState(() => getBrainMirror(storageKey))
+  // Re-read the note when the page opens (and once the bridge turns up), so edits made in
+  // Obsidian show here before the next analysis starts.
+  const bridgeReachable = useAiMode().bridge.reachable
+  useEffect(() => {
+    let cancelled = false
+    refreshBrain(storageKey, { deck: deckName, commander }).then(mirror => { if (!cancelled) setBrainMirror(mirror) })
+    return () => { cancelled = true }
+  }, [storageKey, deckName, commander, bridgeReachable])
 
   const formatStrategy = (strategy) => strategy
     ? `Win Condition: ${strategy.winCondition}\n\nSpielplan: ${strategy.gamePlan}\n\nSchwächen: ${strategy.weaknesses}`
@@ -49,11 +61,23 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
 
       const response = await aiFetch('/.netlify/functions/audit-deck', {
         method: 'POST',
-        body: JSON.stringify({ commander, deckName, deckCards, collectionSampleNames, strategy, phase: 'suggestions', removedCards: getDeckMemory(storageKey).removed })
+        body: JSON.stringify({ commander, deckName, deckCards, collectionSampleNames, strategy, phase: 'suggestions', removedCards: getDeckMemory(storageKey).removed, brainNotes: brainRequestFields(getBrainMirror(storageKey)).brainNotes })
       })
 
       if (response.ok) {
         const data = await response.json()
+        const where = (name) => formatCardLocations(locationsFromIndex(locationIndex, name))
+        const fromCollection = (data.cardsToAdd || []).map(c => (where(c.name) ? `${c.name} (📍 ${where(c.name)})` : c.name))
+        const toBuy = (data.cardsToBuy || []).map(c => (c.eur != null ? `${c.name} (€${Number(c.eur).toFixed(2)})` : c.estimatedCost ? `${c.name} (${c.estimatedCost})` : c.name))
+        logToBrain({
+          deck: deckName,
+          commander,
+          title: 'Vorschläge',
+          lines: [
+            fromCollection.length ? `Aus der Sammlung: ${fromCollection.join(', ')}` : null,
+            toBuy.length ? `Zukauf: ${toBuy.join(', ')}` : null
+          ]
+        })
         setAudit(prev => {
           const merged = { ...prev, cardsToAdd: data.cardsToAdd, cardsToBuy: data.cardsToBuy }
           onAuditComplete?.(merged)
@@ -80,14 +104,21 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
       setSuggestionsError(null)
 
       // Fold the previous result into the deck memory before it gets replaced.
+      const previousMemory = getDeckMemory(storageKey)
       const memory = updateDeckMemory(storageKey, audit, deckCards)
       setDeckMemory(memory)
+      const newlyKept = memory.kept.filter(n => !previousMemory.kept.includes(n))
+      const newlyRemoved = memory.removed.filter(n => !previousMemory.removed.includes(n))
+
+      // The player's own notes and core cards from Obsidian (or their last mirrored state).
+      const brain = await refreshBrain(storageKey, { deck: deckName, commander })
+      setBrainMirror(brain)
 
       // Remembered with the result, so a saved analysis still says which AI wrote it.
       const engine = isClaudeActive() ? 'claude' : 'gemini'
       const response = await aiFetch('/.netlify/functions/audit-deck', {
         method: 'POST',
-        body: JSON.stringify({ commander, deckName, deckCards, strategyOverride, powerLevel, phase: 'strategy', keptCards: memory.kept })
+        body: JSON.stringify({ commander, deckName, deckCards, strategyOverride, powerLevel, phase: 'strategy', keptCards: memory.kept, ...brainRequestFields(brain) })
       })
 
       if (response.ok) {
@@ -95,6 +126,19 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
         // The bridge reports the exact model that answered (e.g. "claude-opus-5-5").
         const engineModel = engine === 'claude' ? response.headers.get('X-AI-Model') : null
         const partial = { ...data, cardsToAdd: [], cardsToBuy: [], engine, engineModel }
+        logToBrain({
+          deck: deckName,
+          commander,
+          title: `Analyse (${engine === 'claude' ? `Claude ${formatModelId(engineModel) || getClaudeModelLabel()}` : 'Gemini'})`,
+          lines: [
+            (newlyKept.length || newlyRemoved.length)
+              ? `Seit der letzten Analyse übernommen – rein: ${newlyKept.join(', ') || '–'} · raus: ${newlyRemoved.join(', ') || '–'}`
+              : null,
+            data.strategy?.winCondition ? `Siegbedingung: ${data.strategy.winCondition.slice(0, 300)}` : null,
+            data.strategy?.weaknesses ? `Schwächen: ${data.strategy.weaknesses.slice(0, 300)}` : null,
+            `Streichen vorgeschlagen: ${(data.cardsToCut || []).map(c => `${c.name} (${String(c.reason || '').slice(0, 120)})`).join('; ') || 'nichts'}`
+          ]
+        })
         setAudit(partial)
         onAuditComplete?.(partial)
         // A fresh AI read (no override) is persisted too, not just an explicit manual
@@ -167,6 +211,21 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
 
   return (
     <div>
+      {brainMirror && (
+        <div className="card mb-4 py-3">
+          <p className="text-sm leading-relaxed text-fg-2">
+            <strong className="text-fg">🧠 Obsidian:</strong>{' '}
+            {brainMirror.coreCards?.length
+              ? <>{brainMirror.coreCards.length} Kernkarte{brainMirror.coreCards.length === 1 ? '' : 'n'} geschützt ({brainMirror.coreCards.map(c => c.name).join(', ')})</>
+              : <>keine Kernkarten <span className="text-fg-muted">(in Obsidian unter Decks › {deckName || commander} eintragen)</span></>}
+            {(brainMirror.strategy || brainMirror.notes) && ' · Strategie/Notizen'}
+            {brainMirror.preferences && ' · Vorlieben'}
+            {' fließen in die Analyse ein'}
+            <span className="text-fg-muted"> · Stand {new Date(brainMirror.fetchedAt).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{brainMirror.file ? ` · ${brainMirror.file}` : ''}</span>
+          </p>
+        </div>
+      )}
+
       {(deckMemory.kept.length > 0 || deckMemory.removed.length > 0) && (
         <div className="card mb-6 py-4">
           <div className="flex items-start justify-between gap-4">

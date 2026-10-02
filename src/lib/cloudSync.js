@@ -9,7 +9,9 @@ const SYNCED_KEYS = [
   'mtg_draft_decks',
   'mtg_deck_preferences',
   'mtg_deck_audits',
-  'mtg_commander_overrides'
+  'mtg_commander_overrides',
+  // Obsidian-brain logbook entries written while no bridge was reachable (e.g. on the phone)
+  'mtg_brain_outbox'
 ]
 
 /**

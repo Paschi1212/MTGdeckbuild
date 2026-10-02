@@ -34,6 +34,14 @@ exports.handler = async (event) => {
     const { commander, deckName, deckCards, collectionSampleNames, budget, strategyOverride, powerLevel, strategy, phase, keptCards, removedCards } = JSON.parse(event.body)
     // Deck memory from earlier analyses (see auditDeckStrategy/auditDeckSuggestions).
     const asNames = (list) => (Array.isArray(list) ? list.filter(n => typeof n === 'string' && n.trim()).slice(0, 200) : [])
+    // From the Obsidian brain (via the website): [{ name, reason }] and free text.
+    const { coreCards, brainNotes } = JSON.parse(event.body)
+    const brainCore = (Array.isArray(coreCards) ? coreCards : [])
+      .map(c => (typeof c === 'string' ? { name: c } : c))
+      .filter(c => c && typeof c.name === 'string' && c.name.trim())
+      .slice(0, 60)
+      .map(c => ({ name: c.name.trim().slice(0, 120), reason: String(c.reason || '').slice(0, 300) }))
+    const brainText = typeof brainNotes === 'string' ? brainNotes.slice(0, 6000) : ''
 
     if (!commander || !Array.isArray(deckCards) || deckCards.length === 0) {
       return {
@@ -52,7 +60,7 @@ exports.handler = async (event) => {
 
       console.log(`[API] Auditing deck "${deckName}" for ${commander} (phase: suggestions)`)
       const edhecData = await fetchEdhecData(commander)
-      const result = await auditDeckSuggestions({ commander, deckCards, collectionSampleNames, budget, edhecData, strategy, removedCards: asNames(removedCards) })
+      const result = await auditDeckSuggestions({ commander, deckCards, collectionSampleNames, budget, edhecData, strategy, removedCards: asNames(removedCards), brainNotes: brainText })
 
       return {
         statusCode: 200,
@@ -71,7 +79,7 @@ exports.handler = async (event) => {
     // Default / explicit phase "strategy"
     console.log(`[API] Auditing deck "${deckName}" for ${commander} (phase: strategy)`)
     const edhecData = await fetchEdhecData(commander)
-    const result = await auditDeckStrategy({ commander, deckCards, edhecData, strategyOverride, powerLevel, keptCards: asNames(keptCards) })
+    const result = await auditDeckStrategy({ commander, deckCards, edhecData, strategyOverride, powerLevel, keptCards: asNames(keptCards), coreCards: brainCore, brainNotes: brainText })
 
     return {
       statusCode: 200,

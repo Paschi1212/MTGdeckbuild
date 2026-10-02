@@ -18,7 +18,8 @@ const SYNCED_KEYS = [
   'mtg_draft_decks',
   'mtg_deck_preferences',
   'mtg_deck_audits',
-  'mtg_commander_overrides'
+  'mtg_commander_overrides',
+  'mtg_brain_outbox'
 ]
 
 export const handler = async (event) => {

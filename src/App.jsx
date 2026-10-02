@@ -16,6 +16,7 @@ import ClaudeModePage from './pages/ClaudeModePage'
 import DraftAnalysisPage from './pages/DraftAnalysisPage'
 import { pullFromCloud, scheduleCloudPush } from './lib/cloudSync'
 import { checkBridge } from './lib/aiMode'
+import { flushBrainOutbox } from './lib/brain'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -26,9 +27,11 @@ function App() {
     checkAuth()
     // Claude-Modus: look for the local bridge — a no-op unless switched on for this device.
     // Re-checked on focus, so starting/stopping the bridge shows up without a reload.
-    checkBridge()
-    window.addEventListener('focus', checkBridge)
-    return () => window.removeEventListener('focus', checkBridge)
+    // …and hand any logbook entries queued elsewhere (e.g. on the phone) to Obsidian.
+    const checkBridgeAndFlush = () => checkBridge().then(flushBrainOutbox)
+    checkBridgeAndFlush()
+    window.addEventListener('focus', checkBridgeAndFlush)
+    return () => window.removeEventListener('focus', checkBridgeAndFlush)
   }, [])
 
   const checkAuth = async () => {
@@ -45,6 +48,8 @@ function App() {
         // (server has nothing yet) this is a no-op and this device's existing local data
         // survives untouched.
         await pullFromCloud()
+        // The pull may have brought logbook entries queued on another device.
+        flushBrainOutbox()
         // Then push right back — on a brand new device this just re-sends what was pulled
         // (harmless), but on the FIRST device to ever log in after this feature shipped, this
         // is what actually seeds the server from its local data, instead of leaving the

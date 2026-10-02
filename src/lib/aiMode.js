@@ -7,7 +7,7 @@
 // /claude-modus page — a localhost request from a public site makes Chrome ask for a
 // local-network permission, which friends using the site should never see.
 
-const BRIDGE_URL = 'http://127.0.0.1:8787'
+export const BRIDGE_URL = 'http://127.0.0.1:8787'
 const ENABLED_KEY = 'mtg_claude_feature'
 const MODE_KEY = 'mtg_ai_mode'
 const MODEL_KEY = 'mtg_claude_model'
