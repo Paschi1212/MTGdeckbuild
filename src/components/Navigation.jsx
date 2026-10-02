@@ -64,7 +64,7 @@ function AiModeSwitch() {
       className="h-11 md:h-12 px-3 flex items-center gap-1.5 text-sm font-semibold whitespace-nowrap"
       style={{
         background: claudeActive ? 'var(--color-accent)' : 'var(--color-surface)',
-        color: claudeActive ? '#fff' : 'var(--color-text)',
+        color: claudeActive ? 'var(--color-bg)' : 'var(--color-text)',
         border: '1px solid var(--color-border)',
         borderRadius: 'var(--radius-sm)'
       }}
@@ -146,7 +146,7 @@ export default function Navigation({ user, onLogout }) {
                     onChange={setSearchValue}
                     onSubmit={handleGlobalCommanderPick}
                     placeholder="z.B. Atraxa, Praetors' Voice"
-                    className="w-full text-white rounded-xl p-2.5 text-sm"
+                    className="w-full text-fg rounded-xl p-2.5 text-sm"
                   />
                 </div>
               )}

@@ -112,11 +112,11 @@ export default function ChatWidget({ commander, cards, onAction, contextNote, em
         className="flex items-center justify-between px-4 py-3 flex-shrink-0"
         style={{ borderBottom: '1px solid var(--border)' }}
       >
-        <div className="font-bold text-white text-sm">
+        <div className="font-bold text-fg text-sm">
           {embedded ? '🤖 Deck bauen' : '💬 Schnellhilfe'}
         </div>
         {!embedded && (
-          <button onClick={() => setOpen(false)} className="text-cmd-muted hover:text-white text-lg leading-none">✕</button>
+          <button onClick={() => setOpen(false)} className="text-cmd-muted hover:text-fg text-lg leading-none">✕</button>
         )}
       </div>
 
@@ -168,8 +168,8 @@ export default function ChatWidget({ commander, cards, onAction, contextNote, em
           onKeyDown={handleKeyDown}
           placeholder="Frage stellen…"
           disabled={loading}
-          className="flex-1 text-white rounded-xl px-3 py-2 text-sm"
-          style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)' }}
+          className="flex-1 text-fg rounded-xl px-3 py-2 text-sm"
+          style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
         />
         <button
           onClick={handleSend}

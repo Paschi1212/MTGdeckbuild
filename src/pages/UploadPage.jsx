@@ -147,7 +147,7 @@ export default function UploadPage() {
                     key={deck.name}
                     onClick={() => navigate('/collection', { state: { deckName: deck.name } })}
                     className="flex justify-between text-sm rounded-lg px-3 py-2 text-left hover:brightness-125 transition"
-                    style={{ backgroundColor: 'rgba(255,255,255,0.04)' }}
+                    style={{ backgroundColor: 'var(--color-surface)' }}
                   >
                     <span>{deck.name}</span>
                     <span className="text-cmd-muted">{deck.cardCount} Karten</span>
@@ -177,8 +177,8 @@ export default function UploadPage() {
             value={friendLabel}
             onChange={(e) => setFriendLabel(e.target.value)}
             placeholder="Name (z.B. Marco)"
-            className="w-full text-white rounded-xl p-3"
-            style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+            className="w-full text-fg rounded-xl p-3"
+            style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
           />
           <div className="rounded-2xl p-6 text-center" style={{ border: '2px dashed var(--border)' }}>
             <input
@@ -209,15 +209,15 @@ export default function UploadPage() {
               <div
                 key={col.id}
                 className="flex items-center justify-between rounded-lg px-3 py-2"
-                style={{ backgroundColor: 'rgba(255,255,255,0.04)' }}
+                style={{ backgroundColor: 'var(--color-surface)' }}
               >
                 <div>
-                  <div className="text-sm text-white font-medium">{col.label}</div>
+                  <div className="text-sm text-fg font-medium">{col.label}</div>
                   <div className="text-xs text-cmd-muted">{col.totalCards} Karten</div>
                 </div>
                 <button
                   onClick={() => handleRemoveSecondary(col.id)}
-                  className="text-red-400 hover:text-red-300 text-sm px-2"
+                  className="text-[color:var(--r)] hover:text-[color:var(--r)] text-sm px-2"
                 >
                   ✕ Entfernen
                 </button>

@@ -473,7 +473,7 @@ export default function EditDeckPage(embeddedState) {
 
   const shoppingCount = shoppingList.reduce((sum, c) => sum + c.missingCount, 0)
   const suggestionCount = cutsInDeck.length + pendingSuggestions.length
-  const countTone = deckSize === DECK_TARGET ? 'var(--g)' : deckSize > DECK_TARGET ? 'var(--r)' : 'var(--w)'
+  const countTone = deckSize === DECK_TARGET ? 'var(--g)' : deckSize > DECK_TARGET ? 'var(--r)' : 'var(--gold)'
   const countHint = deckSize === DECK_TARGET
     ? 'Genau 99 Karten plus Commander'
     : deckSize > DECK_TARGET ? `${deckSize - DECK_TARGET} zu viel` : `${DECK_TARGET - deckSize} fehlen noch`

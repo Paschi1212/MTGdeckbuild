@@ -109,7 +109,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
   }
 
   if (!commander || !deckCards) {
-    return <p className="text-red-400">Keine Daten zum Analysieren</p>
+    return <p className="text-[color:var(--r)]">Keine Daten zum Analysieren</p>
   }
 
   if (!audit && !loading && !error) {
@@ -128,8 +128,8 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
       <div className="flex flex-col items-center justify-center min-h-[40vh]">
         <div className="text-center">
           <div className="animate-spin inline-block w-12 h-12 border-4 border-gray-600 border-t-mtg-blue rounded-full mb-4"></div>
-          <p className="text-gray-300 mb-2">Analysiere {deckName}...</p>
-          <p className="text-sm text-gray-400">
+          <p className="text-fg-2 mb-2">Analysiere {deckName}...</p>
+          <p className="text-sm text-fg-muted">
             {isClaudeActive()
               ? `🧠 Claude ${getClaudeModelLabel()} prüft Kartentexte auf Scryfall & EDHREC — das kann einige Minuten dauern`
               : 'Dies kann eine Minute dauern'}
@@ -143,7 +143,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
     return (
       <div className="max-w-2xl mx-auto">
         <div className="card bg-red-900/20 border-red-700 mb-6">
-          <p className="text-red-300">❌ {error}</p>
+          <p className="text-[color:var(--r)]">❌ {error}</p>
         </div>
         <button onClick={() => runAudit()} className="btn-primary w-full">
           Erneut versuchen
@@ -174,8 +174,8 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
               <textarea
                 value={strategyDraft}
                 onChange={(e) => setStrategyDraft(e.target.value)}
-                className="w-full text-white rounded-xl p-3 h-40 resize-y text-sm"
-                style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+                className="w-full text-fg rounded-xl p-3 h-40 resize-y text-sm"
+                style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
               />
               <div className="flex gap-2 mt-3">
                 <button
@@ -190,7 +190,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
               </div>
             </>
           ) : (
-            <div className="text-sm text-gray-300 space-y-2 whitespace-pre-wrap leading-relaxed">
+            <div className="text-sm text-fg-2 space-y-2 whitespace-pre-wrap leading-relaxed">
               <p><strong>Win Condition:</strong> {audit.strategy.winCondition}</p>
               <p><strong>Spielplan:</strong> {audit.strategy.gamePlan}</p>
               <p><strong>Schwächen:</strong> {audit.strategy.weaknesses}</p>
@@ -218,7 +218,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
         </h2>
 
         {audit?.summary && (
-          <p className="text-gray-300 leading-relaxed whitespace-pre-wrap mb-2">{audit.summary}</p>
+          <p className="text-fg-2 leading-relaxed whitespace-pre-wrap mb-2">{audit.summary}</p>
         )}
 
         {audit?.parseError && (
@@ -246,7 +246,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
       {loadingSuggestions && (
         <div className="card mb-8 flex items-center gap-3">
           <div className="animate-spin w-5 h-5 border-2 border-gray-600 border-t-mtg-blue rounded-full flex-shrink-0"></div>
-          <p className="text-sm text-gray-300">
+          <p className="text-sm text-fg-2">
             Lade Kaufvorschläge & Sammlungs-Treffer…{isClaudeActive() && ` (🧠 Claude ${getClaudeModelLabel()}, kann einige Minuten dauern)`}
           </p>
         </div>
@@ -254,7 +254,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
 
       {suggestionsError && !loadingSuggestions && (
         <div className="card bg-red-900/20 border-red-700 mb-8">
-          <p className="text-red-300 mb-3">❌ {suggestionsError}</p>
+          <p className="text-[color:var(--r)] mb-3">❌ {suggestionsError}</p>
           <button onClick={() => runSuggestions(audit.strategy)} className="btn-primary text-sm">
             🔄 Kaufvorschläge erneut laden
           </button>

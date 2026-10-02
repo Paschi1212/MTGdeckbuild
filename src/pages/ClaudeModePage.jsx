@@ -98,7 +98,7 @@ export default function ClaudeModePage() {
                       className="text-sm px-4 py-2 font-medium"
                       style={{
                         background: preferred === mode ? 'var(--color-accent)' : 'var(--color-surface)',
-                        color: preferred === mode ? '#fff' : 'var(--color-text)'
+                        color: preferred === mode ? 'var(--color-bg)' : 'var(--color-text)'
                       }}
                     >
                       {label}

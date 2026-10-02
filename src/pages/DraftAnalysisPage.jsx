@@ -117,7 +117,7 @@ export default function DraftAnalysisPage() {
                 onChange={setCommanderInput}
                 onSubmit={handleSetCommander}
                 placeholder="z.B. Magus Lucea Kane"
-                className="w-full text-white rounded-xl p-3"
+                className="w-full text-fg rounded-xl p-3"
               />
             </div>
             <button onClick={() => handleSetCommander()} disabled={!commanderInput.trim()} className="btn-secondary whitespace-nowrap">
@@ -139,7 +139,7 @@ export default function DraftAnalysisPage() {
                 key={level}
                 onClick={() => handlePowerLevelChange(level)}
                 className={`p-2 text-sm transition ${
-                  powerLevel === level ? '' : 'text-cmd-muted hover:text-white bg-[color:var(--surface)] border border-[color:var(--border)]'
+                  powerLevel === level ? '' : 'text-cmd-muted hover:text-fg bg-[color:var(--surface)] border border-[color:var(--border)]'
                 }`}
                 style={powerLevel === level ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' } : undefined}
               >

@@ -12,7 +12,7 @@ export default {
           black: '#150B00',
           red: '#C13832',
           green: '#00A651',
-          gold: '#CDB27E',
+          gold: 'var(--gold)', // theme-aware: darker in light mode
           mana: {
             white: '#FFFACD',
             blue: '#A2D5FF',
@@ -21,6 +21,13 @@ export default {
             green: '#90EE90',
             colorless: '#D3D3D3'
           }
+        },
+        // Text colors that follow the light/dark theme — use these instead of text-white /
+        // text-gray-*, which stay light in the light theme (white on white).
+        fg: {
+          DEFAULT: 'var(--color-text)',
+          2: 'var(--color-text-secondary)',
+          muted: 'var(--color-text-muted)'
         },
         cmd: {
           bg: 'var(--bg)',

@@ -14,10 +14,10 @@ export default function CommanderSearchResultsModal({ query, results, onSelect, 
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
-          <h2 className="text-lg font-bold text-white">
+          <h2 className="text-lg font-bold text-fg">
             Suchtreffer für "{query}" ({results.length})
           </h2>
-          <button onClick={onClose} className="text-cmd-muted hover:text-white text-lg leading-none">✕</button>
+          <button onClick={onClose} className="text-cmd-muted hover:text-fg text-lg leading-none">✕</button>
         </div>
 
         <div className="p-5 overflow-y-auto">
@@ -37,7 +37,7 @@ export default function CommanderSearchResultsModal({ query, results, onSelect, 
                       <img src={card.image} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
                     )}
                   </div>
-                  <div className="text-xs text-white font-medium p-2 truncate" title={card.name}>
+                  <div className="text-xs text-fg font-medium p-2 truncate" title={card.name}>
                     {card.name}
                   </div>
                 </button>

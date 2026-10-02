@@ -55,19 +55,19 @@ export default function CommanderSearchInput({ value, onChange, onSubmit, placeh
         }}
         placeholder={placeholder}
         className={className}
-        style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+        style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
       />
       {open && matches.length > 0 && (
         <div
           className="absolute z-10 left-0 right-0 mt-1 rounded-lg overflow-hidden max-h-56 overflow-y-auto"
-          style={{ backgroundColor: '#171129', border: '1px solid var(--border)' }}
+          style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
         >
           {matches.map(card => (
             <button
               key={card.name}
               type="button"
               onMouseDown={() => handlePick(card.name)}
-              className="block w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-white/5"
+              className="block w-full text-left px-3 py-2 text-sm text-fg hover:bg-[color:var(--color-accent-light)]"
             >
               {card.name}
             </button>

@@ -19,7 +19,8 @@
   --color-border: #e5e5e0;
   --color-text: #1a1a1a;
   --color-text-secondary: #666666;
-  --color-text-muted: #999999;
+  --color-text-muted: #6e6e6e; /* ≥4.5:1 on --color-surface */
+  --gold: #8a6a1c; /* MTG gold, darkened so headings stay readable on light surfaces */
   --color-accent: #1a1a1a;
   --color-accent-light: #f0f0f0;
 
@@ -93,7 +94,11 @@
   --color-border: #2a2a2a;
   --color-text: #f5f5f5;
   --color-text-secondary: #b0b0b0;
-  --color-text-muted: #808080;
+  --color-text-muted: #8c8c8c;
+  --gold: #cdb27e;
+  /* Blue and red as text on the dark surface: the light-theme tones only reach ~3:1 there. */
+  --u: #4fa8f5;
+  --r: #e5534b;
   --color-accent: #f5f5f5;
   --color-accent-light: #2a2a2a;
 

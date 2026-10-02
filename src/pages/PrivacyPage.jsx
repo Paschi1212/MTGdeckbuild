@@ -10,7 +10,7 @@ export default function PrivacyPage() {
 
       <div className="card mb-6 space-y-3">
         <h2 className="text-lg font-bold">Über dieses Projekt</h2>
-        <p className="text-gray-300 leading-relaxed">
+        <p className="text-fg-2 leading-relaxed">
           MTG Commander Deck Builder ist ein privates, nicht-kommerzielles Hobby-Projekt zur Verwaltung
           einer Magic: The Gathering-Sammlung und zum Bauen von Commander-Decks. Es gibt keine Werbung,
           keinen Verkauf von Daten an Dritte und keine kommerzielle Nutzung der Daten.
@@ -19,7 +19,7 @@ export default function PrivacyPage() {
 
       <div className="card mb-6 space-y-3">
         <h2 className="text-lg font-bold">Verantwortlicher</h2>
-        <p className="text-gray-300 leading-relaxed">
+        <p className="text-fg-2 leading-relaxed">
           Diese App wird von einer Privatperson betrieben. Bei Fragen zum Datenschutz oder zur Löschung
           deiner Daten erreichst du den Betreiber unter:{' '}
           <a href="mailto:DEINE-KONTAKT-EMAIL@example.com" style={{ color: 'var(--u)' }} className="underline">
@@ -30,7 +30,7 @@ export default function PrivacyPage() {
 
       <div className="card mb-6 space-y-3">
         <h2 className="text-lg font-bold">Welche Daten werden erhoben</h2>
-        <ul className="text-gray-300 leading-relaxed list-disc pl-5 space-y-2">
+        <ul className="text-fg-2 leading-relaxed list-disc pl-5 space-y-2">
           <li>
             <strong>Beim Google-Login:</strong> E-Mail-Adresse und Name deines Google-Kontos, um dich
             anzumelden und deine Daten geräteübergreifend zuzuordnen. Es werden keine weiteren
@@ -54,7 +54,7 @@ export default function PrivacyPage() {
 
       <div className="card mb-6 space-y-3">
         <h2 className="text-lg font-bold">Wie und wo werden die Daten gespeichert</h2>
-        <p className="text-gray-300 leading-relaxed">
+        <p className="text-fg-2 leading-relaxed">
           Deine Daten werden bei Netlify (Hosting-Anbieter dieser App, "Netlify Blobs") gespeichert,
           verknüpft mit deiner Google-E-Mail-Adresse — das ermöglicht den Zugriff von mehreren Geräten aus.
           Zusätzlich hält dein Browser eine lokale Kopie (localStorage) für schnellen Zugriff.
@@ -63,12 +63,12 @@ export default function PrivacyPage() {
 
       <div className="card mb-6 space-y-3">
         <h2 className="text-lg font-bold">Weitergabe an Dritte</h2>
-        <p className="text-gray-300 leading-relaxed mb-2">
+        <p className="text-fg-2 leading-relaxed mb-2">
           Für die Kernfunktionen der App werden Daten an folgende externe Dienste übermittelt — in der
           Regel Kartennamen und Decklisten, keine personenbezogenen Daten außer dem, was du selbst in den
           Chat eingibst:
         </p>
-        <ul className="text-gray-300 leading-relaxed list-disc pl-5 space-y-2">
+        <ul className="text-fg-2 leading-relaxed list-disc pl-5 space-y-2">
           <li><strong>Scryfall</strong> — Kartenbilder, Preise und Metadaten.</li>
           <li><strong>EDHREC</strong> — Community-Daten zu Commandern und Decks.</li>
           <li>
@@ -81,7 +81,7 @@ export default function PrivacyPage() {
 
       <div className="card mb-6 space-y-3">
         <h2 className="text-lg font-bold">Speicherdauer und Löschung</h2>
-        <p className="text-gray-300 leading-relaxed">
+        <p className="text-fg-2 leading-relaxed">
           Deine Daten bleiben gespeichert, bis du ihre Löschung beantragst. Es gibt aktuell keine
           automatische Selbstbedienungs-Löschfunktion — schreib einfach eine E-Mail an die oben genannte
           Adresse, dann werden deine Daten gelöscht.
@@ -90,7 +90,7 @@ export default function PrivacyPage() {
 
       <div className="card space-y-3">
         <h2 className="text-lg font-bold">Deine Rechte</h2>
-        <p className="text-gray-300 leading-relaxed">
+        <p className="text-fg-2 leading-relaxed">
           Du kannst jederzeit Auskunft über die zu dir gespeicherten Daten verlangen, ihre Berichtigung
           oder Löschung verlangen, oder der Verarbeitung widersprechen — formlos per E-Mail an die oben
           genannte Adresse.

@@ -15,8 +15,13 @@ Commander-Spieler – die Karten und ihre Daten sind der Inhalt, die Oberfläche
    „Entfernen“, „Speichern & analysieren“).
 4. **Aktionen immer erreichbar.** Speichern & Co. stehen in einer mitlaufenden Leiste (Desktop oben,
    Handy unten), nie am Ende einer langen Seite.
-5. **Beide Farbschemata.** Nur Tokens verwenden (`var(--color-…)`), keine festen Farben wie
-   `text-white` – die sind im hellen Modus unsichtbar.
+5. **Beide Farbschemata.** Nur Tokens verwenden. Schrift: Tailwind-Klassen `text-fg`,
+   `text-fg-2`, `text-fg-muted` (bzw. `var(--color-text…)`), **nie** `text-white` / `text-gray-*` –
+   die bleiben im hellen Modus hell (weiß auf weiß). Ausnahme: Text auf fest dunklem Overlay
+   (Kartenzoom-Pfeile, Live Tester) oder auf farbiger Fläche (`--g`-Button). Auf `--color-accent`
+   gehört `var(--color-bg)` als Schriftfarbe, nicht Weiß – der Akzent ist im dunklen Modus hell.
+6. **Kontrast prüfen.** Text mindestens 4,5:1, große Schrift/Icons mindestens 3:1 – in beiden
+   Schemata. Gedämpfte Töne (`--color-text-muted`, `--gold`, `--u`, `--r`) sind darauf abgestimmt.
 
 ## Tokens (src/index.css)
 
@@ -25,7 +30,8 @@ Commander-Spieler – die Karten und ihre Daten sind der Inhalt, die Oberfläche
 | Hintergrund / Fläche / Linie | `--color-bg`, `--color-surface`, `--color-border` | neutral, hell + dunkel |
 | Text / sekundär / leise | `--color-text`, `--color-text-secondary`, `--color-text-muted` | neutral |
 | Akzent (Primärbutton, aktiver Reiter) | `--color-accent` | invertiert je Schema |
-| Bedeutung: vorhanden/hinzufügen, Zukauf/streichen, Freunde | `--g`, `--r`, `--u` | MTG-Farben |
+| Bedeutung: vorhanden/hinzufügen, Zukauf/streichen, Freunde | `--g`, `--r`, `--u` | MTG-Farben, im dunklen Modus aufgehellt |
+| Gold (Hinweis „zu wenig“, Akzent-Überschriften) | `--gold` (Tailwind `mtg-gold`) | MTG-Gold, im hellen Modus abgedunkelt |
 | Manasymbole | `--pip-w/u/b/r/g/c`, `--pip-ink` | Tönung der gedruckten Manasymbole |
 | Höhe der Seitennavigation | `--nav-h` | für Sticky-Elemente darunter |
 
@@ -40,7 +46,7 @@ farbiges Element in Listen; alles andere bleibt ruhig.
 
 ## Muster: Editor (src/pages/EditDeckPage.jsx)
 
-- **Deck-Leiste** (sticky unter der Navigation): Commander, Karten x/99 (grün = 99, gold = zu wenig,
+- **Deck-Leiste** (sticky unter der Navigation): Commander, Karten x/99 (grün = 99, gold `--gold` = zu wenig,
   rot = zu viel), Wert, Zukauf, alle Aktionen.
 - **Desktop:** links die Deckliste in fließenden Spalten (`columns`), rechts eine Seitenleiste mit
   Reitern *Vorschläge* (Streichen/Ergänzen mit einem Klick), *Einkauf*, *Statistik*.

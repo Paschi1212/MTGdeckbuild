@@ -132,8 +132,8 @@ export default function AnalyzePage() {
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
         <div className="text-center">
           <div className="animate-spin inline-block w-12 h-12 border-4 border-gray-600 border-t-mtg-blue rounded-full mb-4"></div>
-          <p className="text-gray-300 mb-2">Analysiere {commander}...</p>
-          <p className="text-sm text-gray-400">Dies kann eine Minute dauern</p>
+          <p className="text-fg-2 mb-2">Analysiere {commander}...</p>
+          <p className="text-sm text-fg-muted">Dies kann eine Minute dauern</p>
         </div>
       </div>
     )
@@ -143,7 +143,7 @@ export default function AnalyzePage() {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="card bg-red-900/20 border-red-700 mb-6">
-          <p className="text-red-300">❌ {error}</p>
+          <p className="text-[color:var(--r)]">❌ {error}</p>
         </div>
         <button onClick={analyzeDecks} className="btn-primary w-full mb-3">
           Erneut versuchen
@@ -188,7 +188,7 @@ export default function AnalyzePage() {
         </div>
 
         {analysis?.summary && (
-          <p className="text-gray-300 leading-relaxed whitespace-pre-wrap mb-2">{analysis.summary}</p>
+          <p className="text-fg-2 leading-relaxed whitespace-pre-wrap mb-2">{analysis.summary}</p>
         )}
 
         {analysis?.parseError && (
@@ -217,7 +217,7 @@ export default function AnalyzePage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div className="card">
           <h3 className="text-lg font-bold mb-3 text-mtg-green">✅ Nächste Schritte</h3>
-          <ul className="space-y-2 text-sm text-gray-300">
+          <ul className="space-y-2 text-sm text-fg-2">
             <li>1. Speichere die Empfehlungen</li>
             <li>2. Überprüfe Preise auf Scryfall</li>
             <li>3. Passe das Deck mit dem Editor an</li>
@@ -226,8 +226,8 @@ export default function AnalyzePage() {
         </div>
 
         <div className="card">
-          <h3 className="text-lg font-bold mb-3 text-mtg-blue">📈 Strategie-Info</h3>
-          <div className="text-sm text-gray-300 space-y-1">
+          <h3 className="text-lg font-bold mb-3 text-cmd-u">📈 Strategie-Info</h3>
+          <div className="text-sm text-fg-2 space-y-1">
             <p><strong>Win Condition:</strong> {strategy.primaryWinCon}</p>
             <p><strong>Budget:</strong> €{strategy.budget}</p>
             <p><strong>Mechaniken:</strong> {strategy.keyMechanics.slice(0, 3).join(', ')}</p>

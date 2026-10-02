@@ -147,15 +147,15 @@ export default function DecksPage() {
                 placeholder="Commander (optional, wird aus der Liste erkannt wenn markiert)"
                 value={importCommander}
                 onChange={(e) => setImportCommander(e.target.value)}
-                className="w-full text-white rounded-xl p-3 text-sm"
-                style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+                className="w-full text-fg rounded-xl p-3 text-sm"
+                style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
               />
               <textarea
                 value={importText}
                 onChange={(e) => setImportText(e.target.value)}
                 placeholder={'1 Sol Ring\n1 Isshin, Two Heavens as One *CMDR*\n4x Island\n...'}
-                className="w-full text-white rounded-xl p-3 text-sm font-mono h-48 resize-y"
-                style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+                className="w-full text-fg rounded-xl p-3 text-sm font-mono h-48 resize-y"
+                style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
               />
               {importError && <p className="text-xs" style={{ color: 'var(--r)' }}>{importError}</p>}
               <button onClick={handleImport} disabled={!importText.trim()} className="btn-primary w-full text-sm">

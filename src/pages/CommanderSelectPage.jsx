@@ -201,8 +201,8 @@ export default function CommanderSelectPage() {
               onClick={() => setStep('questionnaire')}
               className="card-hover"
             >
-              <h3 className="text-xl font-bold mb-2 text-mtg-blue">❓ Guided Auswahl</h3>
-              <p className="text-gray-400">
+              <h3 className="text-xl font-bold mb-2 text-cmd-u">❓ Guided Auswahl</h3>
+              <p className="text-fg-muted">
                 Beantworte ein paar Fragen und wir empfehlen dir Commander
               </p>
             </button>
@@ -212,7 +212,7 @@ export default function CommanderSelectPage() {
               className="card-hover"
             >
               <h3 className="text-xl font-bold mb-2 text-mtg-green">🔍 Direkte Suche</h3>
-              <p className="text-gray-400">
+              <p className="text-fg-muted">
                 Du kennst bereits einen Commander, den du spielen möchtest?
               </p>
             </button>
@@ -222,7 +222,7 @@ export default function CommanderSelectPage() {
               className="card-hover md:col-span-2"
             >
               <h3 className="text-xl font-bold mb-2 text-mtg-gold">🏷️ Nach Thema suchen</h3>
-              <p className="text-gray-400">
+              <p className="text-fg-muted">
                 Durchsuche echte EDHREC-Themen (Aristocrats, Voltron, Tokens, ...) und finde die dort beliebtesten Commander dafür — auf Basis echter Deck-Zahlen, nicht KI-geraten.
               </p>
             </button>
@@ -232,7 +232,7 @@ export default function CommanderSelectPage() {
               className="card-hover md:col-span-2"
             >
               <h3 className="text-xl font-bold mb-2 text-mtg-red">↩️ Zurück</h3>
-              <p className="text-gray-400">
+              <p className="text-fg-muted">
                 Zuerst Sammlung hochladen oder bearbeiten
               </p>
             </button>
@@ -263,14 +263,14 @@ export default function CommanderSelectPage() {
                     backgroundColor: preferences.colors.includes(color.id)
                       ? color.hex
                       : 'transparent',
-                    color: preferences.colors.includes(color.id) ? color.textColor : '#fff'
+                    color: preferences.colors.includes(color.id) ? color.textColor : 'var(--color-text)'
                   }}
                 >
                   {color.name}
                 </button>
               ))}
             </div>
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-fg-muted">
               {preferences.colors.length === 0 ? 'Wähle min. 1 Farbe' : `${preferences.colors.length} Farbe(n) gewählt`}
             </p>
           </div>
@@ -280,8 +280,8 @@ export default function CommanderSelectPage() {
             <select
               value={preferences.playStyle}
               onChange={(e) => setPreferences(prev => ({ ...prev, playStyle: e.target.value }))}
-              className="w-full text-white rounded-xl p-3"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+              className="w-full text-fg rounded-xl p-3"
+              style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
             >
               <option value="">Wähle einen Spielstil</option>
               {playStyles.map(style => (
@@ -303,7 +303,7 @@ export default function CommanderSelectPage() {
               />
               <span className="text-lg font-bold">€{preferences.budget}</span>
             </div>
-            <p className="text-sm text-gray-400 mt-2">
+            <p className="text-sm text-fg-muted mt-2">
               Deck-Budget insgesamt
             </p>
           </div>
@@ -318,7 +318,7 @@ export default function CommanderSelectPage() {
                   className={`p-3 rounded-lg transition ${
                     preferences.powerLevel === level
                       ? 'bg-mtg-blue text-white'
-                      : 'text-cmd-muted hover:text-white bg-[color:var(--surface)] border border-[color:var(--border)]'
+                      : 'text-cmd-muted hover:text-fg bg-[color:var(--surface)] border border-[color:var(--border)]'
                   }`}
                 >
                   {level}
@@ -379,7 +379,7 @@ export default function CommanderSelectPage() {
               <p className="text-cmd-muted text-sm">
                 Die Antwort konnte nicht als Kartenliste erkannt werden — hier die rohe Antwort:
               </p>
-              <p className="text-gray-300 whitespace-pre-wrap mt-2">{result.intro}</p>
+              <p className="text-fg-2 whitespace-pre-wrap mt-2">{result.intro}</p>
             </div>
           )}
 
@@ -390,9 +390,9 @@ export default function CommanderSelectPage() {
               onChange={setDirectCommanderInput}
               onSubmit={handleSelectCommander}
               placeholder="z.B. Magus Lucea Kane"
-              className="w-full text-white rounded-xl p-3"
+              className="w-full text-fg rounded-xl p-3"
             />
-            <p className="text-sm text-gray-400 mt-2">
+            <p className="text-sm text-fg-muted mt-2">
               Enter zum Bestätigen — Vorschläge über alle Commander, nicht nur deine Sammlung
             </p>
           </div>
@@ -419,7 +419,7 @@ export default function CommanderSelectPage() {
               onChange={setSearchCommanderInput}
               onSubmit={handleSelectCommander}
               placeholder="z.B. Magus Lucea Kane, Marisi Goat, etc."
-              className="w-full text-white rounded-xl p-3 text-lg mb-4"
+              className="w-full text-fg rounded-xl p-3 text-lg mb-4"
             />
             <button
               onClick={() => {
@@ -431,7 +431,7 @@ export default function CommanderSelectPage() {
             >
               Wählen →
             </button>
-            <p className="text-sm text-gray-400 mt-2">
+            <p className="text-sm text-fg-muted mt-2">
               Vorschläge über alle Commander beim Tippen, nicht nur deine Sammlung
             </p>
           </div>
@@ -462,8 +462,8 @@ export default function CommanderSelectPage() {
               value={themeFilter}
               onChange={(e) => setThemeFilter(e.target.value)}
               placeholder="Thema filtern… z.B. Voltron, Tokens, Reanimator"
-              className="w-full text-white rounded-xl p-3 mb-4"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+              className="w-full text-fg rounded-xl p-3 mb-4"
+              style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
               autoFocus
             />
 
@@ -539,7 +539,7 @@ export default function CommanderSelectPage() {
                   style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
                 >
                   <div className="min-w-0">
-                    <div className="text-white font-medium truncate">{c.name}</div>
+                    <div className="text-fg font-medium truncate">{c.name}</div>
                     <div className="text-xs text-cmd-muted truncate">{c.themeNames.join(' · ')}</div>
                   </div>
                   <div className="flex-shrink-0 text-right">

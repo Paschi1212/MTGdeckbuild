@@ -63,7 +63,7 @@ function CardModal({ card, resolved, onClose, onPrev, onNext }) {
           )}
         </div>
         <div className="p-4">
-          <div className="font-bold text-white text-lg mb-1">{card.name}</div>
+          <div className="font-bold text-fg text-lg mb-1">{card.name}</div>
           <div className="text-sm text-cmd-muted mb-1">{resolved?.typeLine || card.rarity}</div>
           <div className="flex justify-between items-center mt-2">
             <span className="text-sm text-cmd-muted">Anzahl: {card.quantity}</span>
@@ -295,8 +295,8 @@ export default function CollectionPage() {
           placeholder="Karte suchen…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full text-white rounded-xl p-3 mb-4"
-          style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+          className="w-full text-fg rounded-xl p-3 mb-4"
+          style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
         />
 
         <div className="flex flex-wrap gap-4 items-end">
@@ -308,14 +308,16 @@ export default function CollectionPage() {
                   key={color.id}
                   onClick={() => toggleColor(color.id)}
                   className="w-8 h-8 rounded-full text-xs font-bold flex items-center justify-center transition"
+                  aria-pressed={selectedColors.includes(color.id)}
                   style={{
-                    backgroundColor: selectedColors.includes(color.id) ? color.hex : 'transparent',
-                    // Unselected border is always theme-neutral (not the mana hex itself) —
-                    // otherwise a swatch close to the current theme's surface color vanishes.
-                    border: `2px solid ${selectedColors.includes(color.id) ? color.hex : 'var(--color-border)'}`,
-                    color: selectedColors.includes(color.id)
-                      ? (color.id === 'B' || color.id === 'R' ? '#fff' : '#000')
-                      : color.hex
+                    // Mana-symbol tint with dark ink (same as the editor's pips) — readable on
+                    // light and dark themes; a ring marks the selected colors.
+                    backgroundColor: `var(--pip-${color.id.toLowerCase()})`,
+                    color: 'var(--pip-ink)',
+                    opacity: selectedColors.length === 0 || selectedColors.includes(color.id) ? 1 : 0.55,
+                    boxShadow: selectedColors.includes(color.id)
+                      ? '0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-text)'
+                      : 'inset 0 0 0 1px rgba(0,0,0,0.18)'
                   }}
                 >
                   {color.id}
@@ -329,8 +331,8 @@ export default function CollectionPage() {
             <select
               value={selectedType}
               onChange={(e) => setSelectedType(e.target.value)}
-              className="text-white rounded-xl p-2 text-sm"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+              className="text-fg rounded-xl p-2 text-sm"
+              style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
             >
               <option value="">Alle Typen</option>
               {TYPE_OPTIONS.map(type => (
@@ -344,8 +346,8 @@ export default function CollectionPage() {
             <select
               value={availability}
               onChange={(e) => setAvailability(e.target.value)}
-              className="text-white rounded-xl p-2 text-sm"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+              className="text-fg rounded-xl p-2 text-sm"
+              style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
             >
               <option value="all">Alle</option>
               <option value="free">Frei verfügbar</option>
@@ -358,8 +360,8 @@ export default function CollectionPage() {
             <select
               value={selectedBinder}
               onChange={(e) => setSelectedBinder(e.target.value)}
-              className="text-white rounded-xl p-2 text-sm max-w-[180px]"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+              className="text-fg rounded-xl p-2 text-sm max-w-[180px]"
+              style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
             >
               <option value="">Alle</option>
               {binderOptions.map(([name, type]) => (
@@ -376,8 +378,8 @@ export default function CollectionPage() {
               placeholder="1"
               value={minQuantity}
               onChange={(e) => setMinQuantity(e.target.value)}
-              className="w-24 text-white rounded-xl p-2 text-sm"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+              className="w-24 text-fg rounded-xl p-2 text-sm"
+              style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
             />
           </div>
 
@@ -391,8 +393,8 @@ export default function CollectionPage() {
                 placeholder="min"
                 value={minPrice}
                 onChange={(e) => setMinPrice(e.target.value)}
-                className="w-20 text-white rounded-xl p-2 text-sm"
-                style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+                className="w-20 text-fg rounded-xl p-2 text-sm"
+                style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
               />
               <span className="text-cmd-muted text-xs">–</span>
               <input
@@ -402,8 +404,8 @@ export default function CollectionPage() {
                 placeholder="max"
                 value={maxPrice}
                 onChange={(e) => setMaxPrice(e.target.value)}
-                className="w-20 text-white rounded-xl p-2 text-sm"
-                style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+                className="w-20 text-fg rounded-xl p-2 text-sm"
+                style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
               />
             </div>
           </div>
@@ -417,8 +419,8 @@ export default function CollectionPage() {
                 placeholder="min"
                 value={minCmc}
                 onChange={(e) => setMinCmc(e.target.value)}
-                className="w-16 text-white rounded-xl p-2 text-sm"
-                style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+                className="w-16 text-fg rounded-xl p-2 text-sm"
+                style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
               />
               <span className="text-cmd-muted text-xs">–</span>
               <input
@@ -427,8 +429,8 @@ export default function CollectionPage() {
                 placeholder="max"
                 value={maxCmc}
                 onChange={(e) => setMaxCmc(e.target.value)}
-                className="w-16 text-white rounded-xl p-2 text-sm"
-                style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+                className="w-16 text-fg rounded-xl p-2 text-sm"
+                style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
               />
             </div>
           </div>
@@ -438,8 +440,8 @@ export default function CollectionPage() {
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="text-white rounded-xl p-2 text-sm"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+              className="text-fg rounded-xl p-2 text-sm"
+              style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
             >
               {Object.entries(PRICE_SORTS).map(([key, { label }]) => (
                 <option key={key} value={key}>{label}</option>

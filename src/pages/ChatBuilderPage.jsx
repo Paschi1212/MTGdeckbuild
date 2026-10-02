@@ -245,7 +245,7 @@ export default function ChatBuilderPage({ initialCommander, initialMessage } = {
               )}
               <div>
                 <div className="text-xs text-cmd-muted uppercase tracking-wide">Commander</div>
-                <div className="text-lg font-bold text-white">{commanderCard.name}</div>
+                <div className="text-lg font-bold text-fg">{commanderCard.name}</div>
               </div>
             </div>
           ) : (
@@ -259,7 +259,7 @@ export default function ChatBuilderPage({ initialCommander, initialMessage } = {
           {strategyNote && (
             <div className="card" style={{ borderColor: 'var(--g)' }}>
               <h2 className="text-sm font-bold mb-2" style={{ color: 'var(--g)' }}>📋 Strategie</h2>
-              <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap max-h-[280px] overflow-y-auto pr-1">
+              <p className="text-sm text-fg-2 leading-relaxed whitespace-pre-wrap max-h-[280px] overflow-y-auto pr-1">
                 {strategyNote}
               </p>
             </div>
@@ -267,21 +267,21 @@ export default function ChatBuilderPage({ initialCommander, initialMessage } = {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="card">
-              <div className="text-xs text-gray-400">Deck-Größe</div>
+              <div className="text-xs text-fg-muted">Deck-Größe</div>
               <div className="text-xl font-bold text-mtg-gold">
                 {deckSize} <span className="text-xs text-cmd-muted">/ 99</span>
               </div>
             </div>
             <div className="card">
-              <div className="text-xs text-gray-400">Länder</div>
-              <div className="text-xl font-bold text-mtg-blue">{landCount}</div>
+              <div className="text-xs text-fg-muted">Länder</div>
+              <div className="text-xl font-bold text-cmd-u">{landCount}</div>
             </div>
             <div className="card">
-              <div className="text-xs text-gray-400">Kosten</div>
+              <div className="text-xs text-fg-muted">Kosten</div>
               <div className="text-xl font-bold text-mtg-green">€{deckTotal.toFixed(2)}</div>
             </div>
             <div className="card">
-              <div className="text-xs text-gray-400">Zu kaufen</div>
+              <div className="text-xs text-fg-muted">Zu kaufen</div>
               <div className="text-xl font-bold" style={{ color: missingCardCount > 0 ? 'var(--r)' : 'var(--g)' }}>
                 {missingCardCount}
               </div>
@@ -315,7 +315,7 @@ export default function ChatBuilderPage({ initialCommander, initialMessage } = {
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm text-white truncate">{card.count > 1 ? `${card.count}x ` : ''}{card.name}</div>
+                            <div className="text-sm text-fg truncate">{card.count > 1 ? `${card.count}x ` : ''}{card.name}</div>
                             <div className="flex items-center gap-1.5">
                               <span className="text-xs text-cmd-muted">€{(card.count * card.price).toFixed(2)}</span>
                               {card.missingCount > 0 ? (
@@ -338,7 +338,7 @@ export default function ChatBuilderPage({ initialCommander, initialMessage } = {
                           </div>
                           <button
                             onClick={() => handleChatAction({ type: 'remove', name: card.name })}
-                            className="text-red-400 hover:text-red-300 text-sm flex-shrink-0"
+                            className="text-[color:var(--r)] hover:text-[color:var(--r)] text-sm flex-shrink-0"
                           >
                             ✕
                           </button>

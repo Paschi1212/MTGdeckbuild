@@ -36,7 +36,7 @@ export function CardZoomModal({ card, letters = [], onClose }) {
           )}
         </div>
         <div className="p-4">
-          <div className="font-bold text-white text-lg mb-1">{card.name}</div>
+          <div className="font-bold text-fg text-lg mb-1">{card.name}</div>
           {letters.length > 0 && (
             <div className="flex gap-1 mb-2">
               {letters.map(letter => (
@@ -98,7 +98,7 @@ export default function CardTile({ card, onClick, size = 'default' }) {
         )}
       </div>
 
-      <div className={`font-semibold text-white ${isSmall ? 'text-xs' : 'text-sm'} mb-1 truncate`} title={card.name}>
+      <div className={`font-semibold text-fg ${isSmall ? 'text-xs' : 'text-sm'} mb-1 truncate`} title={card.name}>
         {card.name}
       </div>
 

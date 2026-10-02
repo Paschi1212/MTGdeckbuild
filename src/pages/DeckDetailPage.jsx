@@ -167,7 +167,7 @@ export default function DeckDetailPage() {
                   onChange={setCommander}
                   cardNames={collection?.uniqueCardNames || []}
                   placeholder="z.B. Wrexial, the Pet-Devourer"
-                  className="w-full text-white rounded-xl p-3"
+                  className="w-full text-fg rounded-xl p-3"
                 />
               </div>
               <button
@@ -195,7 +195,7 @@ export default function DeckDetailPage() {
                     className={`p-2 text-sm transition ${
                       powerLevel === level
                         ? ''
-                        : 'text-cmd-muted hover:text-white bg-[color:var(--surface)] border border-[color:var(--border)]'
+                        : 'text-cmd-muted hover:text-fg bg-[color:var(--surface)] border border-[color:var(--border)]'
                     }`}
                     style={powerLevel === level ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' } : undefined}
                   >
@@ -212,7 +212,7 @@ export default function DeckDetailPage() {
           {rememberedStrategy && (
             <div className="card mb-6" style={{ borderColor: 'var(--u)' }}>
               <h2 className="text-lg font-bold mb-2" style={{ color: 'var(--u)' }}>🎯 Spielplan</h2>
-              <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed mb-3">{rememberedStrategy}</p>
+              <p className="text-sm text-fg-2 whitespace-pre-wrap leading-relaxed mb-3">{rememberedStrategy}</p>
               <p className="text-xs text-cmd-muted">
                 Aus der letzten Analyse — wird bei jeder künftigen Analyse als Grundlage verwendet. Zum Ändern:
                 Tab "📊 Analyse" öffnen und dort auf "✏️ Korrigieren" klicken.

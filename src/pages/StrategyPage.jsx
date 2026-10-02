@@ -131,7 +131,7 @@ export default function StrategyPage() {
   if (!commander) {
     return (
       <div className="max-w-2xl mx-auto">
-        <p className="text-red-400 mb-4">Kein Commander ausgewählt</p>
+        <p className="text-[color:var(--r)] mb-4">Kein Commander ausgewählt</p>
         <button onClick={() => navigate('/select-commander')} className="btn-primary">
           ← Zurück zur Commander Auswahl
         </button>
@@ -148,8 +148,8 @@ export default function StrategyPage() {
         <select
           value={strategy.primaryWinCon}
           onChange={(e) => setStrategy(prev => ({ ...prev, primaryWinCon: e.target.value }))}
-          className="w-full text-white rounded-xl p-3"
-            style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+          className="w-full text-fg rounded-xl p-3"
+            style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
         >
           <option value="">Wähle eine Win Condition</option>
           {winConditions.map(wc => (
@@ -160,7 +160,7 @@ export default function StrategyPage() {
 
       <div className="card mb-6">
         <h2 className="text-xl font-bold mb-1">🏷️ Themen für {commander}</h2>
-        <p className="text-sm text-gray-400 mb-4">
+        <p className="text-sm text-fg-muted mb-4">
           Echte Archetypen aus EDHREC, abgeleitet aus tausenden Decks mit genau diesem Commander — nicht nur eine generische Liste.
         </p>
         {themesLoading ? (
@@ -176,7 +176,7 @@ export default function StrategyPage() {
                 className={`px-3 py-2 rounded-xl transition text-sm font-semibold ${
                   strategy.themes.includes(theme.name)
                     ? ''
-                    : 'text-cmd-muted hover:text-white bg-[color:var(--surface)] border border-[color:var(--border)]'
+                    : 'text-cmd-muted hover:text-fg bg-[color:var(--surface)] border border-[color:var(--border)]'
                 }`}
                 style={strategy.themes.includes(theme.name) ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' } : undefined}
                 title={`${theme.count} Decks auf EDHREC mit diesem Tag`}
@@ -198,7 +198,7 @@ export default function StrategyPage() {
               className={`p-3 rounded-xl transition text-sm font-semibold ${
                 strategy.keyMechanics.includes(mechanic)
                   ? ''
-                  : 'text-cmd-muted hover:text-white bg-[color:var(--surface)] border border-[color:var(--border)]'
+                  : 'text-cmd-muted hover:text-fg bg-[color:var(--surface)] border border-[color:var(--border)]'
               }`}
               style={strategy.keyMechanics.includes(mechanic) ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' } : undefined}
             >
@@ -206,7 +206,7 @@ export default function StrategyPage() {
             </button>
           ))}
         </div>
-        <p className="text-sm text-gray-400 mt-3">
+        <p className="text-sm text-fg-muted mt-3">
           {strategy.keyMechanics.length} Mechaniken gewählt
         </p>
       </div>
@@ -221,7 +221,7 @@ export default function StrategyPage() {
               className={`p-3 rounded-xl transition ${
                 strategy.playStyle === style
                   ? ''
-                  : 'text-cmd-muted hover:text-white bg-[color:var(--surface)] border border-[color:var(--border)]'
+                  : 'text-cmd-muted hover:text-fg bg-[color:var(--surface)] border border-[color:var(--border)]'
               }`}
               style={strategy.playStyle === style ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' } : undefined}
             >
@@ -244,7 +244,7 @@ export default function StrategyPage() {
           />
           <span className="text-lg font-bold">€{strategy.budget}</span>
         </div>
-        <p className="text-sm text-gray-400 mt-2">
+        <p className="text-sm text-fg-muted mt-2">
           Gilt für ALLE Karten zusammen, die du noch nicht besitzt (Basisländer ausgenommen) — nicht pro Einzelkarte. Ergänzt das "Deck-Budget insgesamt" vom vorherigen Schritt, das nur für die Commander-Auswahl zählt.
         </p>
       </div>
@@ -256,8 +256,8 @@ export default function StrategyPage() {
             id="combo-input"
             type="text"
             placeholder="z.B. Card A + Card B = Effect"
-            className="w-full text-white rounded-xl p-3"
-            style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+            className="w-full text-fg rounded-xl p-3"
+            style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
           />
           <button onClick={handleAddCombo} className="btn-secondary w-full mt-2">
             + Hinzufügen
@@ -270,7 +270,7 @@ export default function StrategyPage() {
                 <span className="text-cmd-muted">{combo}</span>
                 <button
                   onClick={() => handleRemoveCombo(index)}
-                  className="text-red-400 hover:text-red-300"
+                  className="text-[color:var(--r)] hover:text-[color:var(--r)]"
                 >
                   ✕
                 </button>
@@ -286,8 +286,8 @@ export default function StrategyPage() {
           value={strategy.notes}
           onChange={(e) => setStrategy(prev => ({ ...prev, notes: e.target.value }))}
           placeholder="Zusätzliche Infos zur Strategie (optional)"
-          className="w-full text-white rounded-xl p-3 h-20 resize-none"
-          style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}
+          className="w-full text-fg rounded-xl p-3 h-20 resize-none"
+          style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
         />
       </div>
 
