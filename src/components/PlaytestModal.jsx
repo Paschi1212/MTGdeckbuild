@@ -143,11 +143,14 @@ export default function PlaytestModal({ cards, commanderCard, onClose }) {
         const fallbackIndex = prev.battlefield.length
         const x = position?.x ?? card.x ?? clamp(20 + (fallbackIndex % 6) * 24, 0, 2000)
         const y = position?.y ?? card.y ?? clamp(20 + (fallbackIndex % 6) * 24, 0, 2000)
-        next.battlefield = [...prev.battlefield, { ...card, tapped, x, y }]
+        // Build on next.battlefield, not prev.battlefield: when the card is being moved WITHIN
+        // the battlefield, next already has it removed — appending to prev's list kept the old
+        // copy too, so every reposition cloned the card. (Appended last = drawn on top.)
+        next.battlefield = [...next.battlefield, { ...card, tapped, x, y }]
       } else {
         // A card never stays "tapped" or keeps a battlefield position once it leaves play.
         const { x, y, ...rest } = card
-        next[toZone] = [...prev[toZone], { ...rest, tapped: false }]
+        next[toZone] = [...next[toZone], { ...rest, tapped: false }]
       }
       return next
     })
