@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import CardTile from '../components/CardTile'
 import { loadCollection } from '../lib/collection'
 import { loadSecondaryCollections } from '../lib/secondaryCollections'
+import { loadCardData } from '../lib/cardData'
 
 const COLOR_OPTIONS = [
   { id: 'W', hex: '#F8F6D8' },
@@ -102,6 +103,10 @@ export default function CollectionPage() {
   const [search, setSearch] = useState('')
   const [imageMap, setImageMap] = useState({ byId: {}, byName: {} })
   const [loadingImages, setLoadingImages] = useState(true)
+  // Cards whose image/price didn't come back (Scryfall rate limit) — retried automatically
+  // once after Scryfall's 60 s lockout, and on demand.
+  const [missingImages, setMissingImages] = useState({ ids: [], names: [] })
+  const [retryToken, setRetryToken] = useState(0)
   const [selectedColors, setSelectedColors] = useState([])
   const [selectedType, setSelectedType] = useState('')
   const [availability, setAvailability] = useState('all') // all | free | built
@@ -132,44 +137,42 @@ export default function CollectionPage() {
       return
     }
 
-    const ids = [...new Set(collection.cards.map(c => c.scryfallId).filter(Boolean))]
+    const ids = collection.cards.map(c => c.scryfallId).filter(Boolean)
     // A card with no Scryfall ID (blank in the CSV, or an export whose "Scryfall ID" column
     // was named/cased differently — e.g. a different ManaBox app version/locale, observed
-    // live: both of a friend's uploaded collections had none) used to just never get an
-    // image at all, since this only ever looked up by ID. Falling back to a by-NAME lookup
-    // for exactly those cards (same dual-lookup pattern EditDeckPage/ChatBuilderPage already
-    // use for manually-added cards) covers that instead of silently showing nothing.
-    const namesWithoutId = [...new Set(collection.cards.filter(c => !c.scryfallId).map(c => c.name))]
+    // live: both of a friend's uploaded collections had none) is looked up by name instead.
+    const namesWithoutId = collection.cards.filter(c => !c.scryfallId).map(c => c.name)
 
-    if (ids.length === 0 && namesWithoutId.length === 0) {
-      setLoadingImages(false)
-      return
-    }
-
-    Promise.all([
-      ids.length
-        ? fetch('/.netlify/functions/get-card-price', { method: 'POST', body: JSON.stringify({ ids }) })
-          .then(res => (res.ok ? res.json() : {}))
-          .catch(() => ({}))
-        : {},
-      namesWithoutId.length
-        ? fetch('/.netlify/functions/get-card-price', { method: 'POST', body: JSON.stringify({ names: namesWithoutId }) })
-          .then(res => (res.ok ? res.json() : {}))
-          .catch(() => ({}))
-        : {}
-    ])
-      .then(([byId, byNameRaw]) => {
-        // The by-name batch endpoint (getBulkPrices) returns colorIdentity, not colors (the
-        // by-ID endpoint's field, this page's color filter reads) — close enough a stand-in
-        // for the color filter to work on cards only resolvable by name.
-        const byName = Object.fromEntries(
-          Object.entries(byNameRaw).map(([name, entry]) => [name, { ...entry, colors: entry.colorIdentity }])
+    let cancelled = false
+    setLoadingImages(true)
+    loadCardData({
+      ids,
+      names: namesWithoutId,
+      isCancelled: () => cancelled,
+      onUpdate: ({ byId, byName }) => {
+        // The by-name lookup returns colorIdentity, not colors (the by-ID field this page's
+        // color filter reads) — close enough a stand-in for cards only resolvable by name.
+        const byNameWithColors = Object.fromEntries(
+          Object.entries(byName).map(([name, entry]) => [name, { ...entry, colors: entry.colors ?? entry.colorIdentity }])
         )
-        setImageMap({ byId, byName })
-      })
-      .catch(() => {})
-      .finally(() => setLoadingImages(false))
-  }, [collection])
+        setImageMap({ byId, byName: byNameWithColors })
+      }
+    })
+      .then(missing => { if (!cancelled) setMissingImages(missing) })
+      .finally(() => { if (!cancelled) setLoadingImages(false) })
+
+    return () => { cancelled = true }
+  }, [collection, retryToken])
+
+  const missingCount = missingImages.ids.length + missingImages.names.length
+
+  // One automatic retry after Scryfall's lockout has passed.
+  const [autoRetried, setAutoRetried] = useState(false)
+  useEffect(() => {
+    if (loadingImages || missingCount === 0 || autoRetried) return
+    const timer = setTimeout(() => { setAutoRetried(true); setRetryToken(t => t + 1) }, 65000)
+    return () => clearTimeout(timer)
+  }, [loadingImages, missingCount, autoRetried])
 
   // Prefer the by-ID match (exact printing) and fall back to by-name (any printing) — a card
   // with no Scryfall ID in the CSV only ever has a by-name entry to find.
@@ -473,7 +476,16 @@ export default function CollectionPage() {
       </div>
 
       {loadingImages && (
-        <p className="text-cmd-muted text-sm mb-4">Lade Kartenbilder…</p>
+        <p className="text-cmd-muted text-sm mb-4">Lade Kartenbilder … (erscheinen nach und nach)</p>
+      )}
+      {!loadingImages && missingCount > 0 && (
+        <p className="text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+          Für {missingCount} {missingCount === 1 ? 'Karte' : 'Karten'} fehlen noch Bilder – Scryfall hat gebremst.
+          {!autoRetried ? ' Neuer Versuch in etwa einer Minute.' : ' '}
+          <button type="button" onClick={() => setRetryToken(t => t + 1)} className="underline ml-1" style={{ color: 'var(--u)' }}>
+            Jetzt erneut laden
+          </button>
+        </p>
       )}
 
       <p className="text-cmd-muted text-sm mb-4">{visibleCards.length} Karten</p>

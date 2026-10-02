@@ -13,7 +13,7 @@ import scryfall from './scryfall-api.cjs'
 import edhrec from './edhrec-api.cjs'
 import { parseDeckListText } from '../../../src/lib/deckListImport.js'
 
-const { SCRYFALL_BASE, SCRYFALL_HEADERS, fetchWithRetry } = scryfall
+const { SCRYFALL_BASE, SCRYFALL_HEADERS, fetchWithRetry, isScryfallBlocked } = scryfall
 
 const EDHREC_BASE = 'https://json.edhrec.com/pages'
 const EDHREC_HEADERS = SCRYFALL_HEADERS
@@ -136,16 +136,23 @@ async function fetchCards(names) {
     else toFetch.push(name)
   }
 
+  // Unmatched names get a (capped) fuzzy lookup; names from a batch that FAILED (rate limit)
+  // are reported as not found rather than re-asked one by one into a Scryfall lockout.
   const misses = []
+  const failed = []
   for (let i = 0; i < toFetch.length; i += SCRYFALL_COLLECTION_LIMIT) {
     const batch = toFetch.slice(i, i + SCRYFALL_COLLECTION_LIMIT)
+    if (isScryfallBlocked()) {
+      failed.push(...batch)
+      continue
+    }
     const response = await fetchWithRetry(`${SCRYFALL_BASE}/cards/collection`, {
       method: 'POST',
       headers: { ...SCRYFALL_HEADERS, 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifiers: batch.map(name => ({ name })) })
     })
     if (!response.ok) {
-      misses.push(...batch)
+      failed.push(...batch)
       continue
     }
     const data = await response.json()
@@ -166,8 +173,12 @@ async function fetchCards(names) {
     }
   }
 
-  const notFound = []
-  for (const name of misses) {
+  const notFound = [...failed]
+  for (const [i, name] of misses.entries()) {
+    if (i >= 15 || isScryfallBlocked()) {
+      notFound.push(name)
+      continue
+    }
     const card = await scryfallFuzzy(name)
     if (!card) {
       notFound.push(name)

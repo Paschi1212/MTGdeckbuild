@@ -14,20 +14,48 @@ const SCRYFALL_HEADERS = {
 
 const cache = new Map()
 
-// A transient Scryfall hiccup (429 rate-limit, a 5xx blip) used to just permanently drop
-// those names from the batch with no retry — they'd fall through to the per-card fuzzy
-// fallback, which could ALSO fail under the same transient condition, leaving a card with no
-// image/price/type for the rest of that request even though nothing was actually wrong with
-// the card or its name. One short retry (mirrors generateContentWithRetry's pattern for
-// Gemini) costs almost nothing when Scryfall is healthy and recovers the common case where
-// it briefly isn't.
-async function fetchWithRetry(url, options, retries = 2) {
-  for (let attempt = 0; attempt <= retries; attempt++) {
+// Scryfall rate-limits hard: an HTTP 429 comes with a 60 s lockout ("try again after 60
+// seconds … failure to act will result in a network block"). Measured live: the batch
+// endpoint /cards/collection already refused 7 of 27 requests at ~4/s, well below the
+// documented 10/s — so every Scryfall call goes through one paced queue, and after a 429
+// this function instance stops calling Scryfall until the lockout is over instead of
+// retrying into it (which is exactly what the old quick 300/600 ms retries did).
+const MIN_GAP_MS = { collection: 550, other: 120 }
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+let nextSlotAt = 0
+let blockedUntil = 0
+
+function rateLimitedResponse() {
+  return new Response(JSON.stringify({ object: 'error', code: 'rate_limited', details: 'Scryfall-Sperre aktiv' }), {
+    status: 429,
+    headers: { 'Content-Type': 'application/json' }
+  })
+}
+
+function isScryfallBlocked() {
+  return Date.now() < blockedUntil
+}
+
+async function fetchWithRetry(url, options = {}) {
+  if (isScryfallBlocked()) return rateLimitedResponse()
+
+  const kind = String(url).includes('/cards/collection') ? 'collection' : 'other'
+  const now = Date.now()
+  const wait = Math.max(0, nextSlotAt - now)
+  nextSlotAt = Math.max(now, nextSlotAt) + MIN_GAP_MS[kind]
+  if (wait) await sleep(wait)
+
+  for (let attempt = 0; attempt < 2; attempt++) {
     const response = await fetch(url, options)
-    if (response.ok || attempt === retries) return response
-    if (response.status !== 429 && response.status < 500) return response // not transient — don't retry a real 4xx
-    const delayMs = 300 * (attempt + 1)
-    await new Promise(resolve => setTimeout(resolve, delayMs))
+    if (response.status === 429) {
+      const retryAfter = Number(response.headers.get('retry-after')) || 60
+      blockedUntil = Date.now() + retryAfter * 1000
+      console.warn(`[Scryfall] rate-limited — pausing all Scryfall calls for ${retryAfter}s`)
+      return response
+    }
+    // One retry for a genuine server hiccup; everything else is the caller's answer.
+    if (response.status < 500 || attempt === 1) return response
+    await sleep(800)
   }
 }
 
@@ -108,7 +136,7 @@ async function searchAlternativeCards(query, type = null) {
 
     url += '&unique=cards&order=edhrec'
 
-    const response = await fetch(url, { headers: SCRYFALL_HEADERS })
+    const response = await fetchWithRetry(url, { headers: SCRYFALL_HEADERS })
 
     if (!response.ok) {
       return []
@@ -132,6 +160,7 @@ async function searchAlternativeCards(query, type = null) {
 }
 
 const SCRYFALL_COLLECTION_LIMIT = 75 // Scryfall's documented max identifiers per /cards/collection request
+const MAX_FUZZY_FALLBACKS = 15 // single lookups per call for names the batch couldn't match
 
 /**
  * Get bulk prices/images for multiple cards by name, using Scryfall's batch collection
@@ -157,9 +186,14 @@ async function getBulkPrices(cardNames) {
     }
   }
 
+  // Names the batch endpoint answered but couldn't match get one fuzzy lookup each — capped,
+  // since each is its own paced request. A batch that FAILED (rate limit, outage) is left
+  // missing instead: re-asking 75 single names right into a lockout is what gets an IP blocked.
+  const fuzzyCandidates = []
+
   for (let i = 0; i < namesToFetch.length; i += SCRYFALL_COLLECTION_LIMIT) {
+    if (isScryfallBlocked()) break
     const batch = namesToFetch.slice(i, i + SCRYFALL_COLLECTION_LIMIT)
-    const notFoundInBatch = []
 
     try {
       const response = await fetchWithRetry(`${SCRYFALL_BASE}/cards/collection`, {
@@ -170,12 +204,19 @@ async function getBulkPrices(cardNames) {
 
       if (response.ok) {
         const data = await response.json()
-        const byLowerName = new Map(data.data.map(card => [card.name.toLowerCase(), card]))
+        // Double-faced cards are listed as "Front // Back" — match the front-face name too.
+        const byLowerName = new Map()
+        for (const card of data.data) {
+          byLowerName.set(card.name.toLowerCase(), card)
+          for (const face of card.card_faces || []) {
+            if (!byLowerName.has(face.name.toLowerCase())) byLowerName.set(face.name.toLowerCase(), card)
+          }
+        }
 
         for (const name of batch) {
           const card = byLowerName.get(name.toLowerCase())
           if (!card) {
-            notFoundInBatch.push(name)
+            fuzzyCandidates.push(name)
             continue
           }
 
@@ -200,25 +241,18 @@ async function getBulkPrices(cardNames) {
           result[name] = entry
           cache.set(`name:${name.toLowerCase()}`, { data: entry, timestamp: Date.now() })
         }
-      } else {
-        notFoundInBatch.push(...batch)
       }
     } catch (error) {
       console.error('[Scryfall] Error fetching batch by name:', error)
-      notFoundInBatch.push(...batch)
     }
+  }
 
-    // Fuzzy fallback only for the handful the exact-match batch missed, not the whole list.
-    for (const name of notFoundInBatch) {
-      const price = await getCardPrice(name)
-      if (price) {
-        result[name] = price
-        cache.set(`name:${name.toLowerCase()}`, { data: price, timestamp: Date.now() })
-      }
-    }
-
-    if (i + SCRYFALL_COLLECTION_LIMIT < namesToFetch.length) {
-      await new Promise(resolve => setTimeout(resolve, 50))
+  for (const name of fuzzyCandidates.slice(0, MAX_FUZZY_FALLBACKS)) {
+    if (isScryfallBlocked()) break
+    const price = await getCardPrice(name)
+    if (price) {
+      result[name] = price
+      cache.set(`name:${name.toLowerCase()}`, { data: price, timestamp: Date.now() })
     }
   }
 
@@ -247,6 +281,7 @@ async function getCardsByIds(scryfallIds) {
   }
 
   for (let i = 0; i < idsToFetch.length; i += SCRYFALL_COLLECTION_LIMIT) {
+    if (isScryfallBlocked()) break
     const batch = idsToFetch.slice(i, i + SCRYFALL_COLLECTION_LIMIT)
 
     try {
@@ -276,10 +311,6 @@ async function getCardsByIds(scryfallIds) {
       }
     } catch (error) {
       console.error('[Scryfall] Error fetching batch by id:', error)
-    }
-
-    if (i + SCRYFALL_COLLECTION_LIMIT < idsToFetch.length) {
-      await new Promise(resolve => setTimeout(resolve, 50))
     }
   }
 
@@ -367,6 +398,7 @@ module.exports = {
   SCRYFALL_BASE,
   SCRYFALL_HEADERS,
   fetchWithRetry,
+  isScryfallBlocked,
   getCardData,
   getCardPrice,
   searchAlternativeCards,
