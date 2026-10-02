@@ -6,6 +6,7 @@ import { getDeckPreferences, setDeckPreferences } from '../lib/deckPreferences'
 import { getSecondaryAvailability } from '../lib/secondaryCollections'
 import { aiFetch, isClaudeActive, getClaudeModelLabel, formatModelId } from '../lib/aiMode'
 import { loadCollection, buildLocationIndex, locationsFromIndex, formatCardLocations } from '../lib/collection'
+import { getDeckMemory, updateDeckMemory, forgetDeckMemoryEntry } from '../lib/deckMemory'
 
 // Embedded as the "Analyse" tab of a deck's consolidated detail page — no longer a standalone
 // route. `cachedAudit`/`onAuditComplete` let the parent remember the last result across tab
@@ -26,6 +27,10 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
   const [suggestionsError, setSuggestionsError] = useState(null)
   const [strategyDraft, setStrategyDraft] = useState(rememberedStrategy)
   const [editingStrategy, setEditingStrategy] = useState(false)
+  // What earlier analyses led to (adds kept, cuts made) — sent along so the next analysis
+  // doesn't flip-flop on them. Updated from the previous result each time a new one starts.
+  const [deckMemory, setDeckMemory] = useState(() => getDeckMemory(storageKey))
+  const [showMemory, setShowMemory] = useState(false)
 
   const formatStrategy = (strategy) => strategy
     ? `Win Condition: ${strategy.winCondition}\n\nSpielplan: ${strategy.gamePlan}\n\nSchwächen: ${strategy.weaknesses}`
@@ -44,7 +49,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
 
       const response = await aiFetch('/.netlify/functions/audit-deck', {
         method: 'POST',
-        body: JSON.stringify({ commander, deckName, deckCards, collectionSampleNames, strategy, phase: 'suggestions' })
+        body: JSON.stringify({ commander, deckName, deckCards, collectionSampleNames, strategy, phase: 'suggestions', removedCards: getDeckMemory(storageKey).removed })
       })
 
       if (response.ok) {
@@ -74,11 +79,15 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
       setError(null)
       setSuggestionsError(null)
 
+      // Fold the previous result into the deck memory before it gets replaced.
+      const memory = updateDeckMemory(storageKey, audit, deckCards)
+      setDeckMemory(memory)
+
       // Remembered with the result, so a saved analysis still says which AI wrote it.
       const engine = isClaudeActive() ? 'claude' : 'gemini'
       const response = await aiFetch('/.netlify/functions/audit-deck', {
         method: 'POST',
-        body: JSON.stringify({ commander, deckName, deckCards, strategyOverride, powerLevel, phase: 'strategy' })
+        body: JSON.stringify({ commander, deckName, deckCards, strategyOverride, powerLevel, phase: 'strategy', keptCards: memory.kept })
       })
 
       if (response.ok) {
@@ -158,6 +167,50 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
 
   return (
     <div>
+      {(deckMemory.kept.length > 0 || deckMemory.removed.length > 0) && (
+        <div className="card mb-6 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <p className="text-sm leading-relaxed text-fg-2">
+              <strong className="text-fg">🧠 Deck-Gedächtnis:</strong>{' '}
+              {deckMemory.kept.length > 0 && <>{deckMemory.kept.length} übernommene Ergänzung{deckMemory.kept.length === 1 ? '' : 'en'} {deckMemory.kept.length === 1 ? 'wird' : 'werden'} nicht mehr zum Streichen vorgeschlagen</>}
+              {deckMemory.kept.length > 0 && deckMemory.removed.length > 0 && ' · '}
+              {deckMemory.removed.length > 0 && <>{deckMemory.removed.length} gestrichene Karte{deckMemory.removed.length === 1 ? '' : 'n'} {deckMemory.removed.length === 1 ? 'wird' : 'werden'} nicht erneut vorgeschlagen</>}
+            </p>
+            <button type="button" onClick={() => setShowMemory(v => !v)} className="text-xs underline whitespace-nowrap text-fg-2">
+              {showMemory ? 'Ausblenden' : 'Anzeigen'}
+            </button>
+          </div>
+          {showMemory && (
+            <div className="grid sm:grid-cols-2 gap-4 mt-3">
+              {[['kept', 'Übernommene Ergänzungen (geschützt)'], ['removed', 'Gestrichene Karten (nicht wieder vorschlagen)']].map(([kind, title]) => (
+                <div key={kind}>
+                  <h4 className="text-xs font-semibold mb-1 text-fg-muted">{title}</h4>
+                  {deckMemory[kind].length === 0 ? (
+                    <p className="text-xs text-fg-muted">–</p>
+                  ) : (
+                    <ul className="text-sm space-y-0.5">
+                      {deckMemory[kind].map(name => (
+                        <li key={name} className="flex items-center justify-between gap-2">
+                          <span className="text-fg">{name}</span>
+                          <button
+                            type="button"
+                            onClick={() => setDeckMemory(forgetDeckMemoryEntry(storageKey, kind, name))}
+                            className="text-xs underline text-fg-muted"
+                            title="Die Analyse darf diese Karte wieder frei bewerten"
+                          >
+                            freigeben
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {audit?.strategy && (
         <div className="card mb-6" style={{ borderColor: 'var(--u)' }}>
           <div className="flex items-center justify-between mb-3">

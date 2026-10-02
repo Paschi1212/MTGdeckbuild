@@ -315,7 +315,10 @@ function parseStrategyOverride(text) {
  * price-gainer scan's chunked requests) is what actually fixes that, rather than trading away
  * either the bigger collection sample or the uncapped suggestions.
  */
-async function auditDeckStrategy({ commander, deckCards, edhecData, strategyOverride, powerLevel }) {
+// keptCards: cards the user added on an earlier analysis' recommendation (still in the deck).
+// Re-suggesting them as cuts one run later — observed live — makes the tool contradict itself;
+// they're a deliberate choice now and never cut candidates (prompt AND hard filter below).
+async function auditDeckStrategy({ commander, deckCards, edhecData, strategyOverride, powerLevel, keptCards = [] }) {
   const cardInfo = await getBulkPrices(deckCards.map(c => c.name))
   // A short oracle-text snippet, not just [Typ, CMC] — observed live: without it, the model
   // judged less-famous cards from memory alone and got some outright wrong (e.g. called
@@ -348,6 +351,10 @@ async function auditDeckStrategy({ commander, deckCards, edhecData, strategyOver
     ? `\nNACHWEISLICHE DIREKTE SYNERGIE MIT ${commander}S EIGENER FÄHIGKEIT (aus dem echten Kartentext erkannt — diese Karten sind KEINE Cut-Kandidaten, berücksichtige sie im Spielplan als Teil der Commander-Engine):\n${[...commanderSynergy].map(([name, why]) => `- ${name}: ${why}`).join('\n')}\n`
     : ''
 
+  const keptContext = keptCards.length
+    ? `\nVOM SPIELER AUF EINE FRÜHERE EMPFEHLUNG HIN AUFGENOMMEN (bewusste Entscheidung — KEINE Cut-Kandidaten, im Spielplan als Teil des Decks berücksichtigen): ${keptCards.join(', ')}\n`
+    : ''
+
   // Soft fact, not a hard guard (trading a weaker X-spell for a stronger one is legitimate):
   // which deck cards actually have {X} in their mana cost when the commander copies X-spells.
   // Observed live on the lite model: "Genesis Wave lacks an X in its mana cost" — it's {X}{G}{G}{G}.
@@ -377,7 +384,7 @@ COMMANDER: ${commander}${commanderText ? `\nEXAKTER KARTENTEXT DES COMMANDERS (m
 
 AKTUELLE DECKLISTE (${deckCards.length} Karten, [Typ, Manakosten] und Kartentext-Auszug wo bekannt — verlass dich auf DIESEN Text, nicht auf dein eigenes Gedächtnis der Karte, falls sie dir unbekannt vorkommt):
 ${deckListText}
-${synergyContext}${xSpellContext}${edhecContext}${edhecCutSignal}${strategyContext}${powerLevelContext}
+${synergyContext}${keptContext}${xSpellContext}${edhecContext}${edhecCutSignal}${strategyContext}${powerLevelContext}
 AUFGABE:
 Bewerte dieses BEREITS GEBAUTE Deck. Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
 - "strategy": ${strategyOverride ? 'übernimm die vom Nutzer bestätigte Strategie oben unverändert in winCondition/gamePlan/weaknesses.' : `lies aus der Deckliste (Kartentypen, Manawerte, Commander-Fähigkeiten) das TATSÄCHLICHE Spielplan des Decks heraus, BEVOR du irgendeine Karte bewertest. WICHTIG: "winCondition" und "gamePlan" müssen sich um die FÄHIGKEIT VON ${commander} selbst drehen, nicht um eine andere (auch wenn bekanntere/stärkere) Karte im Deck — eine starke Synergiekarte ist ein Baustein DER Commander-Strategie, niemals deren Ersatz. — "winCondition" (wie gewinnt dieses Deck konkret, ausgehend von ${commander}s eigener Fähigkeit), "gamePlan" (Früh-/Mittel-/Spätspiel-Ablauf, Kernrollen: Ramp, Kartenvorteil, Removal/Interaktion, Payoffs — mit welchen Karten sie abgedeckt sind), "weaknesses" (welche dieser Rollen fehlen oder sind unterbesetzt — UND GLEICHBERECHTIGT DAZU: falls die Strategie auf einer bestimmten Kartenkategorie/Synergie basiert, die der Commander direkt belohnt oder verstärkt (z.B. X-Spells, Token-Erzeugung, +1/+1-Counter, Artefakte, ein Tribal-Typ), zähle die Karten dieser Kategorie im Deck AUSDRÜCKLICH durch und benenne "zu wenig [Kategorie]-Karten" explizit als eigene Schwäche, wenn die Dichte für eine konsequente Strategie zu gering ist — das ist für ein Synergie-Deck oft die wichtigste Schwäche überhaupt, nicht nur eine generische Rolle unter vielen). Das ist die Grundlage für ALLES danach.`}
@@ -457,10 +464,10 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
     }
     // Hard guard, not just the prompt hint: a card with a code-verified interaction with the
     // commander's own ability is never suggested as a cut.
-    const protectedNames = new Set([...commanderSynergy.keys()].map(normalizeCardName))
+    const protectedNames = new Set([...commanderSynergy.keys(), ...keptCards].map(normalizeCardName))
     const validCardsToCut = inDeckCardsToCut.filter(c => !protectedNames.has(normalizeCardName(c.name)))
     if (validCardsToCut.length !== inDeckCardsToCut.length) {
-      console.warn('[Gemini] auditDeckStrategy: kept commander-synergy cards out of cardsToCut:',
+      console.warn('[Gemini] auditDeckStrategy: kept commander-synergy / previously added cards out of cardsToCut:',
         inDeckCardsToCut.filter(c => protectedNames.has(normalizeCardName(c.name))).map(c => c.name))
     }
 
@@ -490,7 +497,9 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
  * Takes the already-determined `strategy` object from phase 1 instead of re-deriving it, so
  * the suggestions stay consistent with what the user already saw and confirmed.
  */
-async function auditDeckSuggestions({ commander, deckCards, collectionSampleNames, budget, edhecData, strategy }) {
+// removedCards: cards the user cut on an earlier analysis' recommendation — not suggested
+// back as adds (prompt AND hard filter), the mirror image of keptCards above.
+async function auditDeckSuggestions({ commander, deckCards, collectionSampleNames, budget, edhecData, strategy, removedCards = [] }) {
   const deckCardNames = new Set(deckCards.map(c => c.name))
   const deckListText = [...deckCardNames].join(', ')
 
@@ -509,6 +518,10 @@ async function auditDeckSuggestions({ commander, deckCards, collectionSampleName
 
   const strategyContext = `\nBEREITS FESTGELEGTE STRATEGIE DIESES DECKS (verbindlich — nicht neu bewerten, nur als Grundlage für deine Vorschläge nutzen):\n${formatStrategyForPrompt(strategy)}\n`
 
+  const removedContext = removedCards.length
+    ? `\nVOM SPIELER AUF EINE FRÜHERE EMPFEHLUNG HIN ENTFERNT (NICHT erneut vorschlagen, weder in "cardsToAdd" noch in "cardsToBuy"): ${removedCards.join(', ')}\n`
+    : ''
+
   const profile = await getCommanderProfile(commander)
   const commanderText = profile.text
   const candidates = await getCategoryCandidates(profile, deckCards, collectionSampleNames)
@@ -523,7 +536,7 @@ async function auditDeckSuggestions({ commander, deckCards, collectionSampleName
 COMMANDER: ${commander}${commanderText ? `\nEXAKTER KARTENTEXT DES COMMANDERS (maßgeblich — schlage Karten vor, die mit GENAU dieser Fähigkeit interagieren):\n${commanderText}` : ''}
 
 AKTUELLE DECKLISTE (${deckCards.length} Karten): ${deckListText}
-${strategyContext}${categoryContext}${collectionContext}${edhecContext}${budgetContext}
+${strategyContext}${removedContext}${categoryContext}${collectionContext}${edhecContext}${budgetContext}
 AUFGABE:
 Schlage auf Basis der oben festgelegten Strategie und ihrer "weaknesses" Karten vor. Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
 - "cardsToAdd": ALLE Karten AUSSCHLIESSLICH aus der Sammlungs-Liste oben ("WEITERE KARTEN IN DER SAMMLUNG..."), die eine der in "weaknesses" identifizierten Lücken schließen würden — der Nutzer besitzt sie bereits, nichts davon muss gekauft werden. KEINE feste Obergrenze — geh die Sammlungs-Liste wirklich durch und nenne JEDE Karte, die strategisch passt, nicht nur ein paar Beispiele. KRITISCH: jeder "name" muss WORTWÖRTLICH in dieser Sammlungs-Liste stehen; wenn die Liste leer ist oder nichts davon wirklich passt, gib ein leeres Array zurück statt eine Karte zu erfinden oder eine zu nennen, die nicht dort steht.
@@ -573,9 +586,10 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
 
     const collectionNames = new Set((collectionSampleNames || []).map(n => normalizeCardName(n)))
     const normalizedDeckNames = new Set(deckCards.map(c => normalizeCardName(c.name)))
+    const removedNames = new Set(removedCards.map(normalizeCardName))
     const rawCardsToAdd = parsed.cardsToAdd || []
     const validCardsToAdd = rawCardsToAdd.filter(c =>
-      !normalizedDeckNames.has(normalizeCardName(c.name)) && collectionNames.has(normalizeCardName(c.name))
+      !normalizedDeckNames.has(normalizeCardName(c.name)) && collectionNames.has(normalizeCardName(c.name)) && !removedNames.has(normalizeCardName(c.name))
     )
     if (validCardsToAdd.length !== rawCardsToAdd.length) {
       console.warn(
@@ -585,7 +599,7 @@ Nutze ausschließlich echte, existierende Magic: The Gathering Kartennamen.`
     }
 
     const rawCardsToBuy = parsed.cardsToBuy || []
-    const validCardsToBuy = rawCardsToBuy.filter(c => !normalizedDeckNames.has(normalizeCardName(c.name)))
+    const validCardsToBuy = rawCardsToBuy.filter(c => !normalizedDeckNames.has(normalizeCardName(c.name)) && !removedNames.has(normalizeCardName(c.name)))
     if (validCardsToBuy.length !== rawCardsToBuy.length) {
       console.warn(
         `[Gemini] auditDeckSuggestions: dropped ${rawCardsToBuy.length - validCardsToBuy.length} cardsToBuy ` +
