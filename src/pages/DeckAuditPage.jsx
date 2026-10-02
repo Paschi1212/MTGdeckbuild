@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import CardTile from '../components/CardTile'
 import { readApiError } from '../lib/apiError'
 import ChatWidget from '../components/ChatWidget'
 import { getDeckPreferences, setDeckPreferences } from '../lib/deckPreferences'
 import { getSecondaryAvailability } from '../lib/secondaryCollections'
 import { aiFetch, isClaudeActive, getClaudeModelLabel, formatModelId } from '../lib/aiMode'
+import { loadCollection, buildLocationIndex, locationsFromIndex, formatCardLocations } from '../lib/collection'
 
 // Embedded as the "Analyse" tab of a deck's consolidated detail page — no longer a standalone
 // route. `cachedAudit`/`onAuditComplete` let the parent remember the last result across tab
@@ -16,6 +17,9 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
   const rememberedStrategy = getDeckPreferences(storageKey).strategyOverride || ''
 
   const [audit, setAudit] = useState(cachedAudit || null)
+  // The user's own collection — for where each "Aus deiner Sammlung" card is stored.
+  const [collection] = useState(loadCollection)
+  const locationIndex = useMemo(() => buildLocationIndex(collection), [collection])
   const [loading, setLoading] = useState(false)
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const [error, setError] = useState(null)
@@ -264,10 +268,10 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
       {audit?.cardsToAdd?.length > 0 && (
         <div className="mb-8">
           <h3 className="text-lg font-bold mb-3" style={{ color: 'var(--g)' }}>✅ Aus deiner Sammlung ({audit.cardsToAdd.length})</h3>
-          <p className="text-xs text-cmd-muted mb-3">Besitzt du bereits — nichts zu kaufen.</p>
+          <p className="text-xs text-cmd-muted mb-3">Besitzt du bereits — nichts zu kaufen. 📍 zeigt, in welchem Ordner die Karte liegt.</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
             {audit.cardsToAdd.map(card => (
-              <CardTile key={card.name} card={card} />
+              <CardTile key={card.name} card={{ ...card, location: formatCardLocations(locationsFromIndex(locationIndex, card.name)) }} />
             ))}
           </div>
         </div>

@@ -57,6 +57,8 @@ farbiges Element in Listen; alles andere bleibt ruhig.
 - **Speicherstatus sichtbar** in der Deck-Leiste („Nicht gespeichert“ in Gold / „Gespeichert hh:mm“
   in Grün); Speichern lässt den Editor offen. ManaBox-Decks werden nie überschrieben – sie werden
   „Als Entwurf gespeichert“ (Kopie „Name (bearbeitet)“).
+- **Ablageort 📍**: Bei Karten aus der eigenen Sammlung steht der ManaBox-Ordner mit freien Exemplaren
+  (Analyse „Aus deiner Sammlung“, Vorschläge, Tabelle, Excel-Export) – verbaute Deck-Exemplare zählen nicht.
 - **Exportieren ▾** am Ende der Werkzeugleiste: CSV für ManaBox (Komma, ManaBox-Spaltennamen), CSV
   für Excel (Semikolon, Dezimalkomma, BOM), Deckliste .txt.
 - **Drei Ansichten** (Umschalter in der Werkzeugleiste, pro Gerät gemerkt): *Liste* (dichte

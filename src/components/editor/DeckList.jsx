@@ -234,6 +234,7 @@ function TableView({ groups, cutReasonMap, onUpdateCount, onRemove, onZoom, onPr
                   <td className="px-2 py-1.5 text-xs leading-snug align-top">
                     {cutReason && <div style={{ color: 'var(--r)' }} title={cutReason}>Streichkandidat</div>}
                     {ownership && <div style={{ color: ownership.color }}>{ownership.text}</div>}
+                    {card.location && <div style={{ color: 'var(--color-text-secondary)' }} title="Ablageort in deiner Sammlung">📍 {card.location}</div>}
                   </td>
                   <td className="px-1 py-1 align-top">
                     <div className="flex items-center justify-end">

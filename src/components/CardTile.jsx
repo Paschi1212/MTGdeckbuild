@@ -124,6 +124,13 @@ export default function CardTile({ card, onClick, size = 'default' }) {
         </div>
       )}
 
+      {/* Where an owned card is stored (ManaBox binder) — to pull it for the deck. */}
+      {card.location && (
+        <div className="text-[11px] mt-0.5 leading-snug break-words" style={{ color: 'var(--color-text-secondary)' }} title={`Ablageort: ${card.location}`}>
+          📍 {card.location}
+        </div>
+      )}
+
       {/* A card to buy that happens to already be in a friend's (separately uploaded)
           collection — purely informational, never affects ownership/availability elsewhere. */}
       {card.friendAvailability?.length > 0 && (

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { loadCollection, getCardsForBinder, getAvailableQuantities, getAvailableCardNames } from '../lib/collection'
+import { loadCollection, getCardsForBinder, getAvailableQuantities, getAvailableCardNames, buildLocationIndex, locationsFromIndex, formatCardLocations } from '../lib/collection'
 import { saveDraftDeck, getDraftDeck } from '../lib/draftDecks'
 import { buildManaBoxCsv, buildExcelCsv, buildDecklistText, downloadTextFile, exportFileBase } from '../lib/deckExport'
 import { classifyType, BASIC_LAND_NAMES } from '../lib/cardType'
@@ -188,6 +188,8 @@ export default function EditDeckPage(embeddedState) {
     [collection, deckName]
   )
 
+  const locationIndex = useMemo(() => buildLocationIndex(collection), [collection])
+
   const enrichedCards = useMemo(() => {
     return cards.map((card, index) => {
       const byId = byIdMap[card.scryfallId]
@@ -217,10 +219,13 @@ export default function EditDeckPage(embeddedState) {
         missingCount,
         // A separately-uploaded friend's collection has this card — only worth checking (and
         // showing) for a card the user actually still needs to buy.
-        friendAvailability: missingCount > 0 ? getSecondaryAvailability(card.name) : []
+        friendAvailability: missingCount > 0 ? getSecondaryAvailability(card.name) : [],
+        // Owned card in a draft: which binder to pull it from (a ManaBox deck's cards are
+        // already in that deck).
+        location: !deckName && missingCount === 0 ? formatCardLocations(locationsFromIndex(locationIndex, card.name)) : ''
       }
     })
-  }, [cards, byIdMap, priceMap, availableQuantities, deckName])
+  }, [cards, byIdMap, priceMap, availableQuantities, deckName, locationIndex])
 
   const deckTotal = enrichedCards.reduce((sum, c) => sum + c.count * c.price, 0)
   const deckSize = enrichedCards.reduce((sum, c) => sum + c.count, 0)
@@ -508,7 +513,8 @@ export default function EditDeckPage(embeddedState) {
     const statusOf = (card) => {
       if (cutReasonMap.has(card.name)) return 'Streichkandidat'
       if (card.missingCount > 0) return card.friendAvailability?.length ? `bei ${card.friendAvailability.map(h => h.label).join(', ')}` : 'Zukauf'
-      return collection && !deckName ? 'vorhanden' : ''
+      if (!collection || deckName) return ''
+      return card.location ? `vorhanden – ${card.location}` : 'vorhanden'
     }
     const commanderRow = (commanderCard?.name || commanderName)
       ? [{
@@ -552,6 +558,7 @@ export default function EditDeckPage(embeddedState) {
           cuts={cutsInDeck}
           adds={pendingSuggestions}
           isOwned={isOwned}
+          locationFor={(name) => formatCardLocations(locationsFromIndex(locationIndex, name))}
           friendsFor={getSecondaryAvailability}
           onRemove={handleRemoveCard}
           onRemoveAll={handleRemoveAllCuts}

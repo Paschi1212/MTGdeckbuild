@@ -141,6 +141,48 @@ export function getAvailableQuantities(collection, excludeBinderName = null) {
   return map
 }
 
+const locationKey = (name) => String(name || '').split('//')[0].trim().toLowerCase()
+
+/**
+ * Where the free copies of a card are stored — the ManaBox binders/lists holding it (deck
+ * binders excluded: those copies are already built in). Matched by front-face name, since a
+ * suggestion may name a double-faced card by its front only. [{ binderName, quantity }]
+ */
+export function getCardLocations(collection, cardName) {
+  return buildLocationIndex(collection).get(locationKey(cardName)) || []
+}
+
+// The same for every card at once — one pass over the collection instead of one per card
+// (the editor looks up ~100 cards against collections of several thousand rows).
+export function buildLocationIndex(collection) {
+  const index = new Map()
+  if (!collection?.cards) return index
+  const counts = new Map()
+  for (const card of collection.cards) {
+    if (card.binderType === 'deck') continue
+    const key = locationKey(card.name)
+    if (!counts.has(key)) counts.set(key, new Map())
+    const binder = card.binderName || 'ohne Ordner'
+    const perBinder = counts.get(key)
+    perBinder.set(binder, (perBinder.get(binder) || 0) + (card.quantity || 0))
+  }
+  for (const [key, perBinder] of counts) {
+    index.set(key, [...perBinder.entries()]
+      .map(([binderName, quantity]) => ({ binderName, quantity }))
+      .sort((a, b) => b.quantity - a.quantity || a.binderName.localeCompare(b.binderName)))
+  }
+  return index
+}
+
+export function locationsFromIndex(index, cardName) {
+  return index.get(locationKey(cardName)) || []
+}
+
+// "Nr 2 (2×), Bulk-Box" — short enough for a card tile.
+export function formatCardLocations(locations) {
+  return locations.map(l => (l.quantity > 1 ? `${l.binderName} (${l.quantity}×)` : l.binderName)).join(', ')
+}
+
 /** Card names with at least one copy not already committed to another deck. */
 export function getAvailableCardNames(collection, excludeBinderName = null) {
   const quantities = getAvailableQuantities(collection, excludeBinderName)

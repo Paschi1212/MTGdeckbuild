@@ -29,7 +29,7 @@ function EmptyNote({ children }) {
 
 // Cuts and adds from the last analysis, applied with one click each — the analysis result
 // turned into actions instead of a list to transcribe by hand.
-export function SuggestionsPanel({ cuts, adds, isOwned, friendsFor, onRemove, onRemoveAll, onAdd, onAddAllOwned, onZoom, emptyHint }) {
+export function SuggestionsPanel({ cuts, adds, isOwned, friendsFor, locationFor = () => '', onRemove, onRemoveAll, onAdd, onAddAllOwned, onZoom, emptyHint }) {
   if (cuts.length === 0 && adds.length === 0) return <EmptyNote>{emptyHint}</EmptyNote>
   const ownedAdds = adds.filter(card => isOwned(card.name))
 
@@ -71,7 +71,7 @@ export function SuggestionsPanel({ cuts, adds, isOwned, friendsFor, onRemove, on
                     <button type="button" onClick={() => onZoom(card)} className="text-sm font-medium text-left" style={textStyle}>{card.name}</button>
                     <div className="text-[11px] mt-0.5">
                       {owned
-                        ? <span style={{ color: 'var(--g)' }}>vorhanden</span>
+                        ? <span style={{ color: 'var(--g)' }}>vorhanden{locationFor(card.name) && <span style={{ color: 'var(--color-text-secondary)' }}> · 📍 {locationFor(card.name)}</span>}</span>
                         : <span style={{ color: 'var(--r)' }}>Zukauf{card.eur ? ` €${card.eur.toFixed(2)}` : ''}</span>}
                       {friends.length > 0 && <span style={{ color: 'var(--u)' }}> · bei {friends.map(f => f.label).join(', ')}</span>}
                     </div>
