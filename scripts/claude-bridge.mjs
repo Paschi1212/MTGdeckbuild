@@ -13,12 +13,30 @@
  */
 
 import http from 'node:http'
+import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import dotenv from 'dotenv'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+// Everything the bridge window shows also goes to claude-bridge.log (fresh on every start,
+// gitignored) — so a start that fails or a window that was closed can still be diagnosed.
+const LOG_FILE = path.join(root, 'claude-bridge.log')
+try { fs.writeFileSync(LOG_FILE, `Start ${new Date().toLocaleString('de-DE')} · Node ${process.version}\n`) } catch {}
+for (const level of ['log', 'warn', 'error']) {
+  const original = console[level].bind(console)
+  console[level] = (...args) => {
+    original(...args)
+    try { fs.appendFileSync(LOG_FILE, args.map(a => (a instanceof Error ? a.stack : String(a))).join(' ') + '\n') } catch {}
+  }
+}
+process.on('uncaughtException', error => {
+  console.error('❌ Unerwarteter Fehler — bitte diese Meldung weitergeben:', error)
+  process.exit(1)
+})
+
 dotenv.config({ path: path.join(root, '.env') })
 process.env.AI_PROVIDER = 'claude'
 
