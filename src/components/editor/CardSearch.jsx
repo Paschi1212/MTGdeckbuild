@@ -98,7 +98,7 @@ export default function CardSearch({ collection, availableQuantities, existingNa
                   key={row.scryfallId || row.name}
                   type="button"
                   onMouseDown={() => addOwned(row)}
-                  className="w-full flex justify-between gap-3 px-3 py-1.5 text-left hover:bg-[color:var(--color-accent-light)]"
+                  className="w-full flex justify-between gap-3 px-3 py-1.5 [@media(pointer:coarse)]:py-3 text-left hover:bg-[color:var(--color-accent-light)]"
                   style={{ color: 'var(--color-text)' }}
                 >
                   <span className="truncate">{row.name}</span>
@@ -115,7 +115,7 @@ export default function CardSearch({ collection, availableQuantities, existingNa
                   key={name}
                   type="button"
                   onMouseDown={() => addOther(name)}
-                  className="w-full flex justify-between gap-3 px-3 py-1.5 text-left hover:bg-[color:var(--color-accent-light)]"
+                  className="w-full flex justify-between gap-3 px-3 py-1.5 [@media(pointer:coarse)]:py-3 text-left hover:bg-[color:var(--color-accent-light)]"
                   style={{ color: 'var(--color-text)' }}
                 >
                   <span className="truncate">{name}</span>

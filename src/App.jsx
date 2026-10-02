@@ -14,7 +14,8 @@ import ChatBuilderPage from './pages/ChatBuilderPage'
 import PrivacyPage from './pages/PrivacyPage'
 import ClaudeModePage from './pages/ClaudeModePage'
 import DraftAnalysisPage from './pages/DraftAnalysisPage'
-import { pullFromCloud, scheduleCloudPush } from './lib/cloudSync'
+import SyncBanner from './components/SyncBanner'
+import { pullFromCloud, scheduleCloudPush, checkForRemoteChanges } from './lib/cloudSync'
 import { checkBridge } from './lib/aiMode'
 import { flushBrainOutbox } from './lib/brain'
 
@@ -34,6 +35,18 @@ function App() {
     return () => window.removeEventListener('focus', checkBridgeAndFlush)
   }, [])
 
+  // Coming back to this tab: has another device (tablet ↔ PC) saved something meanwhile?
+  useEffect(() => {
+    if (!user) return undefined
+    const onVisible = () => { if (document.visibilityState === 'visible') checkForRemoteChanges() }
+    window.addEventListener('focus', checkForRemoteChanges)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', checkForRemoteChanges)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [user])
+
   const checkAuth = async () => {
     try {
       const response = await fetch('/.netlify/functions/auth-check', {
@@ -47,14 +60,14 @@ function App() {
         // overwrites keys the server actually has, so on the very first login anywhere
         // (server has nothing yet) this is a no-op and this device's existing local data
         // survives untouched.
-        await pullFromCloud()
-        // The pull may have brought logbook entries queued on another device.
-        flushBrainOutbox()
-        // Then push right back — on a brand new device this just re-sends what was pulled
-        // (harmless), but on the FIRST device to ever log in after this feature shipped, this
-        // is what actually seeds the server from its local data, instead of leaving the
-        // server empty until some unrelated edit happens to trigger a push.
-        scheduleCloudPush()
+        const pulled = await pullFromCloud()
+        // The pull may have brought the PC's Tailscale address (tablet) and logbook entries
+        // queued on another device.
+        checkBridge().then(flushBrainOutbox)
+        // The FIRST device to ever log in seeds the server from its local data, instead of
+        // leaving it empty until some unrelated edit triggers a push. (Not on every load —
+        // that would count as a change and tell the other devices to reload.)
+        if (pulled.ok && pulled.empty) scheduleCloudPush()
         setUser(data.user)
       }
     } catch (error) {
@@ -94,6 +107,7 @@ function App() {
       <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
         <Navigation user={user} onLogout={handleLogout} />
         <main className="container mx-auto px-4 md:px-12 py-8">
+          {user && <SyncBanner />}
           <Routes>
             <Route path="/" element={<HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/privacy" element={<PrivacyPage />} />

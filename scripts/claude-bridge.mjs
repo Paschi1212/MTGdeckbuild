@@ -10,6 +10,11 @@
  * differs (see netlify/functions/lib/claude-cli.cjs). No time limit, unlike Netlify's 30s.
  * Only pages from the app's own origins may call it (checked on every request), and Claude
  * only gets the read-only MTG tools.
+ *
+ * Tablet & phone: if Tailscale runs on this PC, the bridge also publishes itself inside the
+ * user's private tailnet (scripts/tailscale-remote.mjs) — the server itself still only
+ * listens on 127.0.0.1. AI calls run as jobs (POST /jobs/<function>, GET /jobs/<id>) so a
+ * long analysis survives a locked tablet screen.
  */
 
 import http from 'node:http'
@@ -18,7 +23,9 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import dotenv from 'dotenv'
+import { randomUUID } from 'node:crypto'
 import { readBrain, appendDeckLog, vaultPath, vaultAvailable } from './obsidian-brain.mjs'
+import { setupRemote } from './tailscale-remote.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -65,6 +72,42 @@ const status = { ready: false, checking: true, error: null }
 const SELF_TEST_RETRY_MS = 15000
 let lastSelfTestAt = 0
 let activeRequests = 0
+
+// Tablet & phone access through Tailscale (scripts/tailscale-remote.mjs). Re-checked on a
+// status request while not ready (at most every 30s), so starting Tailscale after the bridge
+// needs no restart.
+let remote = { state: 'checking' }
+let remoteCheck = null
+let lastRemoteCheckAt = 0
+const REMOTE_RETRY_MS = 30000
+function ensureRemote() {
+  if (remoteCheck || remote.state === 'ready' || Date.now() - lastRemoteCheckAt < REMOTE_RETRY_MS) return remoteCheck
+  lastRemoteCheckAt = Date.now()
+  remoteCheck = setupRemote(PORT)
+    .then(result => {
+      const changed = result.state !== remote.state
+      remote = result
+      if (changed) {
+        if (result.state === 'ready') console.log(`📱 Tablet & Handy: erreichbar über Tailscale unter ${result.url}`)
+        else console.log(`📱 Tablet & Handy: ${result.hint}${result.link ? `\n   ${result.link}` : ''}`)
+      }
+      return result
+    })
+    .catch(error => { remote = { state: 'error', hint: error.message } })
+    .finally(() => { remoteCheck = null })
+  return remoteCheck
+}
+
+// AI calls as jobs: the page starts one (POST /jobs/<function>) and asks for the result
+// (GET /jobs/<id>) — so an analysis keeps running here even if the tablet locks its screen or
+// the browser drops the connection, and the page picks the result up when it comes back.
+const jobs = new Map()
+const JOB_TTL_MS = 60 * 60 * 1000
+setInterval(() => {
+  for (const [id, job] of jobs) {
+    if (job.finishedAt && Date.now() - job.finishedAt > JOB_TTL_MS) jobs.delete(id)
+  }
+}, 5 * 60 * 1000).unref()
 
 function corsHeaders(origin) {
   if (!origin || !ALLOWED_ORIGINS.has(origin)) return {}
@@ -122,6 +165,14 @@ const server = http.createServer(async (req, res) => {
     return send(res, 403, { error: 'Origin nicht erlaubt' }, origin)
   }
 
+  // Through `tailscale serve`, Tailscale names the person behind each request. Only the
+  // account this PC is logged in with may use the bridge (relevant once a device or the
+  // tailnet is ever shared with someone else).
+  const tailscaleLogin = req.headers['tailscale-user-login']
+  if (tailscaleLogin && remote.owner && String(tailscaleLogin).toLowerCase() !== remote.owner.toLowerCase()) {
+    return send(res, 403, { error: 'Nur für das eigene Tailscale-Konto' }, origin)
+  }
+
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`)
 
   if (req.method === 'OPTIONS') {
@@ -131,7 +182,13 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/health') {
     if (!status.ready && !status.checking && Date.now() - lastSelfTestAt > SELF_TEST_RETRY_MS) selfTest()
-    return send(res, 200, { ok: true, provider: 'claude', model: MODEL, models: MODELS, ...status, activeRequests, brain: await vaultAvailable() }, origin)
+    ensureRemote()
+    const runningJobs = [...jobs.values()].filter(job => !job.finishedAt).length
+    return send(res, 200, {
+      ok: true, provider: 'claude', model: MODEL, models: MODELS, ...status, activeRequests, runningJobs,
+      brain: await vaultAvailable(),
+      remote: { state: remote.state, url: remote.url || null, hint: remote.hint || null, link: remote.link || null }
+    }, origin)
   }
 
   // ── Obsidian brain (scripts/obsidian-brain.mjs) ──────────────────────────────────────
@@ -162,8 +219,21 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  const match = url.pathname.match(/^\/\.netlify\/functions\/([a-z-]+)$/)
-  if (!match || !AI_FUNCTIONS.includes(match[1])) {
+  // ── AI jobs ──────────────────────────────────────────────────────────────────────────
+  const jobResult = url.pathname.match(/^\/jobs\/([0-9a-f-]{36})$/)
+  if (req.method === 'GET' && jobResult) {
+    const job = jobs.get(jobResult[1])
+    if (!job) return send(res, 404, { error: 'Auftrag unbekannt', message: 'Die Brücke wurde inzwischen neu gestartet.' }, origin)
+    const seconds = Math.round(((job.finishedAt || Date.now()) - job.startedAt) / 1000)
+    return send(res, 200, job.finishedAt
+      ? { state: 'done', seconds, statusCode: job.statusCode, body: job.body, model: job.answeredBy }
+      : { state: 'running', seconds, model: job.model }, origin)
+  }
+
+  const jobStart = url.pathname.match(/^\/jobs\/([a-z-]+)$/)
+  const direct = url.pathname.match(/^\/\.netlify\/functions\/([a-z-]+)$/)
+  const name = (jobStart || direct)?.[1]
+  if (!name || !AI_FUNCTIONS.includes(name)) {
     return send(res, 404, { error: 'Unbekannter Endpunkt' }, origin)
   }
   if (req.method !== 'POST') return send(res, 405, { error: 'Nur POST' }, origin)
@@ -174,34 +244,56 @@ const server = http.createServer(async (req, res) => {
     return send(res, 503, { error: 'Claude-Brücke nicht bereit', message: status.error || 'Selbsttest läuft noch' }, origin)
   }
 
-  const name = match[1]
+  let body
+  try {
+    body = await readBody(req)
+  } catch (error) {
+    return send(res, 413, { error: error.message }, origin)
+  }
   const requestedModel = String(req.headers['x-claude-model'] || '').toLowerCase()
-  const claudeRequest = { model: MODELS.includes(requestedModel) ? requestedModel : MODEL, modelsUsed: new Set() }
+  const model = MODELS.includes(requestedModel) ? requestedModel : MODEL
+  const run = runFunction(name, body, model, req.headers, `/.netlify/functions/${name}`, url.searchParams)
+
+  if (jobStart) {
+    const id = randomUUID()
+    const job = { model, startedAt: Date.now(), finishedAt: null }
+    jobs.set(id, job)
+    run.then(result => Object.assign(job, result, { finishedAt: Date.now() }))
+    return send(res, 202, { id }, origin)
+  }
+
+  // Direct call (pages loaded before jobs existed): answer on the same connection.
+  const result = await run
+  send(res, result.statusCode, result.body, origin, { 'X-AI-Provider': 'claude', 'X-AI-Model': result.answeredBy })
+})
+
+// Runs one of the app's Netlify AI functions with Claude. Never throws.
+async function runFunction(name, body, model, headers, functionPath, searchParams) {
+  const claudeRequest = { model, modelsUsed: new Set() }
   const startedAt = Date.now()
   activeRequests++
-  console.log(`[${time()}] → ${name} (${claudeRequest.model}) …`)
+  console.log(`[${time()}] → ${name} (${model}) …`)
   try {
-    const body = await readBody(req)
     const event = {
       httpMethod: 'POST',
-      path: url.pathname,
-      headers: req.headers,
-      queryStringParameters: Object.fromEntries(url.searchParams),
+      path: functionPath,
+      headers,
+      queryStringParameters: Object.fromEntries(searchParams),
       body,
       isBase64Encoded: false
     }
     const result = await withClaudeRequest(claudeRequest, () => getHandler(name)(event))
     const seconds = ((Date.now() - startedAt) / 1000).toFixed(1)
-    const answeredBy = [...claudeRequest.modelsUsed].join(', ') || claudeRequest.model
+    const answeredBy = [...claudeRequest.modelsUsed].join(', ') || model
     console.log(`[${time()}] ← ${name} ${result.statusCode} nach ${seconds}s (${answeredBy})`)
-    send(res, result.statusCode || 200, result.body ?? '', origin, { 'X-AI-Provider': 'claude', 'X-AI-Model': answeredBy })
+    return { statusCode: result.statusCode || 200, body: result.body ?? '', answeredBy }
   } catch (error) {
     console.error(`[${time()}] ✗ ${name}:`, error.message)
-    send(res, 500, { error: 'Claude-Brücke: Fehler', message: error.message }, origin)
+    return { statusCode: 500, body: JSON.stringify({ error: 'Claude-Brücke: Fehler', message: error.message }), answeredBy: model }
   } finally {
     activeRequests--
   }
-})
+}
 
 async function selfTest() {
   status.checking = true
@@ -234,4 +326,5 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log('   (Fenster offen lassen; beenden mit Strg+C)')
   vaultAvailable().then(ok => console.log(ok ? `🧠 Obsidian-Gehirn: ${vaultPath()}` : `⚠️ Obsidian-Tresor nicht gefunden (${vaultPath()}) – Analysen laufen ohne Gehirn.`))
   selfTest()
+  ensureRemote()
 })

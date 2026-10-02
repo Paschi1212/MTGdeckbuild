@@ -65,6 +65,21 @@ farbiges Element in Listen; alles andere bleibt ruhig.
   Deckliste, Standard), *Bilder* (Kartenbilder mit Namen und Preis darunter, Streichkandidaten rot
   umrandet), *Tabelle* (Anzahl, Name, vollständiger Kartentyp, Kosten, Preis, Status).
 
+## Tablet & Handy
+
+- **Navigation:** volle Linkzeile erst ab 1024 px (`lg:` – iPad quer, Desktop); darunter (iPad hoch,
+  Handy) das Menü-Symbol. Die Zeile darf nie umbrechen oder das Logo überdecken.
+- **Touch-Ziele mindestens 40 px:** kleine Bedienelemente (−, +, ✕, Listeneinträge) bekommen mit
+  `[@media(pointer:coarse)]:…` Fingergröße; mit Maus bleiben sie kompakt.
+- **KI-Schalter** sagt, warum Gemini antwortet, wenn Claude gewählt ist („· PC nicht erreichbar“,
+  „· Claude nicht bereit“) – ab `sm:` als Text, darunter nur der graue Punkt.
+- **Lange Claude-Läufe** zeigen, wo sie laufen und wie lange schon („Läuft auf deinem PC · 1:42“) und
+  dass man das Gerät sperren darf. Nach einem Neuladen öffnet die Seite den Reiter, in dem der
+  Auftrag lief, und holt das Ergebnis ab.
+- **Zwei Geräte:** Hat ein anderes Gerät gespeichert, erscheint oben ein Hinweis (`SyncBanner`) mit
+  Akzent-Kante links: „Neu laden“ bzw. bei einem Konflikt die Wahl „Stand von … laden“ / „Meinen Stand
+  behalten“. Nie still überschreiben.
+
 ## Bewegung
 
 Nur zur Orientierung, nie als Deko: Hover-Vorschau, Einblenden der Zeilen-Bedienelemente. Keine

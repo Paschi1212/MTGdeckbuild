@@ -1,6 +1,6 @@
 import { getDeckPreferences, setDeckPreferences } from './deckPreferences'
 import { scheduleCloudPush } from './cloudSync'
-import { BRIDGE_URL, isClaudeFeatureEnabled, getBridgeStatus } from './aiMode'
+import { getBridgeUrl, isClaudeFeatureEnabled, getBridgeStatus } from './aiMode'
 
 // The Obsidian brain as the website sees it. Only the Claude bridge on the user's PC can
 // reach the vault, so:
@@ -23,7 +23,7 @@ export async function refreshBrain(storageKey, { deck, commander }) {
   if (bridgeReachable()) {
     try {
       const params = new URLSearchParams({ deck: deck || '', commander: commander || '' })
-      const response = await fetch(`${BRIDGE_URL}/brain?${params}`)
+      const response = await fetch(`${getBridgeUrl()}/brain?${params}`)
       const data = response.ok ? await response.json() : null
       if (data?.vault) {
         const mirror = {
@@ -87,7 +87,7 @@ async function flushOnce() {
   const remaining = []
   for (const entry of pending) {
     try {
-      const response = await fetch(`${BRIDGE_URL}/brain/log`, {
+      const response = await fetch(`${getBridgeUrl()}/brain/log`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(entry)

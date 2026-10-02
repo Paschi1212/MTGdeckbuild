@@ -39,6 +39,7 @@ function HoverPreview({ preview }) {
   )
 }
 
+// Finger-sized on touch screens (tablet, phone) — 24px is fine for a mouse, not for a thumb.
 function IconButton({ label, onClick, children, danger }) {
   return (
     <button
@@ -46,7 +47,7 @@ function IconButton({ label, onClick, children, danger }) {
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="w-6 h-6 flex items-center justify-center text-sm leading-none"
+      className="w-6 h-6 [@media(pointer:coarse)]:w-10 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:text-base flex items-center justify-center text-sm leading-none"
       style={{ color: danger ? 'var(--r)' : 'var(--color-text-secondary)', borderRadius: 'var(--radius-sm)' }}
     >
       {children}
@@ -98,7 +99,7 @@ function ListRow({ card, cutReason, onUpdateCount, onRemove, onZoom, onPreview, 
         onMouseEnter={(e) => onPreview({ card, x: e.clientX, y: e.clientY })}
         onMouseMove={(e) => onPreview({ card, x: e.clientX, y: e.clientY })}
         onMouseLeave={() => onPreview(null)}
-        className="flex-1 min-w-0 text-left leading-snug break-words"
+        className="flex-1 min-w-0 text-left leading-snug break-words [@media(pointer:coarse)]:min-h-[40px]"
         style={{ color: 'var(--color-text)' }}
       >
         {card.name}

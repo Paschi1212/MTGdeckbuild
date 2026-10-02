@@ -48,7 +48,7 @@ export default function ExportMenu({ onExport, disabled }) {
               type="button"
               role="menuitem"
               onClick={() => { onExport(option.id); setOpen(false) }}
-              className="block w-full text-left px-3 py-2 hover:bg-[color:var(--color-accent-light)]"
+              className="block w-full text-left px-3 py-2 [@media(pointer:coarse)]:py-3 hover:bg-[color:var(--color-accent-light)]"
             >
               <span className="block text-sm font-medium" style={{ color: 'var(--color-text)' }}>{option.label}</span>
               <span className="block text-xs" style={{ color: 'var(--color-text-muted)' }}>{option.hint}</span>

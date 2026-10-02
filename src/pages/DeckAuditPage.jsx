@@ -1,10 +1,10 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import CardTile from '../components/CardTile'
 import { readApiError } from '../lib/apiError'
 import ChatWidget from '../components/ChatWidget'
 import { getDeckPreferences, setDeckPreferences } from '../lib/deckPreferences'
 import { getSecondaryAvailability } from '../lib/secondaryCollections'
-import { aiFetch, isClaudeActive, getClaudeModelLabel, formatModelId } from '../lib/aiMode'
+import { aiFetch, isClaudeActive, getClaudeModelLabel, formatModelId, getPendingAiJob, resumeAiJob, getBridgeTarget } from '../lib/aiMode'
 import { loadCollection, buildLocationIndex, locationsFromIndex, formatCardLocations } from '../lib/collection'
 import { getDeckMemory, updateDeckMemory, forgetDeckMemoryEntry } from '../lib/deckMemory'
 import { getBrainMirror, refreshBrain, brainRequestFields, logToBrain } from '../lib/brain'
@@ -48,47 +48,65 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
     ? `Win Condition: ${strategy.winCondition}\n\nSpielplan: ${strategy.gamePlan}\n\nSchwächen: ${strategy.weaknesses}`
     : ''
 
+  // Claude calls are remembered under these keys, so the result is picked up again if the
+  // browser reloaded the page meanwhile (tablet in standby) — see aiFetch/resumeAiJob.
+  const strategyJobKey = `audit:${storageKey}:strategy`
+  const suggestionsJobKey = `audit:${storageKey}:suggestions`
+
+  // Running time while Claude works — an Opus analysis takes minutes.
+  const [loadingSince, setLoadingSince] = useState(null)
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    if (!loading) return undefined
+    const timer = setInterval(() => setTick(t => t + 1), 1000)
+    return () => clearInterval(timer)
+  }, [loading])
+  const elapsed = loadingSince ? Math.max(0, Math.floor((Date.now() - loadingSince) / 1000)) : 0
+  const elapsedLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`
+
+  const handleSuggestionsResponse = async (response) => {
+    if (!response.ok) {
+      setSuggestionsError(await readApiError(response))
+      return
+    }
+    const data = await response.json()
+    const where = (name) => formatCardLocations(locationsFromIndex(locationIndex, name))
+    const fromCollection = (data.cardsToAdd || []).map(c => (where(c.name) ? `${c.name} (📍 ${where(c.name)})` : c.name))
+    const toBuy = (data.cardsToBuy || []).map(c => (c.eur != null ? `${c.name} (€${Number(c.eur).toFixed(2)})` : c.estimatedCost ? `${c.name} (${c.estimatedCost})` : c.name))
+    logToBrain({
+      deck: deckName,
+      commander,
+      title: 'Vorschläge',
+      lines: [
+        fromCollection.length ? `Aus der Sammlung: ${fromCollection.join(', ')}` : null,
+        toBuy.length ? `Zukauf: ${toBuy.join(', ')}` : null
+      ]
+    })
+    setAudit(prev => {
+      const merged = { ...prev, cardsToAdd: data.cardsToAdd, cardsToBuy: data.cardsToBuy }
+      onAuditComplete?.(merged)
+      return merged
+    })
+    if (data.parseError) {
+      setSuggestionsError('Die Kaufvorschläge wurden wegen Längenlimit abgeschnitten, bevor sie fertig waren.')
+    }
+  }
+
   // cardsToAdd/cardsToBuy (the uncapped half, scanning a collection of up to 2000 names) ran
   // in the same request as the strategy read and reliably blew Netlify's 30s budget once both
   // the collection sample and the suggestion counts were uncapped. Split into two requests —
   // each with its own fresh 30s window — the same chunking idea already used for the
   // Preisgewinner scan. Phase 2 needs phase 1's "strategy" object as input, so it only starts
-  // once phase 1 has actually returned one.
-  const runSuggestions = async (strategy) => {
+  // once phase 1 has actually returned one. `pending`: a remembered job to wait for instead.
+  const runSuggestions = async (strategy, pending = null) => {
     try {
       setLoadingSuggestions(true)
       setSuggestionsError(null)
-
-      const response = await aiFetch('/.netlify/functions/audit-deck', {
+      const response = pending ? await pending : await aiFetch('/.netlify/functions/audit-deck', {
         method: 'POST',
         body: JSON.stringify({ commander, deckName, deckCards, collectionSampleNames, strategy, phase: 'suggestions', removedCards: getDeckMemory(storageKey).removed, brainNotes: brainRequestFields(getBrainMirror(storageKey)).brainNotes })
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        const where = (name) => formatCardLocations(locationsFromIndex(locationIndex, name))
-        const fromCollection = (data.cardsToAdd || []).map(c => (where(c.name) ? `${c.name} (📍 ${where(c.name)})` : c.name))
-        const toBuy = (data.cardsToBuy || []).map(c => (c.eur != null ? `${c.name} (€${Number(c.eur).toFixed(2)})` : c.estimatedCost ? `${c.name} (${c.estimatedCost})` : c.name))
-        logToBrain({
-          deck: deckName,
-          commander,
-          title: 'Vorschläge',
-          lines: [
-            fromCollection.length ? `Aus der Sammlung: ${fromCollection.join(', ')}` : null,
-            toBuy.length ? `Zukauf: ${toBuy.join(', ')}` : null
-          ]
-        })
-        setAudit(prev => {
-          const merged = { ...prev, cardsToAdd: data.cardsToAdd, cardsToBuy: data.cardsToBuy }
-          onAuditComplete?.(merged)
-          return merged
-        })
-        if (data.parseError) {
-          setSuggestionsError('Die Kaufvorschläge wurden wegen Längenlimit abgeschnitten, bevor sie fertig waren.')
-        }
-      } else {
-        setSuggestionsError(await readApiError(response))
-      }
+      }, { jobKey: suggestionsJobKey })
+      await handleSuggestionsResponse(response)
     } catch (err) {
       console.error('Error:', err)
       setSuggestionsError(err.message)
@@ -97,9 +115,51 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
     }
   }
 
+  // context: what the logbook entry needs besides the answer — kept with a remembered job.
+  const handleStrategyResponse = async (response, { engine, newlyKept = [], newlyRemoved = [], strategyOverride = null }) => {
+    if (!response.ok) {
+      setError(await readApiError(response))
+      setLoading(false)
+      return
+    }
+    const data = await response.json()
+    // The bridge reports the exact model that answered (e.g. "claude-opus-5-5").
+    const engineModel = engine === 'claude' ? response.headers.get('X-AI-Model') : null
+    const partial = { ...data, cardsToAdd: [], cardsToBuy: [], engine, engineModel }
+    logToBrain({
+      deck: deckName,
+      commander,
+      title: `Analyse (${engine === 'claude' ? `Claude ${formatModelId(engineModel) || getClaudeModelLabel()}` : 'Gemini'})`,
+      lines: [
+        (newlyKept.length || newlyRemoved.length)
+          ? `Seit der letzten Analyse übernommen – rein: ${newlyKept.join(', ') || '–'} · raus: ${newlyRemoved.join(', ') || '–'}`
+          : null,
+        data.strategy?.winCondition ? `Siegbedingung: ${data.strategy.winCondition.slice(0, 300)}` : null,
+        data.strategy?.weaknesses ? `Schwächen: ${data.strategy.weaknesses.slice(0, 300)}` : null,
+        `Streichen vorgeschlagen: ${(data.cardsToCut || []).map(c => `${c.name} (${String(c.reason || '').slice(0, 120)})`).join('; ') || 'nichts'}`
+      ]
+    })
+    setAudit(partial)
+    onAuditComplete?.(partial)
+    // A fresh AI read (no override) is persisted too, not just an explicit manual
+    // correction — otherwise running "Analysieren" once leaves nothing to show on the
+    // deck's own page, since that page only ever read the remembered override.
+    if (!strategyOverride) {
+      const formatted = formatStrategy(data.strategy)
+      setStrategyDraft(formatted)
+      if (formatted) setDeckPreferences(storageKey, { strategyOverride: formatted })
+    }
+    setEditingStrategy(false)
+    setLoading(false)
+    if (data.strategy && !data.parseError) {
+      runSuggestions(data.strategy)
+    }
+  }
+
   const runAudit = async (strategyOverride) => {
     try {
       setLoading(true)
+      setLoadingSince(Date.now())
       setError(null)
       setSuggestionsError(null)
 
@@ -116,54 +176,36 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
 
       // Remembered with the result, so a saved analysis still says which AI wrote it.
       const engine = isClaudeActive() ? 'claude' : 'gemini'
+      const context = { engine, newlyKept, newlyRemoved, strategyOverride: strategyOverride || null }
       const response = await aiFetch('/.netlify/functions/audit-deck', {
         method: 'POST',
         body: JSON.stringify({ commander, deckName, deckCards, strategyOverride, powerLevel, phase: 'strategy', keptCards: memory.kept, ...brainRequestFields(brain) })
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        // The bridge reports the exact model that answered (e.g. "claude-opus-5-5").
-        const engineModel = engine === 'claude' ? response.headers.get('X-AI-Model') : null
-        const partial = { ...data, cardsToAdd: [], cardsToBuy: [], engine, engineModel }
-        logToBrain({
-          deck: deckName,
-          commander,
-          title: `Analyse (${engine === 'claude' ? `Claude ${formatModelId(engineModel) || getClaudeModelLabel()}` : 'Gemini'})`,
-          lines: [
-            (newlyKept.length || newlyRemoved.length)
-              ? `Seit der letzten Analyse übernommen – rein: ${newlyKept.join(', ') || '–'} · raus: ${newlyRemoved.join(', ') || '–'}`
-              : null,
-            data.strategy?.winCondition ? `Siegbedingung: ${data.strategy.winCondition.slice(0, 300)}` : null,
-            data.strategy?.weaknesses ? `Schwächen: ${data.strategy.weaknesses.slice(0, 300)}` : null,
-            `Streichen vorgeschlagen: ${(data.cardsToCut || []).map(c => `${c.name} (${String(c.reason || '').slice(0, 120)})`).join('; ') || 'nichts'}`
-          ]
-        })
-        setAudit(partial)
-        onAuditComplete?.(partial)
-        // A fresh AI read (no override) is persisted too, not just an explicit manual
-        // correction — otherwise running "Analysieren" once leaves nothing to show on the
-        // deck's own page, since that page only ever read the remembered override.
-        if (!strategyOverride) {
-          const formatted = formatStrategy(data.strategy)
-          setStrategyDraft(formatted)
-          if (formatted) setDeckPreferences(storageKey, { strategyOverride: formatted })
-        }
-        setEditingStrategy(false)
-        setLoading(false)
-        if (data.strategy && !data.parseError) {
-          runSuggestions(data.strategy)
-        }
-      } else {
-        setError(await readApiError(response))
-        setLoading(false)
-      }
+      }, { jobKey: strategyJobKey, jobMeta: context })
+      await handleStrategyResponse(response, context)
     } catch (err) {
       console.error('Error:', err)
       setError(err.message)
       setLoading(false)
     }
   }
+
+  // A Claude job still running on the PC from before a reload: wait for it again instead of
+  // starting over. (Ref: React's dev double-run must not pick it up twice.)
+  const resumedRef = useRef(false)
+  useEffect(() => {
+    if (resumedRef.current) return
+    resumedRef.current = true
+    const pendingStrategy = getPendingAiJob(strategyJobKey)
+    if (pendingStrategy) {
+      setLoading(true)
+      setLoadingSince(pendingStrategy.startedAt)
+      resumeAiJob(strategyJobKey)
+        .then(response => handleStrategyResponse(response, { ...(pendingStrategy.meta || {}), engine: 'claude' }))
+        .catch(err => { setError(err.message); setLoading(false) })
+    } else if (getPendingAiJob(suggestionsJobKey)) {
+      runSuggestions(null, resumeAiJob(suggestionsJobKey))
+    }
+  }, [])
 
   if (!commander || !deckCards) {
     return <p className="text-[color:var(--r)]">Keine Daten zum Analysieren</p>
@@ -191,6 +233,12 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
               ? `🧠 Claude ${getClaudeModelLabel()} prüft Kartentexte auf Scryfall & EDHREC — das kann einige Minuten dauern`
               : 'Dies kann eine Minute dauern'}
           </p>
+          {isClaudeActive() && (
+            <p className="text-sm text-fg-muted mt-3">
+              Läuft auf {getBridgeTarget() === 'remote' ? 'deinem PC' : 'diesem PC'} · <span className="tabular-nums">{elapsedLabel}</span>
+              {getBridgeTarget() === 'remote' && <><br />Du kannst das Gerät zwischendurch sperren – das Ergebnis wartet auf dem PC.</>}
+            </p>
+          )}
         </div>
       </div>
     )

@@ -7,6 +7,7 @@ import { getDeckPreferences, setDeckPreferences } from '../lib/deckPreferences'
 import { getSavedAudit, setSavedAudit } from '../lib/deckAudit'
 import CommanderAutocompleteInput from '../components/CommanderAutocompleteInput'
 import DeckAuditPage from './DeckAuditPage'
+import { getPendingAiJob } from '../lib/aiMode'
 import EditDeckPage from './EditDeckPage'
 
 // Was 150 — far too small to let the AI actually consider "which of my cards would fit" for
@@ -55,7 +56,9 @@ export default function DeckDetailPage() {
   // "view, analyze, edit" is one task, not three. auditResult is cached here (not inside
   // DeckAuditPage) so switching away and back to the Analyse tab doesn't silently re-run a
   // real AI call; editorHandoff carries an Analyse result's suggestions into the Editor tab.
-  const [activeTab, setActiveTab] = useState('overview')
+  // An analysis still running on the PC (page reloaded meanwhile, e.g. tablet standby) opens
+  // straight on the Analyse tab, where it is picked up again.
+  const [activeTab, setActiveTab] = useState(() => (getPendingAiJob(`audit:${deckName}:strategy`) || getPendingAiJob(`audit:${deckName}:suggestions`) ? 'analyse' : 'overview'))
   // Hydrated from localStorage, not just in-memory — otherwise a page reload (not just a
   // tab switch within the session) silently lost the last analysis, forcing a re-run even
   // though nothing about the deck changed.

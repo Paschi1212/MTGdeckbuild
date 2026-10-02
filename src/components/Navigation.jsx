@@ -43,19 +43,24 @@ function NavTextLink({ to, label, onClick }) {
 // (/claude-modus). Click flips Claude ⇄ Gemini; without a running bridge it opens the setup page.
 function AiModeSwitch() {
   const navigate = useNavigate()
-  const { enabled, model, bridge, claudeActive } = useAiMode()
+  const { enabled, preferred, model, bridge, claudeActive, target } = useAiMode()
   if (!enabled) return null
   const modelLabel = CLAUDE_MODELS.find(m => m.id === model)?.label || 'Claude'
+  const where = target === 'remote' ? 'deinem PC über Tailscale' : 'der lokalen Brücke'
+  // Claude chosen but the PC can't be reached: say so instead of silently showing Gemini.
+  const fallbackNote = preferred === 'claude' && bridge.checked && !bridge.ready
+    ? (bridge.reachable ? 'Claude nicht bereit' : 'PC nicht erreichbar')
+    : null
 
   const handleClick = () => {
     if (!bridge.ready) navigate('/claude-modus')
     else setPreferredMode(claudeActive ? 'gemini' : 'claude')
   }
   const title = claudeActive
-    ? `Claude ${modelLabel} beantwortet die KI-Anfragen (lokale Brücke). Klick: zu Gemini wechseln. Modell ändern: Seite /claude-modus.`
+    ? `Claude ${modelLabel} beantwortet die KI-Anfragen (über ${where}). Klick: zu Gemini wechseln. Modell ändern: Seite /claude-modus.`
     : bridge.ready
       ? 'Gemini aktiv. Klick: zu Claude wechseln.'
-      : 'Gemini aktiv — Claude-Brücke nicht bereit. Klick: Status & Anleitung.'
+      : `Gemini aktiv — ${fallbackNote || 'Claude-Brücke nicht bereit'}. Klick: Status & Anleitung.`
 
   return (
     <button
@@ -70,6 +75,7 @@ function AiModeSwitch() {
       }}
     >
       {claudeActive ? `🧠 ${modelLabel}` : '✨ Gemini'}
+      {fallbackNote && <span className="hidden sm:inline font-normal text-xs" style={{ color: 'var(--color-text-muted)' }}>· {fallbackNote}</span>}
       {!bridge.ready && <span className="w-2 h-2 rounded-full" style={{ background: 'var(--color-text-muted)' }} />}
     </button>
   )
@@ -106,8 +112,10 @@ export default function Navigation({ user, onLogout }) {
         </span>
       </Link>
 
+      {/* Full link row from 1024px (iPad landscape, desktop); below that — iPad portrait,
+          phones — the menu button, so the row never wraps over the logo. */}
       {user && (
-        <nav className="hidden md:flex items-center gap-8">
+        <nav className="hidden lg:flex items-center gap-8">
           {NAV_LINKS.map(link => (
             <NavTextLink key={link.to} {...link} />
           ))}
@@ -153,13 +161,13 @@ export default function Navigation({ user, onLogout }) {
             </div>
 
             <div
-              className="hidden md:flex w-8 h-8 items-center justify-center text-xs font-bold"
+              className="hidden lg:flex w-8 h-8 items-center justify-center text-xs font-bold"
               style={{ backgroundColor: 'var(--color-accent-light)', color: 'var(--color-text)', borderRadius: 'var(--radius-sm)' }}
               title={user.email}
             >
               {initials}
             </div>
-            <button onClick={onLogout} className="hidden md:inline-flex btn-secondary text-xs px-4 py-2">
+            <button onClick={onLogout} className="hidden lg:inline-flex btn-secondary text-xs px-4 py-2">
               Logout
             </button>
           </>
@@ -177,7 +185,7 @@ export default function Navigation({ user, onLogout }) {
         {user && (
           <button
             onClick={() => setMobileOpen(open => !open)}
-            className="md:hidden w-11 h-11 flex items-center justify-center"
+            className="lg:hidden w-11 h-11 flex items-center justify-center"
             style={{ color: 'var(--color-text)' }}
             aria-label="Menü öffnen"
           >
@@ -190,7 +198,7 @@ export default function Navigation({ user, onLogout }) {
 
       {user && mobileOpen && (
         <div
-          className="md:hidden absolute top-full left-0 right-0 flex flex-col gap-1 p-3"
+          className="lg:hidden absolute top-full left-0 right-0 flex flex-col gap-1 p-3"
           style={{ background: 'var(--color-bg)', borderBottom: '1px solid var(--color-border)' }}
         >
           {NAV_LINKS.map(link => (

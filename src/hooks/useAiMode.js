@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
-  subscribeAiMode, isClaudeFeatureEnabled, getPreferredMode, getBridgeStatus, isClaudeActive, getClaudeModel
+  subscribeAiMode, isClaudeFeatureEnabled, getPreferredMode, getBridgeStatus, isClaudeActive, getClaudeModel,
+  getBridgeTarget, getRemoteBridge
 } from '../lib/aiMode'
 
 function snapshot() {
@@ -9,7 +10,9 @@ function snapshot() {
     preferred: getPreferredMode(),
     model: getClaudeModel(),
     bridge: getBridgeStatus(),
-    claudeActive: isClaudeActive()
+    claudeActive: isClaudeActive(),
+    target: getBridgeTarget(),
+    remoteBridge: getRemoteBridge()
   }
 }
 

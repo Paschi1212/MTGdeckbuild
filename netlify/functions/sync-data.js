@@ -5,6 +5,12 @@
  * Netlify Blobs, so logging in on a different device actually sees the same data instead of
  * a blank slate. GET returns the user's stored snapshot (or {} if none yet); POST replaces it
  * with whatever the client currently has locally.
+ *
+ * Two devices: every stored snapshot carries a revision number (blob metadata, returned as
+ * __rev/__device/__updatedAt). A push names the revision it was based on (__baseRev); if
+ * another device has saved since, it is refused with 409 instead of silently overwriting
+ * that device's changes — the page then asks which version to keep (__force overrides).
+ * GET ?meta=1 returns only the revision info (cheap "did anything change?" check).
  */
 
 import { connectLambda, getStore } from '@netlify/blobs'
@@ -19,7 +25,8 @@ const SYNCED_KEYS = [
   'mtg_deck_preferences',
   'mtg_deck_audits',
   'mtg_commander_overrides',
-  'mtg_brain_outbox'
+  'mtg_brain_outbox',
+  'mtg_bridge_remote'
 ]
 
 export const handler = async (event) => {
@@ -40,13 +47,24 @@ export const handler = async (event) => {
     const store = getStore('user-data')
     const key = session.email.toLowerCase()
 
+    const revisionInfo = (metadata) => ({
+      __rev: Number(metadata?.rev) || 0,
+      __device: metadata?.device || null,
+      __updatedAt: metadata?.updatedAt || null
+    })
+    const json = (statusCode, payload) => ({
+      statusCode,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      body: JSON.stringify(payload)
+    })
+
     if (event.httpMethod === 'GET') {
-      const data = (await store.get(key, { type: 'json' })) || {}
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-        body: JSON.stringify(data)
+      if (event.queryStringParameters?.meta === '1') {
+        const current = await store.getMetadata(key)
+        return json(200, revisionInfo(current?.metadata))
       }
+      const entry = await store.getWithMetadata(key, { type: 'json' })
+      return json(200, { ...(entry?.data || {}), ...revisionInfo(entry?.metadata) })
     }
 
     if (event.httpMethod === 'POST') {
@@ -61,9 +79,28 @@ export const handler = async (event) => {
       for (const k of SYNCED_KEYS) {
         if (k in body) toStore[k] = body[k]
       }
-      await store.setJSON(key, toStore)
+      const current = await store.getMetadata(key)
+      const currentRev = Number(current?.metadata?.rev) || 0
+      // Pages loaded before revisions existed send no __baseRev — they still save as before.
+      if (typeof body.__baseRev === 'number' && body.__baseRev < currentRev && body.__force !== true) {
+        return json(409, { error: 'conflict', ...revisionInfo(current?.metadata) })
+      }
+      const metadata = {
+        rev: currentRev + 1,
+        device: String(body.__device || '').slice(0, 40),
+        updatedAt: new Date().toISOString()
+      }
+      // Conditional write: if another push landed between the check above and now, refuse.
+      const result = await store.setJSON(key, toStore, {
+        metadata,
+        ...(current ? { onlyIfMatch: current.etag } : { onlyIfNew: true })
+      })
+      if (result?.modified === false) {
+        const latest = await store.getMetadata(key)
+        return json(409, { error: 'conflict', ...revisionInfo(latest?.metadata) })
+      }
 
-      return { statusCode: 200, body: JSON.stringify({ ok: true }) }
+      return json(200, { ok: true, __rev: metadata.rev })
     }
 
     return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) }
