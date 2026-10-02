@@ -54,6 +54,11 @@ farbiges Element in Listen; alles andere bleibt ruhig.
 - Bedienelemente einer Zeile (−, +, ✕) erscheinen bei Hover/Fokus über dem Zeilenende (sie nehmen dem
   Namen keinen Platz weg), auf Touch-Geräten stehen sie fest in der Zeile.
 - **Kartennamen werden nie abgeschnitten** – sie brechen um.
+- **Speicherstatus sichtbar** in der Deck-Leiste („Nicht gespeichert“ in Gold / „Gespeichert hh:mm“
+  in Grün); Speichern lässt den Editor offen. ManaBox-Decks werden nie überschrieben – sie werden
+  „Als Entwurf gespeichert“ (Kopie „Name (bearbeitet)“).
+- **Exportieren ▾** am Ende der Werkzeugleiste: CSV für ManaBox (Komma, ManaBox-Spaltennamen), CSV
+  für Excel (Semikolon, Dezimalkomma, BOM), Deckliste .txt.
 - **Drei Ansichten** (Umschalter in der Werkzeugleiste, pro Gerät gemerkt): *Liste* (dichte
   Deckliste, Standard), *Bilder* (Kartenbilder mit Namen und Preis darunter, Streichkandidaten rot
   umrandet), *Tabelle* (Anzahl, Name, vollständiger Kartentyp, Kosten, Preis, Status).

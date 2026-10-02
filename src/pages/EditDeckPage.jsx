@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { loadCollection, getCardsForBinder, getAvailableQuantities, getAvailableCardNames } from '../lib/collection'
-import { saveDraftDeck } from '../lib/draftDecks'
+import { saveDraftDeck, getDraftDeck } from '../lib/draftDecks'
+import { buildManaBoxCsv, buildExcelCsv, buildDecklistText, downloadTextFile, exportFileBase } from '../lib/deckExport'
 import { classifyType, BASIC_LAND_NAMES } from '../lib/cardType'
 import { getSecondaryAvailability } from '../lib/secondaryCollections'
 import { getDeckPreferences } from '../lib/deckPreferences'
@@ -12,6 +13,7 @@ import PlaytestModal from '../components/PlaytestModal'
 import DeckList, { DECK_VIEWS } from '../components/editor/DeckList'
 import CardSearch from '../components/editor/CardSearch'
 import { SuggestionsPanel, ShoppingPanel, StatsPanel, StrategyPanel } from '../components/editor/EditorPanels'
+import ExportMenu from '../components/editor/ExportMenu'
 
 const CMC_BUCKETS = ['0', '1', '2', '3', '4', '5', '6', '7+']
 const DECK_TARGET = 99
@@ -102,6 +104,15 @@ export default function EditDeckPage(embeddedState) {
   const [panel, setPanel] = useState(null)
   const [mobileTab, setMobileTab] = useState('deck')
   const [showStrategy, setShowStrategy] = useState(false)
+  // Last saved version of the deck (null = never saved, e.g. a fresh chat/analysis proposal).
+  // A real ManaBox deck counts as "saved" as imported; its edits are saved as a draft copy.
+  const deckSnapshot = (list, commander) => JSON.stringify({
+    commander: commander || '',
+    cards: list.map(c => [c.name, c.count]).sort((a, b) => a[0].localeCompare(b[0]))
+  })
+  const [savedSnapshot, setSavedSnapshot] = useState(() =>
+    (state.draftId || deckName) ? deckSnapshot(loadInitialCards(deckName, state.commander || '', state.cards), state.commander || '') : null)
+  const [lastSavedAt, setLastSavedAt] = useState(() => (state.savedNotice ? new Date() : null))
   // Liste / Bilder / Tabelle — remembered per device (a convenience, not deck data).
   const [deckView, setDeckView] = useState(() => {
     try { return localStorage.getItem('mtg_editor_view') || 'list' } catch { return 'list' }
@@ -446,15 +457,31 @@ export default function EditDeckPage(embeddedState) {
     })
   }
 
+  const currentSnapshot = deckSnapshot(cards, commanderName)
+  const isDirty = savedSnapshot !== currentSnapshot && (savedSnapshot !== null || cards.length > 0)
+
+  // Closing or reloading the tab with unsaved edits asks first.
+  useEffect(() => {
+    if (!isDirty) return
+    const warn = (e) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [isDirty])
+
   const saveAsDraft = () => {
+    // Keep a name the draft already has (imported lists, "… (bearbeitet)" copies); a
+    // ManaBox deck's first save becomes a clearly named copy, the deck itself stays as is.
+    const existingName = draftId ? getDraftDeck(draftId)?.name : null
     const saved = saveDraftDeck({
       id: draftId,
-      name: commanderCard?.name || commanderName || 'Unbenannter Entwurf',
+      name: existingName || (deckName ? `${deckName} (bearbeitet)` : commanderCard?.name || commanderName || 'Unbenannter Entwurf'),
       commander: commanderCard?.name || commanderName,
       cards: cards.map(c => ({ name: c.name, count: c.count, price: c.price || 0, isLand: c.isLand })),
       strategyNote
     })
     setDraftId(saved.id)
+    setSavedSnapshot(currentSnapshot)
+    setLastSavedAt(new Date())
     return saved
   }
 
@@ -464,18 +491,41 @@ export default function EditDeckPage(embeddedState) {
     navigate(`/drafts/${saved.id}/analyse`)
   }
 
+  // Drafts are saved in place and the editor stays open. A ManaBox deck comes from the
+  // uploaded CSV and is never rewritten here — its edited version continues as a draft
+  // (export it as ManaBox CSV to make it a real deck again).
   const handleSave = () => {
+    const saved = saveAsDraft()
     if (deckName) {
-      // A real ManaBox deck's persistence would mean rewriting the actual imported
-      // collection data — a separate, bigger feature, deliberately not built yet.
-      alert('Änderungen an echten ManaBox-Decks werden aktuell noch nicht dauerhaft gespeichert — diese Ansicht dient zum Durchsehen/Ausprobieren.')
-      if (onBack) onBack()
-      else navigate('/collection')
-      return
+      navigate('/edit-deck', {
+        state: { draftId: saved.id, commander: saved.commander, cards: saved.cards, strategyNote, savedNotice: true }
+      })
     }
+  }
 
-    saveAsDraft()
-    navigate('/decks', { state: { tab: 'drafts' } })
+  const handleExport = (format) => {
+    const title = deckName || commanderCard?.name || commanderName || 'Deck'
+    const statusOf = (card) => {
+      if (cutReasonMap.has(card.name)) return 'Streichkandidat'
+      if (card.missingCount > 0) return card.friendAvailability?.length ? `bei ${card.friendAvailability.map(h => h.label).join(', ')}` : 'Zukauf'
+      return collection && !deckName ? 'vorhanden' : ''
+    }
+    const commanderRow = (commanderCard?.name || commanderName)
+      ? [{
+          name: commanderCard?.name || commanderName, count: 1, board: 'Commander', scryfallId: '',
+          typeLine: commanderCard?.typeLine || '', manaCost: commanderCard?.manaCost || '', cmc: commanderCard?.cmc ?? '',
+          price: commanderCard?.eur || 0, status: ''
+        }]
+      : []
+    const deckRows = displayGroups.flatMap(group => group.cards).map(card => ({
+      name: card.name, count: card.count, board: 'Deck', scryfallId: card.scryfallId || '',
+      typeLine: card.typeLine, manaCost: card.manaCost, cmc: card.cmc, price: card.price, status: statusOf(card)
+    }))
+    const rows = [...commanderRow, ...deckRows]
+    const base = exportFileBase(title)
+    if (format === 'manabox') downloadTextFile(`${base}.csv`, buildManaBoxCsv(rows), 'text/csv')
+    else if (format === 'excel') downloadTextFile(`${base}-excel.csv`, buildExcelCsv(rows), 'text/csv')
+    else downloadTextFile(`${base}.txt`, buildDecklistText(rows), 'text/plain')
   }
 
   const goBack = () => (onBack ? onBack() : navigate(-1))
@@ -573,6 +623,9 @@ export default function EditDeckPage(embeddedState) {
             <option value="price">nach Preis</option>
           </select>
         </label>
+        <div className="ml-auto">
+          <ExportMenu onExport={handleExport} disabled={cards.length === 0} />
+        </div>
       </div>
 
       {enrichedCards.length === 0 ? (
@@ -606,7 +659,7 @@ export default function EditDeckPage(embeddedState) {
     { label: 'Zurück', onClick: goBack, className: 'btn-secondary' },
     { label: 'Live Tester', mobileLabel: 'Testen', onClick: () => setShowPlaytest(true), disabled: enrichedCards.length === 0, className: 'btn-secondary' },
     ...(deckName ? [] : [{ label: 'Speichern & analysieren', mobileLabel: 'Analysieren', onClick: handleSaveAndAnalyze, disabled: cards.length === 0, className: 'btn-secondary' }]),
-    { label: deckName ? 'Fertig' : 'Speichern', onClick: handleSave, className: 'btn-primary' }
+    { label: deckName ? 'Als Entwurf speichern' : 'Speichern', mobileLabel: 'Speichern', onClick: handleSave, disabled: cards.length === 0, className: 'btn-primary' }
   ]
 
   return (
@@ -622,6 +675,9 @@ export default function EditDeckPage(embeddedState) {
           <div className="min-w-0 flex-1">
             <div className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>
               {deckName ? `ManaBox-Deck · ${deckName}` : draftId ? 'Entwurf' : 'Neuer Entwurf'}
+              {isDirty
+                ? <span className="ml-2 font-semibold" style={{ color: 'var(--gold)' }}>· Nicht gespeichert</span>
+                : lastSavedAt && <span className="ml-2" style={{ color: 'var(--g)' }}>· Gespeichert {lastSavedAt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</span>}
               {strategyNote && (
                 <button
                   type="button"
@@ -666,7 +722,7 @@ export default function EditDeckPage(embeddedState) {
         </div>
         {deckName && (
           <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
-            Änderungen an ManaBox-Decks werden nicht gespeichert – diese Ansicht ist zum Ausprobieren.
+            Dein ManaBox-Deck bleibt unverändert. „Als Entwurf speichern“ legt eine bearbeitbare Kopie an – über „Exportieren → CSV für ManaBox“ übernimmst du die Änderungen in ManaBox.
           </p>
         )}
         {showStrategy && strategyNote && (
