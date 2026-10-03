@@ -113,7 +113,7 @@ function corsHeaders(origin) {
   if (!origin || !ALLOWED_ORIGINS.has(origin)) return {}
   return {
     'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, X-Claude-Model',
     'Access-Control-Expose-Headers': 'X-AI-Provider, X-AI-Model',
     // Chrome's local-network protection: a public site calling 127.0.0.1 needs this on the
@@ -221,6 +221,14 @@ const server = http.createServer(async (req, res) => {
 
   // ── AI jobs ──────────────────────────────────────────────────────────────────────────
   const jobResult = url.pathname.match(/^\/jobs\/([0-9a-f-]{36})$/)
+  if (req.method === 'DELETE' && jobResult) {
+    const job = jobs.get(jobResult[1])
+    if (job && !job.finishedAt) {
+      job.controller.abort()
+      console.log(`[${time()}] ✋ Auftrag abgebrochen (durch eine neuere Anfrage ersetzt)`)
+    }
+    return send(res, 200, { ok: true }, origin)
+  }
   if (req.method === 'GET' && jobResult) {
     const job = jobs.get(jobResult[1])
     if (!job) return send(res, 404, { error: 'Auftrag unbekannt', message: 'Die Brücke wurde inzwischen neu gestartet.' }, origin)
@@ -252,11 +260,12 @@ const server = http.createServer(async (req, res) => {
   }
   const requestedModel = String(req.headers['x-claude-model'] || '').toLowerCase()
   const model = MODELS.includes(requestedModel) ? requestedModel : MODEL
-  const run = runFunction(name, body, model, req.headers, `/.netlify/functions/${name}`, url.searchParams)
+  const controller = new AbortController()
+  const run = runFunction(name, body, model, req.headers, `/.netlify/functions/${name}`, url.searchParams, controller.signal)
 
   if (jobStart) {
     const id = randomUUID()
-    const job = { model, startedAt: Date.now(), finishedAt: null }
+    const job = { model, startedAt: Date.now(), finishedAt: null, controller }
     jobs.set(id, job)
     run.then(result => Object.assign(job, result, { finishedAt: Date.now() }))
     return send(res, 202, { id }, origin)
@@ -268,8 +277,8 @@ const server = http.createServer(async (req, res) => {
 })
 
 // Runs one of the app's Netlify AI functions with Claude. Never throws.
-async function runFunction(name, body, model, headers, functionPath, searchParams) {
-  const claudeRequest = { model, modelsUsed: new Set() }
+async function runFunction(name, body, model, headers, functionPath, searchParams, signal) {
+  const claudeRequest = { model, modelsUsed: new Set(), signal }
   const startedAt = Date.now()
   activeRequests++
   console.log(`[${time()}] → ${name} (${model}) …`)

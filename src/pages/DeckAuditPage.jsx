@@ -4,7 +4,7 @@ import { readApiError } from '../lib/apiError'
 import ChatWidget from '../components/ChatWidget'
 import { getDeckPreferences, setDeckPreferences } from '../lib/deckPreferences'
 import { getSecondaryAvailability } from '../lib/secondaryCollections'
-import { aiFetch, isClaudeActive, getClaudeModelLabel, formatModelId, getPendingAiJob, resumeAiJob, getBridgeTarget } from '../lib/aiMode'
+import { aiFetch, isClaudeActive, getClaudeModelLabel, formatModelId, getPendingAiJob, resumeAiJob, getBridgeTarget, cancelAiJob } from '../lib/aiMode'
 import { loadCollection, buildLocationIndex, locationsFromIndex, formatCardLocations } from '../lib/collection'
 import { getDeckMemory, updateDeckMemory, forgetDeckMemoryEntry } from '../lib/deckMemory'
 import { getBrainMirror, refreshBrain, brainRequestFields, logToBrain } from '../lib/brain'
@@ -77,16 +77,24 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
   const strategyJobKey = `audit:${storageKey}:strategy`
   const suggestionsJobKey = `audit:${storageKey}:suggestions`
 
-  // Running time while Claude works — an Opus analysis takes minutes.
+  // Running time while Claude works — an Opus analysis takes minutes, the suggestions too.
   const [loadingSince, setLoadingSince] = useState(null)
+  const [suggestionsSince, setSuggestionsSince] = useState(null)
   const [, setTick] = useState(0)
   useEffect(() => {
-    if (!loading) return undefined
+    if (!loading && !loadingSuggestions) return undefined
     const timer = setInterval(() => setTick(t => t + 1), 1000)
     return () => clearInterval(timer)
-  }, [loading])
-  const elapsed = loadingSince ? Math.max(0, Math.floor((Date.now() - loadingSince) / 1000)) : 0
-  const elapsedLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`
+  }, [loading, loadingSuggestions])
+  const clock = (since) => {
+    const seconds = since ? Math.max(0, Math.floor((Date.now() - since) / 1000)) : 0
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+  }
+  const elapsedLabel = clock(loadingSince)
+
+  // Each "Analysieren" starts a new run. Answers of an older run that arrive later (it was
+  // still busy when the player started over) are ignored, and its jobs on the PC stopped.
+  const runRef = useRef(0)
 
   const handleSuggestionsResponse = async (response) => {
     if (!response.ok) {
@@ -123,19 +131,23 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
   // Preisgewinner scan. Phase 2 needs phase 1's "strategy" object as input, so it only starts
   // once phase 1 has actually returned one. `pending`: a remembered job to wait for instead.
   const runSuggestions = async (strategy, pending = null) => {
+    const run = runRef.current
     try {
       setLoadingSuggestions(true)
+      setSuggestionsSince(pending ? getPendingAiJob(suggestionsJobKey)?.startedAt || Date.now() : Date.now())
       setSuggestionsError(null)
       const response = pending ? await pending : await aiFetch('/.netlify/functions/audit-deck', {
         method: 'POST',
         body: JSON.stringify({ commander, deckName, deckCards, collectionSampleNames, strategy, phase: 'suggestions', removedCards: getDeckMemory(storageKey).removed, brainNotes: brainRequestFields(getBrainMirror(storageKey)).brainNotes })
       }, { jobKey: suggestionsJobKey })
+      if (run !== runRef.current) return
       await handleSuggestionsResponse(response)
     } catch (err) {
+      if (err.cancelled || run !== runRef.current) return
       console.error('Error:', err)
       setSuggestionsError(err.message)
     } finally {
-      setLoadingSuggestions(false)
+      if (run === runRef.current) setLoadingSuggestions(false)
     }
   }
 
@@ -181,9 +193,14 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
   }
 
   const runAudit = async (strategyOverride) => {
+    const run = ++runRef.current
+    // A previous run of this deck that is still busy on the PC is replaced, not run twice.
+    cancelAiJob(strategyJobKey)
+    cancelAiJob(suggestionsJobKey)
     try {
       setLoading(true)
       setLoadingSince(Date.now())
+      setLoadingSuggestions(false)
       setError(null)
       setSuggestionsError(null)
 
@@ -205,8 +222,10 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
         method: 'POST',
         body: JSON.stringify({ commander, deckName, deckCards, strategyOverride, powerLevel, phase: 'strategy', keptCards: memory.kept, ...brainRequestFields(brain) })
       }, { jobKey: strategyJobKey, jobMeta: context })
+      if (run !== runRef.current) return
       await handleStrategyResponse(response, context)
     } catch (err) {
+      if (err.cancelled || run !== runRef.current) return
       console.error('Error:', err)
       setError(err.message)
       setLoading(false)
@@ -478,6 +497,12 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
           <div className="animate-spin w-5 h-5 border-2 border-gray-600 border-t-mtg-blue rounded-full flex-shrink-0"></div>
           <p className="text-sm text-fg-2">
             Lade Kaufvorschläge & Sammlungs-Treffer…{isClaudeActive() && ` (🧠 Claude ${getClaudeModelLabel()}, kann einige Minuten dauern)`}
+            {isClaudeActive() && (
+              <span className="block text-xs text-fg-muted mt-0.5">
+                Läuft auf {getBridgeTarget() === 'remote' ? 'deinem PC' : 'diesem PC'} · <span className="tabular-nums">{clock(suggestionsSince)}</span>
+                {getClaudeModelLabel() === 'Opus' && ' · mit Opus meist 4–6 Minuten'}
+              </span>
+            )}
           </p>
         </div>
       )}

@@ -196,11 +196,24 @@ function savePending(all) {
   write(PENDING_KEY, Object.keys(all).length ? JSON.stringify(all) : null)
 }
 
-function clearPending(key) {
+// Only removes the entry if it is still this job's — a newer request may already sit there.
+function clearPending(key, id) {
   if (!key) return
   const all = loadPending()
+  if (!all[key] || (id && all[key].id !== id)) return
   delete all[key]
   savePending(all)
+}
+
+const cancelledJobs = new Set()
+
+/** Stops a remembered job, on the PC too — a newer request replaces it. */
+export function cancelAiJob(key) {
+  const entry = getPendingAiJob(key)
+  if (!entry) return
+  cancelledJobs.add(entry.id)
+  clearPending(key, entry.id)
+  fetch(`${entry.bridge}/jobs/${entry.id}`, { method: 'DELETE' }).catch(() => {})
 }
 
 /** A job started under `key` that has not been picked up yet: { id, bridge, startedAt, meta }. */
@@ -235,6 +248,9 @@ async function waitForJob(entry, key) {
   try {
     for (;;) {
       await pause(document.visibilityState === 'visible' ? 2000 : 5000)
+      if (cancelledJobs.has(entry.id)) {
+        throw Object.assign(new Error('Abgebrochen – eine neuere Anfrage hat diese ersetzt.'), { cancelled: true })
+      }
       let response
       try {
         response = await fetch(`${entry.bridge}/jobs/${entry.id}`, { cache: 'no-store' })
@@ -260,7 +276,7 @@ async function waitForJob(entry, key) {
       }
     }
   } finally {
-    clearPending(key)
+    clearPending(key, entry.id)
   }
 }
 

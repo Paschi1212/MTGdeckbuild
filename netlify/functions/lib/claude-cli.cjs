@@ -36,7 +36,9 @@ function mainModel(modelUsage) {
 
 const MCP_URL = process.env.MTG_MCP_URL || 'https://mtgepicdeckbuilder.netlify.app/mcp'
 const MCP_CONFIG = JSON.stringify({ mcpServers: { mtg: { type: 'http', url: MCP_URL } } })
-const CLI_TIMEOUT_MS = 8 * 60 * 1000
+// The bridge runs every call as a job the page polls, so a long answer no longer has to fit a
+// waiting browser request. Opus suggestion runs regularly take 4–6 minutes, sometimes more.
+const CLI_TIMEOUT_MS = 15 * 60 * 1000
 
 const SYSTEM_PROMPT = `Du arbeitest als KI-Backend einer Magic: The Gathering Commander-Deckbau-App. Dir stehen Werkzeuge für Scryfall (exakte Kartentexte, Farbidentität, Legalität, Preise) und EDHREC (was echte Decks spielen) zur Verfügung.
 Verlass dich nie auf dein Gedächtnis, was eine Karte tut: Prüfe Kartentexte mit card_lookup, bevor du Karten bewertest, streichst oder empfiehlst — bündle dabei viele Namen in EINEM Aufruf. Nutze edhrec_commander für die Daten echter Decks und scryfall_search, um passende Karten zu finden. Halte die Zahl der Werkzeugaufrufe klein.
@@ -127,6 +129,15 @@ function runClaudeCli({ prompt, schema, model }) {
       child.kill()
       reject(new Error(`Claude hat nach ${CLI_TIMEOUT_MS / 60000} Minuten nicht geantwortet.`))
     }, CLI_TIMEOUT_MS)
+    // A job cancelled on the bridge (a newer analysis replaced it) stops Claude right away
+    // instead of using up the subscription for an answer nobody reads.
+    const onAbort = () => {
+      clearTimeout(timer)
+      child.kill()
+      reject(new Error('Abgebrochen – eine neuere Anfrage hat diese ersetzt.'))
+    }
+    if (request?.signal?.aborted) return onAbort()
+    request?.signal?.addEventListener('abort', onAbort, { once: true })
 
     child.stdout.on('data', chunk => { stdout += chunk })
     child.stderr.on('data', chunk => { stderr += chunk })
@@ -138,6 +149,7 @@ function runClaudeCli({ prompt, schema, model }) {
     })
     child.on('close', () => {
       clearTimeout(timer)
+      request?.signal?.removeEventListener('abort', onAbort)
       let result
       try {
         result = JSON.parse(stdout)
