@@ -31,7 +31,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 // Everything the bridge window shows also goes to claude-bridge.log (fresh on every start,
 // gitignored) — so a start that fails or a window that was closed can still be diagnosed.
-const LOG_FILE = path.join(root, 'claude-bridge.log')
+// A second bridge on another port (tests) gets its own file instead of wiping this one.
+const LOG_FILE = path.join(root, process.env.CLAUDE_BRIDGE_PORT && process.env.CLAUDE_BRIDGE_PORT !== '8787'
+  ? `claude-bridge-${process.env.CLAUDE_BRIDGE_PORT}.log`
+  : 'claude-bridge.log')
 try { fs.writeFileSync(LOG_FILE, `Start ${new Date().toLocaleString('de-DE')} · Node ${process.version}\n`) } catch {}
 for (const level of ['log', 'warn', 'error']) {
   const original = console[level].bind(console)
