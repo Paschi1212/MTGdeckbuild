@@ -105,7 +105,8 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
     const where = (name) => formatCardLocations(locationsFromIndex(locationIndex, name))
     const fromCollection = (data.cardsToAdd || []).map(c => (where(c.name) ? `${c.name} (📍 ${where(c.name)})` : c.name))
     const toBuy = (data.cardsToBuy || []).map(c => (c.eur != null ? `${c.name} (€${Number(c.eur).toFixed(2)})` : c.estimatedCost ? `${c.name} (${c.estimatedCost})` : c.name))
-    logToBrain({
+    // Another tab of this deck already logged this result.
+    if (!response.handledElsewhere) logToBrain({
       deck: deckName,
       commander,
       title: 'Vorschläge',
@@ -162,7 +163,8 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
     // The bridge reports the exact model that answered (e.g. "claude-opus-5-5").
     const engineModel = engine === 'claude' ? response.headers.get('X-AI-Model') : null
     const partial = { ...data, cardsToAdd: [], cardsToBuy: [], engine, engineModel, commander }
-    logToBrain({
+    // Another tab of this deck already logged this result.
+    if (!response.handledElsewhere) logToBrain({
       deck: deckName,
       commander,
       title: `Analyse (${engine === 'claude' ? `Claude ${formatModelId(engineModel) || getClaudeModelLabel()}` : 'Gemini'})`,

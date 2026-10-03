@@ -269,10 +269,15 @@ async function waitForJob(entry, key) {
       }
       const data = await response.json().catch(() => ({}))
       if (data.state === 'done') {
-        return new Response(data.body ?? '', {
+        const result = new Response(data.body ?? '', {
           status: data.statusCode || 200,
           headers: { 'Content-Type': 'application/json', 'X-AI-Provider': 'claude', 'X-AI-Model': data.model || '' }
         })
+        // Two tabs of the same deck wait for the same remembered job — the one that gets it
+        // first clears it. The other still shows the result but skips one-time side effects
+        // (logbook entry), so they don't happen twice.
+        result.handledElsewhere = Boolean(key) && getPendingAiJob(key)?.id !== entry.id
+        return result
       }
     }
   } finally {
