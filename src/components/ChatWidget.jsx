@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { readApiError } from '../lib/apiError'
-import { aiFetch, isClaudeActive, getClaudeModelLabel } from '../lib/aiMode'
+import { aiFetch, isClaudeActive, getClaudeModelLabel, getBridgeTarget } from '../lib/aiMode'
 
 const HISTORY_LIMIT = 10
 
@@ -11,7 +11,20 @@ export default function ChatWidget({ commander, cards, onAction, contextNote, em
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  // With Claude a full deck build takes minutes. The field stays open meanwhile: a message
+  // typed then waits here and goes out as soon as the answer is in.
+  const [queued, setQueued] = useState(null)
+  const [loadingSince, setLoadingSince] = useState(null)
+  const [, setTick] = useState(0)
   const scrollRef = useRef(null)
+
+  useEffect(() => {
+    if (!loading) return undefined
+    const timer = setInterval(() => setTick(t => t + 1), 1000)
+    return () => clearInterval(timer)
+  }, [loading])
+  const waited = loadingSince ? Math.max(0, Math.floor((Date.now() - loadingSince) / 1000)) : 0
+  const waitedLabel = `${Math.floor(waited / 60)}:${String(waited % 60).padStart(2, '0')}`
 
   useEffect(() => {
     if (!open) return
@@ -27,12 +40,19 @@ export default function ChatWidget({ commander, cards, onAction, contextNote, em
 
   const handleSend = async (textOverride) => {
     const trimmed = (textOverride ?? input).trim()
-    if (!trimmed || loading) return
+    if (!trimmed) return
+    if (loading) {
+      // Still answering the last message — send this one right after.
+      setQueued(trimmed)
+      setInput('')
+      return
+    }
 
     const history = messages.slice(-HISTORY_LIMIT).map(m => ({ role: m.role, text: m.text }))
     setMessages(prev => [...prev, { role: 'user', text: trimmed }])
     setInput('')
     setLoading(true)
+    setLoadingSince(Date.now())
     setError(null)
 
     try {
@@ -66,6 +86,15 @@ export default function ChatWidget({ commander, cards, onAction, contextNote, em
       setLoading(false)
     }
   }
+
+  // The answer is in: now the waiting message goes out.
+  useEffect(() => {
+    if (loading || !queued) return
+    const next = queued
+    setQueued(null)
+    handleSend(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, queued])
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -149,6 +178,23 @@ export default function ChatWidget({ commander, cards, onAction, contextNote, em
             <div className="rounded-xl px-3 py-2 text-sm text-cmd-muted" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
               {bulkBuild ? '…baut Kartenladung auf, kann etwas dauern' : '…denkt nach'}
               {isClaudeActive() && ` (🧠 Claude ${getClaudeModelLabel()} prüft Karten, bis zu einigen Minuten)`}
+              {isClaudeActive() && (
+                <span className="block text-xs mt-0.5">
+                  Läuft auf {getBridgeTarget() === 'remote' ? 'deinem PC' : 'diesem PC'} · <span className="tabular-nums">{waitedLabel}</span> · du kannst schon weiterschreiben
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {queued && (
+          <div className="flex justify-end">
+            <div className="rounded-xl px-3 py-2 text-sm leading-snug max-w-[85%] whitespace-pre-wrap" style={{ border: '1px dashed var(--u)', color: 'var(--text)' }}>
+              {queued}
+              <span className="block text-xs mt-1 text-cmd-muted">
+                Wird gesendet, sobald die Antwort da ist ·{' '}
+                <button type="button" onClick={() => { setInput(queued); setQueued(null) }} className="underline">bearbeiten</button>
+              </span>
             </div>
           </div>
         )}
@@ -166,17 +212,17 @@ export default function ChatWidget({ commander, cards, onAction, contextNote, em
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Frage stellen…"
-          disabled={loading}
+          placeholder={loading ? 'Schon weiterschreiben – geht nach der Antwort raus…' : 'Frage stellen…'}
           className="flex-1 text-fg rounded-xl px-3 py-2 text-sm"
           style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
         />
         <button
-          onClick={handleSend}
-          disabled={loading || !input.trim()}
+          onClick={() => handleSend()}
+          disabled={!input.trim() || Boolean(loading && queued)}
           className="btn-primary px-4 text-sm"
+          title={loading ? 'Wird nach der laufenden Antwort gesendet' : 'Senden'}
         >
-          ➤
+          {loading ? '⏳' : '➤'}
         </button>
       </div>
     </div>
