@@ -10,14 +10,38 @@ import { getDeckMemory, updateDeckMemory, forgetDeckMemoryEntry } from '../lib/d
 import { getBrainMirror, refreshBrain, brainRequestFields, logToBrain } from '../lib/brain'
 import { useAiMode } from '../hooks/useAiMode'
 
+const normalizeName = (name) => String(name || '').split('//')[0].trim().toLowerCase()
+const sameCard = (a, b) => normalizeName(a) === normalizeName(b)
+// "Wrexial, the Risen Deep" → "Wrexial": for buttons, where the full name is too long.
+const shortName = (name) => String(name || '').split(',')[0].trim()
+
+// Older saved plans/results don't say which commander they were made for — then their text
+// has to mention the current one (a game plan is always written around the commander).
+function mentionsCommander(text, commander) {
+  const words = String(commander || '').split(/[\s,]+/).filter(word => word.length >= 4)
+  const lower = String(text || '').toLowerCase()
+  return words.some(word => lower.includes(word.toLowerCase()))
+}
+
+function planBelongsTo(savedFor, text, commander) {
+  return savedFor ? sameCard(savedFor, commander) : mentionsCommander(text, commander)
+}
+
 // Embedded as the "Analyse" tab of a deck's consolidated detail page — no longer a standalone
 // route. `cachedAudit`/`onAuditComplete` let the parent remember the last result across tab
 // switches (so hopping to another tab and back doesn't silently re-run a real AI call), and
 // `onOpenEditor`/`onBack` switch tabs on that page instead of navigating to a separate route.
 // `storageKey` (default: deckName) is where the strategy correction is remembered — a draft
 // passes "draft:<id>" so it never collides with a real ManaBox deck of the same name.
-export default function DeckAuditPage({ commander, deckName, storageKey = deckName, deckCards, collectionSampleNames, powerLevel, cachedAudit, onAuditComplete, onOpenEditor, onBack, backLabel = '← Zurück zur Übersicht' }) {
-  const rememberedStrategy = getDeckPreferences(storageKey).strategyOverride || ''
+// `onChangeCommander`: lets the Analyse tab send the player to wherever the commander is set.
+export default function DeckAuditPage({ commander, deckName, storageKey = deckName, deckCards, collectionSampleNames, powerLevel, cachedAudit, onAuditComplete, onOpenEditor, onBack, onChangeCommander, backLabel = '← Zurück zur Übersicht' }) {
+  // The remembered game plan belongs to ONE commander. It is fed into every new analysis as
+  // binding — so after switching the commander (e.g. the guess said Sheoldred, the deck is
+  // Wrexial) the old plan must not come along, or the analysis can never leave it.
+  const deckPrefs = getDeckPreferences(storageKey)
+  const rememberedStrategy = deckPrefs.strategyOverride && planBelongsTo(deckPrefs.strategyCommander, deckPrefs.strategyOverride, commander)
+    ? deckPrefs.strategyOverride
+    : ''
 
   const [audit, setAudit] = useState(cachedAudit || null)
   // The user's own collection — for where each "Aus deiner Sammlung" card is stored.
@@ -125,7 +149,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
     const data = await response.json()
     // The bridge reports the exact model that answered (e.g. "claude-opus-5-5").
     const engineModel = engine === 'claude' ? response.headers.get('X-AI-Model') : null
-    const partial = { ...data, cardsToAdd: [], cardsToBuy: [], engine, engineModel }
+    const partial = { ...data, cardsToAdd: [], cardsToBuy: [], engine, engineModel, commander }
     logToBrain({
       deck: deckName,
       commander,
@@ -147,7 +171,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
     if (!strategyOverride) {
       const formatted = formatStrategy(data.strategy)
       setStrategyDraft(formatted)
-      if (formatted) setDeckPreferences(storageKey, { strategyOverride: formatted })
+      if (formatted) setDeckPreferences(storageKey, { strategyOverride: formatted, strategyCommander: commander })
     }
     setEditingStrategy(false)
     setLoading(false)
@@ -207,6 +231,18 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
     }
   }, [])
 
+  // Which commander the shown result was made for (older results: judged by their game plan).
+  const auditIsForOtherCommander = Boolean(audit) && (audit.commander
+    ? !sameCard(audit.commander, commander)
+    : Boolean(audit.strategy) && !mentionsCommander(formatStrategy(audit.strategy), commander))
+
+  const runFreshForCommander = () => {
+    setDeckPreferences(storageKey, { strategyOverride: '', strategyCommander: commander })
+    setStrategyDraft('')
+    setEditingStrategy(false)
+    runAudit()
+  }
+
   if (!commander || !deckCards) {
     return <p className="text-[color:var(--r)]">Keine Daten zum Analysieren</p>
   }
@@ -215,6 +251,10 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
     return (
       <div className="max-w-2xl mx-auto text-center py-10">
         <p className="text-cmd-muted mb-4">Noch keine Analyse für dieses Deck gelaufen.</p>
+        <p className="text-sm text-fg-2 mb-4">
+          Commander: <strong className="text-fg">{commander}</strong>
+          {onChangeCommander && <> · <button type="button" onClick={onChangeCommander} className="underline">ändern</button></>}
+        </p>
         <button onClick={() => runAudit(rememberedStrategy || undefined)} className="btn-primary">
           🔍 Jetzt analysieren
         </button>
@@ -259,6 +299,32 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
 
   return (
     <div>
+      <div className="card mb-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-fg-2">
+          <strong className="text-fg">Commander:</strong> {commander}
+          {powerLevel && <span className="text-fg-muted"> · {powerLevel}</span>}
+        </p>
+        {onChangeCommander && (
+          <button type="button" onClick={onChangeCommander} className="btn-secondary text-xs px-3 min-h-[36px]">
+            Commander ändern
+          </button>
+        )}
+      </div>
+
+      {auditIsForOtherCommander && (
+        <div role="alert" className="card mb-4" style={{ borderLeft: '4px solid var(--gold)' }}>
+          <p className="text-sm text-fg leading-relaxed mb-3">
+            {audit.commander
+              ? <>Diese Analyse wurde für <strong>{audit.commander}</strong> erstellt – dein Commander ist jetzt <strong>{commander}</strong>.</>
+              : <>Diese Analyse und ihr Spielplan drehen sich nicht um <strong>{commander}</strong> – sie stammen vermutlich von einem anderen (geratenen) Commander.</>}
+            {' '}Die neue Analyse startet ohne den alten Spielplan.
+          </p>
+          <button type="button" onClick={runFreshForCommander} className="btn-primary text-sm px-4 min-h-[44px]">
+            🔄 Für {shortName(commander)} neu analysieren
+          </button>
+        </div>
+      )}
+
       {brainMirror && (
         <div className="card mb-4 py-3">
           <p className="text-sm leading-relaxed text-fg-2">
@@ -343,7 +409,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
               />
               <div className="flex gap-2 mt-3">
                 <button
-                  onClick={() => { setDeckPreferences(storageKey, { strategyOverride: strategyDraft }); runAudit(strategyDraft) }}
+                  onClick={() => { setDeckPreferences(storageKey, { strategyOverride: strategyDraft, strategyCommander: commander }); runAudit(strategyDraft) }}
                   className="btn-primary text-sm flex-1"
                 >
                   🔄 Neu bewerten mit diesem Spielplan
@@ -360,7 +426,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
               <p><strong>Schwächen:</strong> {audit.strategy.weaknesses}</p>
               {rememberedStrategy && (
                 <button
-                  onClick={() => { setDeckPreferences(storageKey, { strategyOverride: '' }); runAudit() }}
+                  onClick={() => { setDeckPreferences(storageKey, { strategyOverride: '', strategyCommander: commander }); runAudit() }}
                   className="text-xs text-cmd-muted underline"
                 >
                   Gemerkte Korrektur verwerfen & KI neu raten lassen

@@ -22,17 +22,18 @@ const TABS = [
   { id: 'editor', label: '✏️ Editor' }
 ]
 
+// Only a first guess until the player confirms one ("Merken"). The commander's colors must
+// cover every colored card in the deck (color identity) — "most expensive legend" alone picked
+// Sheoldred (black) in a blue-black Wrexial deck. Among the legends that fit, the priciest wins;
+// if none covers everything alone (partners), all legends compete.
 function guessCommander(cards, imageMap) {
-  let best = null
-  for (const card of cards) {
-    const info = imageMap[card.scryfallId]
-    if (!info?.typeLine?.includes('Legendary')) continue
-    if (!(info.typeLine.includes('Creature') || info.typeLine.includes('Planeswalker'))) continue
-    if (!best || (info.eur || 0) > (imageMap[best.scryfallId]?.eur || 0)) {
-      best = card
-    }
-  }
-  return best?.name || ''
+  const known = cards.map(card => ({ card, info: imageMap[card.scryfallId] })).filter(entry => entry.info)
+  const deckColors = new Set(known.filter(({ info }) => !info.typeLine?.includes('Land')).flatMap(({ info }) => info.colors || []))
+  const legends = known.filter(({ info }) => info.typeLine?.includes('Legendary') && (info.typeLine.includes('Creature') || info.typeLine.includes('Planeswalker')))
+  const fitting = legends.filter(({ info }) => [...deckColors].every(color => (info.colors || []).includes(color)))
+  const pool = fitting.length ? fitting : legends
+  pool.sort((a, b) => (b.info.eur || 0) - (a.info.eur || 0))
+  return pool[0]?.card.name || ''
 }
 
 export default function DeckDetailPage() {
@@ -68,6 +69,11 @@ export default function DeckDetailPage() {
   const handleAuditComplete = (data) => {
     setAuditResult(data)
     setSavedAudit(deckName, data)
+    // Analysing with a commander confirms it — no separate "Merken" needed for that.
+    if (data.commander && data.commander !== savedOverride) {
+      setCommanderOverride(deckName, data.commander)
+      setSavedOverride(data.commander)
+    }
   }
 
   const handlePowerLevelChange = (value) => {
@@ -184,7 +190,7 @@ export default function DeckDetailPage() {
             </div>
             {!savedOverride && commanderInitialized && (
               <p className="text-xs text-cmd-muted mt-2">
-                Dies ist nur eine Schätzung (teuerste legendäre Kreatur/Planeswalker im Deck). Falls falsch: korrigieren und auf "Merken" klicken.
+                Dies ist nur eine Schätzung (legendäre Kreatur, deren Farben das ganze Deck abdecken). Falls falsch: korrigieren und auf "Merken" klicken.
               </p>
             )}
 
@@ -262,6 +268,7 @@ export default function DeckDetailPage() {
               setActiveTab('editor')
             }}
             onBack={() => setActiveTab('overview')}
+            onChangeCommander={() => setActiveTab('overview')}
           />
         ) : (
           <p className="text-cmd-muted">Erst einen Commander im Tab "Übersicht" setzen (oder bestätigen), um analysieren zu können.</p>
