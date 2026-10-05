@@ -111,6 +111,12 @@ farbiges Element in Listen; alles andere bleibt ruhig.
 - **Gegner-Board groß:** „⤢ Groß“ oder Klick aufs Spielfeld öffnet es bildschirmfüllend; Reiter bzw.
   ← → wechseln zwischen den Mitspielern, Esc schließt.
 - **Zugreihenfolge im Spiel ändern** nur über das kleine ⇅ neben „Runde“ – bewusst unauffällig.
+- **Spielmarken:** Knopf „Spielmarke“ am eigenen Board → Schnellwahl (deutsche Namen, sucht exakt den
+  englischen Token-Namen), Scryfall-Suche mit echten Bildern, eigene Spielmarke ohne Bild. Auf dem
+  Tisch tragen sie oben links das Etikett „Spielmarke“; verlassen sie das Spielfeld, verschwinden sie.
+- **Marken auf Karten:** als Plaketten unten auf der Karte – +N/+N grün, −N/−N rot, Loyalität ◆ lila,
+  alles andere grau mit Namen. +1/+1 und −1/−1 heben sich auf; beim Verlassen des Spielfelds fallen
+  Marken ab.
 - **Probetisch:** eigene Decks an einem Tisch, man sitzt immer an einem Platz („Du sitzt bei …“, folgt
   standardmäßig dem Zug) — die anderen Plätze sieht man wie Gegner.
 

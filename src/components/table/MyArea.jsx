@@ -4,6 +4,8 @@ import CardMenu from './CardMenu'
 import ZoneViewer, { SmallButton, TopCardsViewer } from './ZoneViewer'
 import { Battlefield, TableCard, CardBack } from './TableCard'
 import NumberPrompt from './NumberPrompt'
+import TokenPicker from './TokenPicker'
+import CounterEditor from './CounterEditor'
 import { BF_W, CARD_W, ZONE_LABEL } from '../../lib/table/board'
 
 const HAND_CARD_W = 88
@@ -22,13 +24,26 @@ export default function MyArea({ seat, seats, player, board, act, isActive, isMo
   const [menu, setMenu] = useState(null)
   const [viewer, setViewer] = useState(null) // 'graveyard' | 'exile' | 'search' | { top: n }
   const [prompt, setPrompt] = useState(null) // "how many?" for draw/look/mill X
+  const [pickingToken, setPickingToken] = useState(false)
+  const [countersFor, setCountersFor] = useState(null) // iid of the card whose counters are open
   const zone = (name) => `${seat.playerId}:${name}`
 
   const move = useCallback((card, to, at) => act({ type: 'move', iid: card.iid, to, at }), [act])
 
   const menuFor = useCallback((card, from, x, y) => {
     const items = []
-    if (from === 'battlefield') items.push({ label: card.tapped ? 'Enttappen' : 'Tappen', onClick: () => act({ type: 'tap', iid: card.iid }) })
+    if (from === 'battlefield') {
+      items.push({ label: card.tapped ? 'Enttappen' : 'Tappen', onClick: () => act({ type: 'tap', iid: card.iid }) })
+      items.push({ label: 'Marken …', onClick: () => setCountersFor(card.iid) })
+      items.push({ label: '+1/+1-Marke', onClick: () => act({ type: 'counter', iid: card.iid, key: '+1/+1', delta: 1 }) })
+      items.push({ label: 'Kopie als Spielmarke', onClick: () => act({ type: 'copy', iid: card.iid }) })
+    }
+    // A token exists only on the battlefield — anywhere else it would just vanish.
+    if (card.token) {
+      items.push({ label: 'Entfernen (Spielmarke verschwindet)', onClick: () => move(card, 'graveyard'), danger: true })
+      setMenu({ title: `${card.name} · Spielmarke`, x, y, items })
+      return
+    }
     if (from !== 'battlefield') items.push({ label: from === 'command' ? 'Wirken (aufs Spielfeld)' : from === 'hand' ? 'Ausspielen' : 'Aufs Spielfeld', onClick: () => move(card, 'battlefield') })
     if (from !== 'hand') items.push({ label: 'Auf die Hand', onClick: () => move(card, 'hand') })
     if (from !== 'graveyard') items.push({ label: from === 'hand' ? 'Abwerfen (Friedhof)' : 'Auf den Friedhof', onClick: () => move(card, 'graveyard') })
@@ -207,6 +222,7 @@ export default function MyArea({ seat, seats, player, board, act, isActive, isMo
             )}
             <button type="button" onClick={() => act({ type: 'draw', count: 1 })} disabled={!board.library.length} className={turnControls ? 'btn-secondary text-sm px-3 min-h-[40px] whitespace-nowrap' : 'btn-primary text-sm px-3 min-h-[44px] whitespace-nowrap'}>Karte ziehen</button>
             <button type="button" onClick={() => act({ type: 'untapAll' })} className="btn-secondary text-sm px-3 min-h-[40px] whitespace-nowrap">Alles enttappen</button>
+            <button type="button" onClick={() => setPickingToken(true)} className="btn-secondary text-sm px-3 min-h-[40px] whitespace-nowrap">Spielmarke</button>
             {turnControls?.onPass && (
               <button type="button" onClick={turnControls.onPass} className="text-xs underline" style={{ color: 'var(--color-text-muted)' }} title="Der Nächste in der Zugreihenfolge ist dran">Zug abgeben</button>
             )}
@@ -268,6 +284,19 @@ export default function MyArea({ seat, seats, player, board, act, isActive, isMo
 
       <CardMenu menu={menu} onClose={() => setMenu(null)} />
       <NumberPrompt prompt={prompt} onClose={() => setPrompt(null)} />
+      {pickingToken && (
+        <TokenPicker
+          onClose={() => setPickingToken(false)}
+          onCreate={(template, count) => act({ type: 'token', tokens: [{ name: template.name, image: template.image, pt: template.pt }], count })}
+        />
+      )}
+      {countersFor && (
+        <CounterEditor
+          card={board.battlefield.find(card => card.iid === countersFor)}
+          onChange={(key, delta) => act({ type: 'counter', iid: countersFor, key, delta })}
+          onClose={() => setCountersFor(null)}
+        />
+      )}
 
       {(viewer === 'graveyard' || viewer === 'exile') && (
         <ZoneViewer

@@ -61,7 +61,27 @@ export function createBoard(deck, idPrefix) {
   }
 }
 
-const publicCard = ({ iid, name, image, tapped, x, y, commander }) => ({ iid, name, image, tapped: Boolean(tapped), x, y, commander: Boolean(commander) })
+const publicCard = ({ iid, name, image, tapped, x, y, commander, token, counters, pt }) => ({
+  iid, name, image, tapped: Boolean(tapped), x, y, commander: Boolean(commander),
+  ...(token ? { token: true } : {}),
+  ...(pt ? { pt } : {}),
+  ...(counters && Object.keys(counters).length ? { counters } : {})
+})
+
+// Marks for counters on cards. Keys are stored as written; these are the usual ones.
+export const CARD_COUNTERS = [
+  { key: '+1/+1', label: '+1/+1' },
+  { key: '-1/-1', label: '−1/−1' },
+  { key: 'loyalty', label: 'Loyalität' },
+  { key: 'charge', label: 'Ladung' },
+  { key: 'shield', label: 'Schild' },
+  { key: 'time', label: 'Zeit' },
+  { key: 'lore', label: 'Kapitel' }
+]
+export const counterLabel = (key) => CARD_COUNTERS.find(c => c.key === key)?.label || key
+
+let tokenSerial = 0
+const tokenId = () => `tok-${Date.now().toString(36)}-${(tokenSerial++).toString(36)}`
 
 export function publicSnapshot(board) {
   return {
@@ -111,12 +131,15 @@ export function applyAction(board, action) {
       const { to, at } = action
       if (from === to && to !== 'battlefield') return { board, note: null }
       const next = { ...board, [from]: board[from].filter(c => c.iid !== action.iid) }
+      if (card.token && to !== 'battlefield') {
+        return { board: next, note: `${card.name} (Spielmarke) verschwindet` }
+      }
       if (to === 'battlefield') {
         const tapped = from === 'battlefield' ? card.tapped : false
         const spot = at && typeof at === 'object' ? at : (from === 'battlefield' ? { x: card.x, y: card.y } : freeSpot(next.battlefield))
         next.battlefield = [...next.battlefield, { ...card, tapped, ...clampPos(spot.x, spot.y, tapped) }] // last = on top
       } else {
-        const { x, y, tapped, ...rest } = card
+        const { x, y, tapped, counters, ...rest } = card
         next[to] = to === 'library' ? (at === 'bottom' ? [...next[to], rest] : [rest, ...next[to]]) : [...next[to], rest]
       }
       const name = card.name
@@ -129,6 +152,52 @@ export function applyAction(board, action) {
       else if (to === 'library') note = `legt ${from === 'hand' ? 'eine Karte' : name} ${at === 'bottom' ? 'unter' : 'oben auf'} die Bibliothek`
       else if (to === 'command') note = `bringt ${name} zurück in die Commandzone`
       return { board: next, note, castCommander: from === 'command' && to === 'battlefield' }
+    }
+    case 'token': {
+      // { tokens: [{ name, image, pt }], count } → new tokens on the battlefield, untapped.
+      const created = []
+      let battlefield = [...board.battlefield]
+      for (const template of action.tokens || []) {
+        for (let i = 0; i < Math.max(1, Math.min(50, action.count || 1)); i++) {
+          const spot = freeSpot(battlefield)
+          const token = { iid: tokenId(), name: template.name, image: template.image || null, pt: template.pt || null, token: true, tapped: false, ...clampPos(spot.x, spot.y, false) }
+          battlefield = [...battlefield, token]
+          created.push(token)
+        }
+      }
+      if (!created.length) return { board, note: null }
+      const name = created[0].name
+      return { board: { ...board, battlefield }, note: `erschafft ${created.length > 1 ? `${created.length}× ` : ''}${name}${created[0].pt ? ` ${created[0].pt}` : ''} (Spielmarke)` }
+    }
+    case 'copy': {
+      // A token copy of a card on the battlefield, right beside it (left of it at the right edge)
+      // — never on top, where it would hide the original's counters.
+      const original = board.battlefield.find(c => c.iid === action.iid)
+      if (!original) return { board, note: null }
+      const width = original.tapped ? CARD_H : CARD_W
+      const besideX = original.x + width + 8 <= BF_W - CARD_W ? original.x + width + 8 : original.x - CARD_W - 8
+      const copy = { iid: tokenId(), name: original.name, image: original.image, pt: original.pt || null, token: true, tapped: false, ...clampPos(besideX, original.y, false) }
+      return { board: { ...board, battlefield: [...board.battlefield, copy] }, note: `erschafft eine Kopie von ${original.name} (Spielmarke)` }
+    }
+    case 'counter': {
+      // { iid, key, delta } — +1/+1 and −1/−1 counters cancel each other out (rule 704.5q).
+      const card = board.battlefield.find(c => c.iid === action.iid)
+      if (!card) return { board, note: null }
+      const counters = { ...(card.counters || {}) }
+      counters[action.key] = Math.max(0, (counters[action.key] || 0) + action.delta)
+      const plus = counters['+1/+1'] || 0
+      const minus = counters['-1/-1'] || 0
+      if (plus && minus) {
+        const cancel = Math.min(plus, minus)
+        counters['+1/+1'] = plus - cancel
+        counters['-1/-1'] = minus - cancel
+      }
+      for (const key of Object.keys(counters)) if (!counters[key]) delete counters[key]
+      const value = counters[action.key] || 0
+      return {
+        board: { ...board, battlefield: board.battlefield.map(c => (c.iid === action.iid ? { ...c, counters } : c)) },
+        note: `${counterLabel(action.key)}-Marke ${action.delta > 0 ? '+' : '−'}${Math.abs(action.delta)} auf ${card.name} (jetzt ${value})`
+      }
     }
     case 'tap':
       return {
@@ -217,7 +286,8 @@ export function useOwnBoards(gameId, controlled, { publish, onAction }) {
 
   // Card images: from the browser cache or Scryfall, filled into every copy on every board.
   useEffect(() => {
-    const all = Object.values(boardsRef.current).flatMap(board => ZONES.flatMap(zone => board[zone]))
+    // Tokens bring their picture along (or have none on purpose) — never looked up by name.
+    const all = Object.values(boardsRef.current).flatMap(board => ZONES.flatMap(zone => board[zone])).filter(card => !card.token)
     if (all.every(card => card.image)) return undefined
     let cancelled = false
     loadCardData({

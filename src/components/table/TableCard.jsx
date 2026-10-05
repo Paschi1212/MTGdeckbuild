@@ -1,5 +1,16 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { BF_W, BF_H, CARD_W } from '../../lib/table/board'
+import { BF_W, BF_H, CARD_W, counterLabel } from '../../lib/table/board'
+
+// What a card's counters read like on the table: "+3/+3", "Loyalität 4", "Ladung 2".
+function counterBadges(counters) {
+  if (!counters) return []
+  return Object.entries(counters).filter(([, n]) => n > 0).map(([key, n]) => {
+    if (key === '+1/+1') return { key, text: `+${n}/+${n}`, color: '#2ea043' }
+    if (key === '-1/-1') return { key, text: `−${n}/−${n}`, color: '#da3633' }
+    if (key === 'loyalty') return { key, text: `◆ ${n}`, color: '#6e40c9' }
+    return { key, text: `${counterLabel(key)} ${n}`, color: '#3d444d' }
+  })
+}
 
 // A card on the table at any size. Tapped cards lie sideways in a landscape frame, so the whole
 // card stays visible (rotating only the picture would cut off both ends).
@@ -24,7 +35,7 @@ export function TableCard({ card, width, interactive = false, onPointerDown, onC
       onPointerEnter={(e) => { if (e.pointerType === 'mouse') onHover?.(card, e) }}
       onPointerMove={(e) => { if (e.pointerType === 'mouse') onHover?.(card, e) }}
       onPointerLeave={() => onHover?.(null)}
-      title={card.tapped ? `${card.name} (getappt)` : card.name}
+      title={[card.name, card.token && 'Spielmarke', card.tapped && 'getappt', ...counterBadges(card.counters).map(b => b.text)].filter(Boolean).join(' · ')}
     >
       <div
         className="absolute left-1/2 top-1/2"
@@ -37,10 +48,32 @@ export function TableCard({ card, width, interactive = false, onPointerDown, onC
             className="w-full h-full flex items-center justify-center text-center leading-tight p-1"
             style={{ background: '#2a2d33', color: '#e8eaed', fontSize: Math.max(8, width * 0.11), borderRadius: radius, border: '1px solid #3a3e45' }}
           >
-            {card.name}
+            {card.name}{card.pt ? <><br />{card.pt}</> : null}
           </div>
         )}
       </div>
+      {card.token && (
+        <span
+          className="absolute left-0 top-0 px-1 font-semibold"
+          style={{ fontSize: Math.max(7, width * 0.1), background: 'rgba(29,31,36,0.85)', color: '#e8eaed', borderRadius: '3px 0 3px 0', lineHeight: 1.4 }}
+          title="Spielmarke"
+        >
+          Spielmarke{card.image && card.pt ? ` ${card.pt}` : ''}
+        </span>
+      )}
+      {counterBadges(card.counters).length > 0 && (
+        <span className="absolute left-0 right-0 bottom-0 flex flex-wrap justify-center gap-0.5 p-0.5 pointer-events-none">
+          {counterBadges(card.counters).map(badge => (
+            <span
+              key={badge.key}
+              className="font-bold tabular-nums whitespace-nowrap"
+              style={{ fontSize: Math.max(8, width * 0.13), background: badge.color, color: '#fff', borderRadius: 3, padding: '0 3px', lineHeight: 1.35, boxShadow: '0 1px 2px rgba(0,0,0,0.6)' }}
+            >
+              {badge.text}
+            </span>
+          ))}
+        </span>
+      )}
       {card.commander && (
         <span
           className="absolute -top-1 -right-1 rounded-full flex items-center justify-center"
