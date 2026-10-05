@@ -92,6 +92,14 @@ farbiges Element in Listen; alles andere bleibt ruhig.
   21 Commander-Schaden) wird rot markiert, ausscheiden entscheidet der Tisch.
 - **Eigene Tafel zuerst**, danach die anderen in Sitzreihenfolge; die Zug-Leiste („Am Zug: …“ / „Zug
   beenden“) bleibt unter der Navigation stehen.
+- **Kartentisch (Schritt 2):** oben die Boards der Mitspieler (Kopfzeile + Spielfeld exakt wie gelegt,
+  skaliert, darunter Hand-/Bibliotheks-/Friedhofs-/Exil-Zähler), unten das eigene Board groß: Spielfeld,
+  daneben in einer Zeile Commandzone, Bibliothek, Friedhof, Exil und die eigene Hand. Spielfelder sind
+  in der Höhe begrenzt (eigenes 38vh, Gegner 30vh/22vh), damit der ganze Tisch auf einen Bildschirm passt.
+- **Bedienung, Maus und Finger gleich:** ziehen = verschieben/Zone wechseln, antippen = tappen
+  (Spielfeld) bzw. Menü (Hand, Stapel), lange drücken oder Rechtsklick = Menü. Kartenbild groß per Hover.
+- **Probetisch:** eigene Decks an einem Tisch, man sitzt immer an einem Platz („Du sitzt bei …“, folgt
+  standardmäßig dem Zug) — die anderen Plätze sieht man wie Gegner.
 
 ## Bewegung
 

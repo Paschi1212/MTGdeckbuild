@@ -38,6 +38,7 @@ function describe(entry, nameOf, commanderOf) {
     case 'out': return entry.value ? `${target} ist ausgeschieden` : `${target} ist zurück im Spiel`
     case 'monarch': return entry.target ? `${target} wird Monarch` : 'Niemand ist mehr Monarch'
     case 'turn': return `Runde ${entry.round}: ${nameOf(entry.activePlayer)} ist am Zug`
+    case 'note': return `${nameOf(entry.by)} ${entry.text}`
     default: return null
   }
 }

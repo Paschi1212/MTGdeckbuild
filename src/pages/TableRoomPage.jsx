@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { useLobby, hostingSettings, forgetHosting } from '../lib/table/lobby'
 import { useGame, loadGameRecord, saveGameRecord } from '../lib/table/game'
@@ -6,6 +6,10 @@ import { loadOwnDecks, fetchBorrowedDecks, loadCommanderCard, deckCardCount, art
 import { firstName, rememberPlayers } from '../lib/table/players'
 import PlayerPanel from '../components/table/PlayerPanel'
 import GameLog from '../components/table/GameLog'
+import OpponentBoard from '../components/table/OpponentBoard'
+import MyArea from '../components/table/MyArea'
+import { HoverPreview } from '../components/table/TableCard'
+import { useOwnBoards } from '../lib/table/board'
 
 // /spieltisch/:lobbyId — the lobby until the host starts, then the game for everyone.
 export default function TableRoomPage({ user }) {
@@ -273,15 +277,39 @@ function LobbyView({ lobbyId, me, onStarted, onSpectate }) {
 
 function GameView({ lobbyId, me }) {
   const navigate = useNavigate()
-  const { record, state, online, status, dispatch } = useGame(lobbyId, me)
+  const { record, state, online, status, dispatch, boards: publicBoards, publishBoard, practice } = useGame(lobbyId, me)
   const [waitedLong, setWaitedLong] = useState(false)
+  const [detailsFor, setDetailsFor] = useState(null)
+  const [showLog, setShowLog] = useState(() => window.innerWidth >= 1600)
+  const [preview, setPreview] = useState(null)
+  const seats = useMemo(() => record?.seats || [], [record])
+
+  // The boards this browser plays: your seat online — every seat on the practice table.
+  const controlled = useMemo(() => (practice
+    ? seats.map(seat => ({ playerId: seat.playerId, deck: record?.decks?.[seat.playerId] }))
+    : seats.filter(seat => seat.playerId === me.playerId).map(seat => ({ playerId: seat.playerId, deck: record?.myDeck }))
+  ), [practice, seats, record, me.playerId])
+
+  const onAction = useCallback((owner, result) => {
+    if (result.note) dispatch('note', { text: result.note, by: owner })
+    // Casting the commander from the command zone: the next cast costs 2 more.
+    if (result.castCommander) dispatch('tax', { target: owner, delta: 2, by: owner })
+  }, [dispatch])
+  const { boards: ownBoards, act } = useOwnBoards(lobbyId, controlled, { publish: publishBoard, onAction })
+
+  // Practice: you sit at one seat at a time — by default the one whose turn it is.
+  const [viewSeat, setViewSeat] = useState(null)
+  const [followTurn, setFollowTurn] = useState(true)
+  const activeId = (seats[state.turn.seat] || seats[0])?.playerId
+  useEffect(() => { if (practice && followTurn && activeId) setViewSeat(activeId) }, [practice, followTurn, activeId])
+
   useEffect(() => {
     const timer = setTimeout(() => setWaitedLong(true), 8000)
     return () => clearTimeout(timer)
   }, [])
+  useEffect(() => { if (!practice) rememberPlayers(seats, me.playerId) }, [seats, me.playerId, practice])
 
-  const seats = record?.seats || []
-  useEffect(() => { rememberPlayers(seats, me.playerId) }, [seats, me.playerId])
+  const onHover = useCallback((card, event) => setPreview(card && event ? { card, x: event.clientX, y: event.clientY } : null), [])
 
   if (!seats.length) {
     return (
@@ -298,11 +326,15 @@ function GameView({ lobbyId, me }) {
   }
 
   const onlineIds = new Set(online.map(entry => entry.playerId))
-  const seated = seats.some(seat => seat.playerId === me.playerId)
-  // Table order, but starting with your own seat.
-  const myIndex = seats.findIndex(seat => seat.playerId === me.playerId)
-  const ordered = myIndex > 0 ? [...seats.slice(myIndex), ...seats.slice(0, myIndex)] : seats
+  const mySeatId = practice ? (viewSeat || activeId) : (seats.some(seat => seat.playerId === me.playerId) ? me.playerId : null)
+  const mySeat = seats.find(seat => seat.playerId === mySeatId) || null
+  // The others in table order, starting after your seat.
+  const myIndex = seats.findIndex(seat => seat.playerId === mySeatId)
+  const others = myIndex >= 0 ? [...seats.slice(myIndex + 1), ...seats.slice(0, myIndex)] : seats
   const active = seats[state.turn.seat] || seats[0]
+  const detailsSeat = seats.find(seat => seat.playerId === detailsFor)
+  // On the practice table you act as the seat you sit at (the log then names that seat).
+  const seatDispatch = practice ? (type, fields) => dispatch(type, { by: mySeatId, ...fields }) : dispatch
 
   const endTurn = () => {
     let next = state.turn.seat
@@ -312,49 +344,108 @@ function GameView({ lobbyId, me }) {
       if (next === 0) round += 1
       if (!state.players[seats[next].playerId]?.out) break
     }
-    dispatch('turn', { seat: next, round, activePlayer: seats[next].playerId })
+    seatDispatch('turn', { seat: next, round, activePlayer: seats[next].playerId })
   }
 
   return (
-    <div className="max-w-[1500px] mx-auto">
+    <div className="max-w-[1800px] mx-auto">
       <div
-        className="sticky z-20 flex flex-wrap items-center justify-between gap-3 mb-4 px-4 py-3"
+        className="sticky z-30 flex flex-wrap items-center justify-between gap-3 mb-3 px-4 py-2.5"
         style={{ top: 'var(--nav-h, 0px)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)' }}
       >
         <div className="min-w-0">
           <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            Runde <span className="tabular-nums">{state.turn.round}</span>
-            {!seated && ' · du schaust zu'}
+            {practice ? 'Probetisch · ' : ''}Runde <span className="tabular-nums">{state.turn.round}</span>
+            {!practice && !mySeat && ' · du schaust zu'}
             {status !== 'SUBSCRIBED' && ' · Verbindung wird hergestellt …'}
           </div>
-          <div className="font-bold text-fg truncate">Am Zug: {active?.name}{active?.playerId === me.playerId && ' (du)'}</div>
+          <div className="font-bold text-fg truncate">Am Zug: {active?.name}{active?.playerId === me.playerId && !practice && ' (du)'}</div>
         </div>
-        <div className="flex gap-2">
-          {seated && <button type="button" onClick={endTurn} className="btn-primary text-sm px-5 min-h-[44px]">Zug beenden</button>}
+        {practice && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <label className="flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
+              Du sitzt bei
+              <select value={mySeatId || ''} onChange={(e) => { setViewSeat(e.target.value); setFollowTurn(false) }} className="text-fg rounded-xl px-2 py-1.5 text-sm min-h-[40px]">
+                {seats.map(seat => <option key={seat.playerId} value={seat.playerId}>{seat.name}</option>)}
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
+              <input type="checkbox" checked={followTurn} onChange={(e) => setFollowTurn(e.target.checked)} /> folgt dem Zug
+            </label>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {(mySeat || practice) && <button type="button" onClick={endTurn} className="btn-primary text-sm px-5 min-h-[44px]">Zug beenden</button>}
+          <button type="button" onClick={() => setShowLog(v => !v)} className="btn-secondary text-sm px-4 min-h-[44px]" aria-pressed={showLog}>Verlauf</button>
           <button type="button" onClick={() => navigate('/spieltisch')} className="btn-secondary text-sm px-4 min-h-[44px]">Tisch verlassen</button>
         </div>
       </div>
 
-      <div className="grid xl:grid-cols-[1fr_320px] gap-4 items-start">
-        <div className="grid md:grid-cols-2 gap-4">
-          {ordered.map(seat => (
-            <PlayerPanel
-              key={seat.playerId}
-              seat={seat}
-              player={state.players[seat.playerId]}
+      <div className={showLog ? 'grid xl:grid-cols-[1fr_300px] gap-3 items-start' : ''}>
+        <div className="flex flex-col gap-3 min-w-0">
+          {others.length > 0 && (
+            <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${others.length === 1 ? 560 : 380}px, 1fr))` }}>
+              {others.map(seat => (
+                <OpponentBoard
+                  key={seat.playerId}
+                  seat={seat}
+                  seats={seats}
+                  player={state.players[seat.playerId]}
+                  snapshot={publicBoards[seat.playerId]}
+                  isActive={seat.playerId === active?.playerId}
+                  isMonarch={state.monarch === seat.playerId}
+                  online={onlineIds.has(seat.playerId)}
+                  dispatch={seatDispatch}
+                  onDetails={() => setDetailsFor(seat.playerId)}
+                  onHover={onHover}
+                  compact={others.length > 3}
+                />
+              ))}
+            </div>
+          )}
+          {mySeat && ownBoards[mySeat.playerId] && (
+            <MyArea
+              key={mySeat.playerId}
+              seat={mySeat}
               seats={seats}
-              isMe={seat.playerId === me.playerId}
-              isActive={seat.playerId === active?.playerId}
-              isMonarch={state.monarch === seat.playerId}
-              online={onlineIds.has(seat.playerId)}
-              dispatch={dispatch}
+              player={state.players[mySeat.playerId]}
+              board={ownBoards[mySeat.playerId]}
+              act={(action) => act(mySeat.playerId, action)}
+              isActive={mySeat.playerId === active?.playerId}
+              isMonarch={state.monarch === mySeat.playerId}
+              dispatch={seatDispatch}
+              onDetails={() => setDetailsFor(mySeat.playerId)}
+              onHover={onHover}
+              label={practice ? mySeat.name : null}
             />
-          ))}
+          )}
         </div>
-        <div className="xl:sticky xl:max-h-[calc(100vh-10rem)] flex flex-col" style={{ top: 'calc(var(--nav-h, 0px) + 5.5rem)' }}>
-          <GameLog log={state.log} seats={seats} />
-        </div>
+        {showLog && (
+          <div className="xl:sticky xl:max-h-[calc(100vh-9rem)] flex flex-col mt-3 xl:mt-0" style={{ top: 'calc(var(--nav-h, 0px) + 4.5rem)' }}>
+            <GameLog log={state.log} seats={seats} />
+          </div>
+        )}
       </div>
+
+      {detailsSeat && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4" style={{ background: 'rgba(8,8,10,0.8)' }} onClick={() => setDetailsFor(null)}>
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <PlayerPanel
+              seat={detailsSeat}
+              player={state.players[detailsSeat.playerId]}
+              seats={seats}
+              isMe={!practice && detailsSeat.playerId === me.playerId}
+              isActive={detailsSeat.playerId === active?.playerId}
+              isMonarch={state.monarch === detailsSeat.playerId}
+              online={onlineIds.has(detailsSeat.playerId)}
+              dispatch={seatDispatch}
+            />
+            <button type="button" onClick={() => setDetailsFor(null)} className="btn-secondary w-full mt-2 min-h-[44px]">Schließen</button>
+          </div>
+        </div>
+      )}
+
+      <HoverPreview preview={preview} />
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { useOpenLobbies, rememberHosting, MAX_PLAYERS_CHOICES } from '../lib/tab
 import { randomId } from '../lib/table/realtime'
 import { firstName } from '../lib/table/players'
 import { loadOwnDecks } from '../lib/table/decks'
+import PracticeSetup from '../components/table/PracticeSetup'
 
 // "Spieltisch": open lobbies of everyone on the site, live — join one or open your own.
 export default function TablePage({ user }) {
@@ -94,6 +95,7 @@ export default function TablePage({ user }) {
           )}
         </section>
 
+        <div className="flex flex-col gap-6">
         <form onSubmit={createLobby} className="card space-y-4">
           <h2 className="text-lg font-bold">Lobby öffnen</h2>
           <label className="block">
@@ -128,6 +130,8 @@ export default function TablePage({ user }) {
           </label>
           <button type="submit" className="btn-primary w-full min-h-[44px]" disabled={!user.playerId}>Lobby öffnen</button>
         </form>
+        <PracticeSetup decks={own.decks} />
+        </div>
       </div>
     </div>
   )

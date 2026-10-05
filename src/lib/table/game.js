@@ -90,6 +90,9 @@ export function foldGame(seats, events) {
       case 'turn':
         turn = { seat: event.seat, round: event.round }
         break
+      case 'note':
+        // What a player did with their cards ("spielt Sol Ring") — log only.
+        break
       default:
         continue // unknown types (newer version) are skipped, never fatal
     }
@@ -116,6 +119,9 @@ export function lethalReason(player) {
 export function useGame(gameId, me) {
   const [record, setRecord] = useState(() => loadGameRecord(gameId))
   const [online, setOnline] = useState([])
+  // Every player's public board (latest snapshot each): see lib/table/board.js.
+  const [boards, setBoards] = useState({})
+  const myBoardRef = useRef(null)
   const [status, setStatus] = useState('connecting')
   const recordRef = useRef(record)
   const channelRef = useRef(null)
@@ -142,7 +148,14 @@ export function useGame(gameId, me) {
     })
   }, [commit])
 
+  // The practice table runs entirely in this browser — no live channel.
+  const practice = Boolean(record?.practice)
+
   useEffect(() => {
+    if (practice) {
+      setStatus('SUBSCRIBED')
+      return () => { clearTimeout(saveTimer.current); if (recordRef.current) saveGameRecord(gameId, recordRef.current) }
+    }
     const replyTo = (playerId) => {
       const current = recordRef.current
       if (!current?.seats) return
@@ -162,7 +175,13 @@ export function useGame(gameId, me) {
       },
       onBroadcast: {
         evt: (event) => merge([event]),
-        'sync-request': ({ from }) => { if (from && from !== me.playerId) replyTo(from) },
+        board: ({ owner, v, ...snapshot }) => setBoards(prev => (prev[owner]?.v >= v ? prev : { ...prev, [owner]: { v, ...snapshot } })),
+        'sync-request': ({ from }) => {
+          if (!from || from === me.playerId) return
+          replyTo(from)
+          // Boards are sent whole: the newcomer just needs everyone's latest one.
+          if (myBoardRef.current) channelRef.current?.send('board', myBoardRef.current)
+        },
         'sync-reply': ({ to, seats, startedAt, events }) => { if (to === me.playerId) merge(events || [], seats, startedAt) }
       }
     })
@@ -172,15 +191,24 @@ export function useGame(gameId, me) {
       clearTimeout(saveTimer.current)
       if (recordRef.current) saveGameRecord(gameId, recordRef.current)
     }
-  }, [gameId, me.playerId, me.name, merge])
+  }, [gameId, me.playerId, me.name, merge, practice])
 
+  // `fields.by` may name another seat on the practice table (one person plays all of them).
   const dispatch = useCallback((type, fields) => {
     const event = { id: randomId(12), ts: Date.now(), by: me.playerId, type, ...fields }
     merge([event])
     channelRef.current?.send('evt', event)
   }, [me.playerId, merge])
 
+  /** Sends a board's public part (snapshot from lib/table/board.js) to the table. */
+  const publishBoard = useCallback((owner, snapshot) => {
+    const message = { owner, v: Date.now(), ...snapshot }
+    if (owner === me.playerId) myBoardRef.current = message
+    setBoards(prev => ({ ...prev, [owner]: message }))
+    channelRef.current?.send('board', message)
+  }, [me.playerId])
+
   const state = useMemo(() => foldGame(record?.seats, record?.events || []), [record])
 
-  return { record, state, online, status, dispatch }
+  return { record, state, online: practice ? (record?.seats || []) : online, status, dispatch, boards, publishBoard, practice }
 }
