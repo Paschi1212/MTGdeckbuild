@@ -333,7 +333,20 @@ function GameView({ lobbyId, me }) {
   const [viewSeat, setViewSeat] = useState(null)
   const [followTurn, setFollowTurn] = useState(true)
   const activeId = state.turn.player || seats[0]?.playerId
-  useEffect(() => { if (practice && followTurn && activeId) setViewSeat(activeId) }, [practice, followTurn, activeId])
+  // Moving to the next seat with the turn changes the whole bottom board — say so clearly,
+  // or it looks as if your cards had vanished (they are up with the others now).
+  const [seatNotice, setSeatNotice] = useState(null)
+  const lastSeat = useRef(null)
+  useEffect(() => {
+    if (!practice || !followTurn || !activeId) return undefined
+    setViewSeat(activeId)
+    const moved = lastSeat.current && lastSeat.current !== activeId
+    lastSeat.current = activeId
+    if (!moved) return undefined
+    setSeatNotice(seats.find(seat => seat.playerId === activeId)?.name || null)
+    const timer = setTimeout(() => setSeatNotice(null), 3000)
+    return () => clearTimeout(timer)
+  }, [practice, followTurn, activeId, seats])
 
   useEffect(() => {
     const timer = setTimeout(() => setWaitedLong(true), 8000)
@@ -568,6 +581,12 @@ function GameView({ lobbyId, me }) {
       )}
 
       <HoverPreview preview={preview} />
+
+      {seatNotice && (
+        <div role="status" className="fixed z-[90] left-1/2 bottom-6 -translate-x-1/2 px-5 py-3 text-sm font-semibold" style={{ background: '#1d1f24', color: '#fff', border: '2px solid var(--gold)', borderRadius: 'var(--radius-md)', boxShadow: '0 16px 40px rgba(0,0,0,0.5)' }}>
+          Du sitzt jetzt bei {seatNotice} – dein vorheriges Board ist oben bei den anderen
+        </div>
+      )}
     </div>
   )
 }

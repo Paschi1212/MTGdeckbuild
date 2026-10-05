@@ -220,8 +220,8 @@ export default function MyArea({ seat, seats, player, board, act, isActive, isMo
             {turnControls && (
               <button type="button" onClick={turnControls.onAdvance} className="btn-primary text-sm px-3 min-h-[44px] whitespace-nowrap">{turnControls.label}</button>
             )}
-            <button type="button" onClick={() => act({ type: 'draw', count: 1 })} disabled={!board.library.length} className={turnControls ? 'btn-secondary text-sm px-3 min-h-[40px] whitespace-nowrap' : 'btn-primary text-sm px-3 min-h-[44px] whitespace-nowrap'}>Karte ziehen</button>
-            <button type="button" onClick={() => act({ type: 'untapAll' })} className="btn-secondary text-sm px-3 min-h-[40px] whitespace-nowrap">Alles enttappen</button>
+            {/* Drawing and untapping happen by themselves in their steps; a drawn card for an
+                effect is in the library menu ("Karte ziehen"). */}
             <button type="button" onClick={() => setPickingToken(true)} className="btn-secondary text-sm px-3 min-h-[40px] whitespace-nowrap">Spielmarke</button>
             {turnControls?.onPass && (
               <button type="button" onClick={turnControls.onPass} className="text-xs underline" style={{ color: 'var(--color-text-muted)' }} title="Der Nächste in der Zugreihenfolge ist dran">Zug abgeben</button>

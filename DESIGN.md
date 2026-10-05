@@ -103,7 +103,11 @@ farbiges Element in Listen; alles andere bleibt ruhig.
   Hauptknopf, sobald alle behalten haben, sonst „Trotzdem starten“.
 - **Phasen:** Reihe unter der Zuginfo (Enttappen · Versorgung · Ziehen · Hauptphase 1 · Kampf ·
   Hauptphase 2 · Ende), aktuelle Phase in Gold; der Aktive klickt „Weiter: …“ (im Endsegment „Zug
-  abgeben“) oder springt per Klick auf eine Phase. Enttappen und Ziehen passieren automatisch.
+  abgeben“) oder springt per Klick auf eine Phase. Enttappen und Ziehen passieren automatisch – es gibt
+  dafür keine eigenen Knöpfe (Ziehen für Effekte: Bibliotheksmenü). Betäubungsmarken: Karte bleibt
+  getappt, eine Marke fällt weg.
+- **Probetisch-Platzwechsel** wird unten kurz angesagt („Du sitzt jetzt bei …“), damit es nicht so
+  aussieht, als wären die eigenen Karten verschwunden.
 - **Phasenleiste am linken Rand** (ab 1024 px, mitlaufend): oben wer am Zug ist (Commander-Art dahinter),
   darunter die Phasen untereinander mit einer goldenen Markierung, die zur nächsten Phase gleitet
   (`.phase-rail-marker`, ohne Animation bei `prefers-reduced-motion`), unten „Weiter“ / „Zug abgeben“.

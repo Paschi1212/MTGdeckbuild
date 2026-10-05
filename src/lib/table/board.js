@@ -76,7 +76,8 @@ export const CARD_COUNTERS = [
   { key: 'charge', label: 'Ladung' },
   { key: 'shield', label: 'Schild' },
   { key: 'time', label: 'Zeit' },
-  { key: 'lore', label: 'Kapitel' }
+  { key: 'lore', label: 'Kapitel' },
+  { key: 'stun', label: 'Betäubung' }
 ]
 export const counterLabel = (key) => CARD_COUNTERS.find(c => c.key === key)?.label || key
 
@@ -209,9 +210,22 @@ export function applyAction(board, action) {
         board: { ...board, battlefield: [...board.battlefield.filter(c => c.iid !== action.iid), ...board.battlefield.filter(c => c.iid === action.iid).map(c => ({ ...c, ...clampPos(action.x, action.y, c.tapped) }))] },
         note: null
       }
-    case 'untapAll':
-      // `silent`: the automatic untap at the start of each turn needs no log line.
-      return { board: { ...board, battlefield: board.battlefield.map(c => ({ ...c, tapped: false })) }, note: action.silent ? null : 'enttappt alles' }
+    case 'untapAll': {
+      // A tapped permanent with a stun counter stays tapped and loses one counter instead (122.1d).
+      const stunned = []
+      const battlefield = board.battlefield.map(c => {
+        if (c.tapped && (c.counters?.stun || 0) > 0) {
+          stunned.push(c.name)
+          const counters = { ...c.counters, stun: c.counters.stun - 1 }
+          if (!counters.stun) delete counters.stun
+          return { ...c, counters }
+        }
+        return c.tapped ? { ...c, tapped: false, ...clampPos(c.x, c.y, false) } : c
+      })
+      const stunNote = stunned.length ? `${stunned.join(', ')} ${stunned.length === 1 ? 'bleibt' : 'bleiben'} getappt (Betäubungsmarke entfernt)` : null
+      // `silent`: the automatic untap at the start of each turn needs no line — only stun news.
+      return { board: { ...board, battlefield }, note: action.silent ? stunNote : ['enttappt alles', stunNote].filter(Boolean).join(' · ') }
+    }
     case 'draw': {
       const drawn = board.library.slice(0, action.count || 1)
       if (!drawn.length) return { board, note: null }
