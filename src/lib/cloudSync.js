@@ -14,8 +14,10 @@ const SYNCED_KEYS = [
   'mtg_brain_outbox',
   // The PC bridge's Tailscale address, so a tablet can reach it without typing (aiMode.js)
   'mtg_bridge_remote',
-  // Players met at the game table — whom a deck can be lent to (lib/table/players.js)
-  'mtg_known_players'
+  // Players met at the game table — they may play this player's decks (lib/table/players.js)
+  'mtg_known_players',
+  // Decks kept out of friends' reach at the game table (lib/deckLocks.js)
+  'mtg_deck_locks'
 ]
 
 // Two devices (PC + tablet): the server numbers every saved snapshot. This device remembers

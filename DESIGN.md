@@ -128,8 +128,13 @@ farbiges Element in Listen; alles andere bleibt ruhig.
 - **Hand immer ganz sichtbar** (`HandRow`): nebeneinander, solange es passt, sonst überlappend
   aufgefächert (mind. 26 px je Karte sichtbar, notfalls kleiner) – nie scrollen; die Karte unter der
   Maus kommt nach vorn.
-- **Probetisch:** eigene Decks an einem Tisch, man sitzt immer an einem Platz („Du sitzt bei …“, folgt
-  standardmäßig dem Zug) — die anderen Plätze sieht man wie Gegner.
+- **Probetisch:** eigene Decks (und die der Mitspieler) an einem Tisch, man sitzt immer an einem Platz
+  („Du sitzt bei …“, folgt standardmäßig dem Zug) — die anderen Plätze sieht man wie Gegner.
+- **Decks der Mitspieler:** standardmäßig frei für alle, mit denen man schon an einem Tisch war; man
+  sperrt nur. Sperren auf der Deckseite („Am Spieltisch: frei für Mitspieler“ · „Deck sperren“) und
+  gesammelt auf /spieltisch („Deine Decks für Mitspieler“, eingeklappt, Zähler „N frei · M gesperrt“).
+  Deckauswahl gruppiert nach Besitzer: „Deine Decks“, „Deine Entwürfe“, dann „Decks von …“ – wer in
+  der Lobby sitzt zuerst, sonst alphabetisch.
 
 ## Bewegung
 

@@ -15,6 +15,7 @@
 
 import { connectLambda, getStore } from '@netlify/blobs'
 import { parseSessionCookie } from './lib/session.js'
+import { saveLenderEntry } from './lib/deck-lenders.js'
 
 // Only these keys are ever written to or read from the store — an arbitrary client payload
 // can never persist a key outside this allowlist.
@@ -27,7 +28,8 @@ const SYNCED_KEYS = [
   'mtg_commander_overrides',
   'mtg_brain_outbox',
   'mtg_bridge_remote',
-  'mtg_known_players'
+  'mtg_known_players',
+  'mtg_deck_locks'
 ]
 
 export const handler = async (event) => {
@@ -99,6 +101,13 @@ export const handler = async (event) => {
       if (result?.modified === false) {
         const latest = await store.getMetadata(key)
         return json(409, { error: 'conflict', ...revisionInfo(latest?.metadata) })
+      }
+
+      // Friends at the game table play the decks as they are now (lib/deck-lenders.js).
+      try {
+        await saveLenderEntry(key, session.name, toStore)
+      } catch (error) {
+        console.error('[API] deck-lenders update failed:', error)
       }
 
       return json(200, { ok: true, __rev: metadata.rev })

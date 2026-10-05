@@ -1,22 +1,17 @@
 /**
- * Lending decks for the game table.
+ * Friends' decks for the game table.
  *
- *   GET                 → decks other players shared with me, resolved live from their data
- *   GET ?mine=1         → my own shares (to manage them)
- *   POST {deckName, players: [{playerId, name}]}  → share one of my ManaBox decks with these players
- *                         (an empty list ends the share)
+ *   GET → every deck of the players who have sat at a table with me, except the ones their
+ *         owner locked — as they are right now (lib/deck-lenders.js keeps them current).
  *
- * Only the deck list leaves the owner's account — never the rest of the collection, prices
- * or analyses. A borrower always gets the deck as it is right now: the share only names the
- * deck, the cards are read from the owner's synced data at the moment of borrowing.
+ * Decks are free by default; locking happens in the owner's synced data (mtg_deck_locks).
+ * Only deck lists leave an account — never the rest of the collection, prices or analyses.
  */
 
 import { connectLambda, getStore } from '@netlify/blobs'
 import { parseSessionCookie } from './lib/session.js'
 import { playerIdFor } from './lib/player-id.js'
-
-const INDEX_KEY = 'index'
-const MAX_PLAYERS_PER_SHARE = 30
+import { LENDERS_STORE, saveLenderEntry } from './lib/deck-lenders.js'
 
 const json = (statusCode, payload) => ({
   statusCode,
@@ -24,72 +19,46 @@ const json = (statusCode, payload) => ({
   body: JSON.stringify(payload)
 })
 
-const text = (value, max) => String(value ?? '').trim().slice(0, max)
-
-// The deck as it is in the owner's collection right now (null if it no longer exists).
-function resolveDeck(ownerData, deckName) {
-  const cards = (ownerData?.mtg_collection?.cards || [])
-    .filter(card => card.binderType === 'deck' && card.binderName === deckName)
-    .map(card => ({ name: card.name, count: card.quantity || 1, scryfallId: card.scryfallId || '' }))
-  if (!cards.length) return null
-  const commander = ownerData?.mtg_commander_overrides?.[deckName] || ''
-  return { commander, cards }
-}
-
 export const handler = async (event) => {
   connectLambda(event)
 
   const session = parseSessionCookie(event.headers.cookie)
   if (!session?.email) return json(401, { error: 'Not authenticated' })
+  if (event.httpMethod !== 'GET') return json(405, { error: 'Method not allowed' })
   const me = { email: session.email.toLowerCase(), playerId: playerIdFor(session.email), name: session.name || '' }
 
   try {
-    const shares = getStore('deck-shares')
-    const userData = getStore('user-data')
-    const index = (await shares.get(INDEX_KEY, { type: 'json' })) || { entries: [] }
-
-    if (event.httpMethod === 'GET') {
-      if (event.queryStringParameters?.mine === '1') {
-        const mine = index.entries
-          .filter(entry => entry.ownerId === me.playerId)
-          .map(({ ownerEmail, ...entry }) => entry)
-        return json(200, { shares: mine })
-      }
-
-      const forMe = index.entries.filter(entry => entry.ownerId !== me.playerId && entry.players.some(p => p.playerId === me.playerId))
-      const owners = new Map()
-      const decks = []
-      for (const entry of forMe) {
-        if (!owners.has(entry.ownerEmail)) owners.set(entry.ownerEmail, await userData.get(entry.ownerEmail, { type: 'json' }))
-        const deck = resolveDeck(owners.get(entry.ownerEmail), entry.deckName)
-        if (!deck) continue
-        decks.push({ shareId: entry.shareId, ownerId: entry.ownerId, ownerName: entry.ownerName, deckName: entry.deckName, ...deck })
-      }
-      return json(200, { decks })
+    const lenders = getStore(LENDERS_STORE)
+    // Players who haven't synced since decks became shareable have no entry yet: build it
+    // from their stored data on their first visit to a table, so friends see their decks.
+    if (!(await lenders.getMetadata(me.playerId))) {
+      const mine = await getStore('user-data').get(me.email, { type: 'json' })
+      if (mine) await saveLenderEntry(me.email, me.name, mine)
     }
 
-    if (event.httpMethod === 'POST') {
-      let body
-      try { body = JSON.parse(event.body || '{}') } catch { return json(400, { error: 'Invalid JSON body' }) }
-      const deckName = text(body.deckName, 200)
-      if (!deckName) return json(400, { error: 'deckName fehlt' })
-      const players = (Array.isArray(body.players) ? body.players : [])
-        .filter(p => p && /^[0-9a-f]{20}$/.test(String(p.playerId)) && p.playerId !== me.playerId)
-        .slice(0, MAX_PLAYERS_PER_SHARE)
-        .map(p => ({ playerId: p.playerId, name: text(p.name, 60) }))
+    const { blobs } = await lenders.list()
+    const entries = await Promise.all(blobs
+      .filter(blob => blob.key !== me.playerId)
+      .map(blob => lenders.get(blob.key, { type: 'json' }).catch(() => null)))
 
-      const shareId = `${me.playerId}:${deckName}`
-      const others = index.entries.filter(entry => entry.shareId !== shareId)
-      const entries = players.length
-        ? [...others, { shareId, ownerId: me.playerId, ownerEmail: me.email, ownerName: text(me.name, 60), deckName, players, updatedAt: new Date().toISOString() }]
-        : others
-      await shares.setJSON(INDEX_KEY, { entries })
-      return json(200, { ok: true, shared: players.length })
+    const decks = []
+    for (const entry of entries) {
+      if (!entry?.known?.includes(me.playerId)) continue
+      for (const deck of entry.decks || []) {
+        decks.push({
+          ownerId: entry.ownerId,
+          ownerName: entry.ownerName,
+          deckId: deck.id,
+          source: deck.source,
+          label: deck.label,
+          commander: deck.commander,
+          cards: deck.cards
+        })
+      }
     }
-
-    return json(405, { error: 'Method not allowed' })
+    return json(200, { decks })
   } catch (error) {
     console.error('[API] deck-shares:', error)
-    return json(500, { error: 'Deck-Freigaben nicht verfügbar', message: error.message })
+    return json(500, { error: 'Decks der Mitspieler nicht verfügbar', message: error.message })
   }
 }

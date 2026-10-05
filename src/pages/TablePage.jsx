@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useOpenLobbies, rememberHosting, MAX_PLAYERS_CHOICES } from '../lib/table/lobby'
 import { randomId } from '../lib/table/realtime'
 import { firstName } from '../lib/table/players'
-import { loadOwnDecks } from '../lib/table/decks'
+import { loadOwnDecks, fetchBorrowedDecks } from '../lib/table/decks'
 import PracticeSetup from '../components/table/PracticeSetup'
+import DeckLocksPanel from '../components/table/DeckLocksPanel'
 
 // "Spieltisch": open lobbies of everyone on the site, live — join one or open your own.
 export default function TablePage({ user }) {
@@ -15,6 +16,9 @@ export default function TablePage({ user }) {
   const [maxPlayers, setMaxPlayers] = useState(4)
   const [isPrivate, setIsPrivate] = useState(false)
   const own = useMemo(() => loadOwnDecks(), [])
+  // Friends' decks — playable at the practice table too.
+  const [friendsDecks, setFriendsDecks] = useState([])
+  useEffect(() => { fetchBorrowedDecks().then(setFriendsDecks) }, [])
 
   const createLobby = (event) => {
     event.preventDefault()
@@ -42,7 +46,7 @@ export default function TablePage({ user }) {
         <div className="card mb-6" style={{ borderLeft: '4px solid var(--gold)' }}>
           <p className="text-sm text-fg leading-relaxed">
             Du hast noch kein eigenes Deck hier. Lade deine Sammlung hoch (<a href="/upload" className="underline">Sammlung</a>) –
-            oder lass dir von einem Mitspieler ein Deck leihen, dann kannst du es in der Lobby auswählen.
+            oder spiel ein Deck eines Mitspielers: Sobald ihr zusammen in einer Lobby seid, stehen seine Decks dort zur Wahl.
           </p>
         </div>
       )}
@@ -130,7 +134,8 @@ export default function TablePage({ user }) {
           </label>
           <button type="submit" className="btn-primary w-full min-h-[44px]" disabled={!user.playerId}>Lobby öffnen</button>
         </form>
-        <PracticeSetup decks={own.decks} />
+        <PracticeSetup decks={[...own.decks, ...friendsDecks]} />
+        <DeckLocksPanel decks={own.decks} />
         </div>
       </div>
     </div>

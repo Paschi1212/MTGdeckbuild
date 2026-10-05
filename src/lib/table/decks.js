@@ -3,9 +3,10 @@ import { loadDraftDecks } from '../draftDecks'
 import { getCommanderOverride } from '../commanderOverrides'
 import { firstName } from './players'
 
-// The decks a player can bring to the table: their own ManaBox decks and drafts, plus decks
-// friends lent them (deck-shares function). Each comes as
-//   { key, source: 'manabox' | 'draft' | 'borrowed', label, commander, cards, ownerName? }
+// The decks a player can bring to the table: their own ManaBox decks and drafts, plus every
+// deck of the players they have sat at a table with that the owner didn't lock (deck-shares
+// function). Each comes as
+//   { key, source: 'manabox' | 'draft' | 'borrowed', label, commander, cards, ownerId?, ownerName? }
 
 export function loadOwnDecks() {
   const collection = loadCollection()
@@ -28,13 +29,14 @@ export function loadOwnDecks() {
 
 export async function fetchBorrowedDecks() {
   try {
-    const response = await fetch('/.netlify/functions/deck-shares', { credentials: 'include' })
+    const response = await fetch('/.netlify/functions/deck-shares', { credentials: 'include', cache: 'no-store' })
     if (!response.ok) return []
     const data = await response.json()
     return (data.decks || []).map(deck => ({
-      key: `borrowed:${deck.shareId}`,
+      key: `borrowed:${deck.ownerId}:${deck.deckId}`,
       source: 'borrowed',
-      label: deck.deckName,
+      label: deck.source === 'draft' ? `${deck.label} (Entwurf)` : deck.label,
+      ownerId: deck.ownerId,
       ownerName: firstName(deck.ownerName),
       commander: deck.commander,
       cards: deck.cards
@@ -42,6 +44,30 @@ export async function fetchBorrowedDecks() {
   } catch {
     return []
   }
+}
+
+const byLabel = (a, b) => a.label.localeCompare(b.label, 'de', { sensitivity: 'base' })
+
+/**
+ * Decks sorted for a picker, grouped by owner: yours first, then each friend's — the ones
+ * sitting at this table (`presentIds`) before the others, then by name.
+ * Returns [{ key, label, decks }].
+ */
+export function groupDecksByOwner(decks, presentIds = []) {
+  const present = new Set(presentIds)
+  const groups = [
+    { key: 'own:manabox', label: 'Deine Decks', decks: decks.filter(deck => deck.source === 'manabox').sort(byLabel) },
+    { key: 'own:draft', label: 'Deine Entwürfe', decks: decks.filter(deck => deck.source === 'draft').sort(byLabel) }
+  ]
+  const owners = new Map()
+  for (const deck of decks.filter(d => d.source === 'borrowed')) {
+    if (!owners.has(deck.ownerId)) owners.set(deck.ownerId, { key: `owner:${deck.ownerId}`, label: `Decks von ${deck.ownerName}`, name: deck.ownerName, here: present.has(deck.ownerId), decks: [] })
+    owners.get(deck.ownerId).decks.push(deck)
+  }
+  const friends = [...owners.values()]
+    .sort((a, b) => (b.here - a.here) || a.name.localeCompare(b.name, 'de', { sensitivity: 'base' }))
+    .map(({ key, label, decks: list }) => ({ key, label, decks: list.sort(byLabel) }))
+  return [...groups, ...friends].filter(group => group.decks.length)
 }
 
 export const deckCardCount = (deck) => (deck?.cards || []).reduce((sum, card) => sum + (card.count || 1), 0)

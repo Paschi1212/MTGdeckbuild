@@ -2,16 +2,17 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { randomId } from '../../lib/table/realtime'
 import { saveGameRecord } from '../../lib/table/game'
-import { loadCommanderCard, deckCardCount } from '../../lib/table/decks'
+import { loadCommanderCard, deckCardCount, groupDecksByOwner } from '../../lib/table/decks'
 
 const MAX_SEATS = 6
 
-// "Probetisch": your own decks at one table, you play every seat (switching between them like
-// passing the table around). Runs only in this browser — for trying the table, goldfishing a
+// "Probetisch": your decks (and your friends') at one table, you play every seat (switching
+// between them like passing the table around). Runs only in this browser — for trying the table, goldfishing a
 // deck against others, or showing a game to someone sitting next to you.
 export default function PracticeSetup({ decks }) {
   const navigate = useNavigate()
   const playable = decks.filter(deck => deck.commander && deckCardCount(deck) > 0)
+  const groups = groupDecksByOwner(playable)
   const [picked, setPicked] = useState([])
   const [starting, setStarting] = useState(false)
 
@@ -51,8 +52,8 @@ export default function PracticeSetup({ decks }) {
     <section className="card space-y-3">
       <h2 className="text-lg font-bold">Probetisch</h2>
       <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-        Deine Decks an einem Tisch – du spielst alle Plätze selbst und wechselst zwischen ihnen.
-        Zum Ausprobieren, ohne Mitspieler.
+        Deine Decks oder die deiner Mitspieler an einem Tisch – du spielst alle Plätze selbst und
+        wechselst zwischen ihnen. Zum Ausprobieren, ohne Mitspieler.
       </p>
       {playable.length < 2 ? (
         <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
@@ -60,23 +61,32 @@ export default function PracticeSetup({ decks }) {
         </p>
       ) : (
         <>
-          <ul className="max-h-64 overflow-y-auto -mx-1">
-            {playable.map(deck => {
-              const on = picked.includes(deck.key)
-              const full = !on && picked.length >= MAX_SEATS
-              return (
-                <li key={deck.key}>
-                  <label className="flex items-start gap-2 px-1 py-1.5 text-sm cursor-pointer" style={{ color: full ? 'var(--color-text-muted)' : 'var(--color-text)', opacity: full ? 0.6 : 1 }}>
-                    <input type="checkbox" checked={on} disabled={full} onChange={() => toggle(deck.key)} className="mt-1" />
-                    <span className="min-w-0">
-                      <span className="font-medium">{deck.label}</span>
-                      <span className="block text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{deck.commander}</span>
-                    </span>
-                  </label>
-                </li>
-              )
-            })}
-          </ul>
+          <div className="max-h-72 overflow-y-auto -mx-1 space-y-2">
+            {groups.map(group => (
+              <div key={group.key}>
+                {groups.length > 1 && (
+                  <p className="text-xs font-semibold px-1 pt-1" style={{ color: 'var(--color-text-muted)' }}>{group.label}</p>
+                )}
+                <ul>
+                  {group.decks.map(deck => {
+                    const on = picked.includes(deck.key)
+                    const full = !on && picked.length >= MAX_SEATS
+                    return (
+                      <li key={deck.key}>
+                        <label className="flex items-start gap-2 px-1 py-1.5 text-sm cursor-pointer" style={{ color: full ? 'var(--color-text-muted)' : 'var(--color-text)', opacity: full ? 0.6 : 1 }}>
+                          <input type="checkbox" checked={on} disabled={full} onChange={() => toggle(deck.key)} className="mt-1" />
+                          <span className="min-w-0">
+                            <span className="font-medium">{deck.label}</span>
+                            <span className="block text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{deck.commander}</span>
+                          </span>
+                        </label>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
           <button type="button" onClick={start} disabled={picked.length < 2 || starting} className="btn-primary w-full min-h-[44px]">
             {starting ? 'Decke den Tisch …' : picked.length < 2 ? 'Mindestens 2 Decks wählen' : `Probetisch mit ${picked.length} Decks starten`}
           </button>

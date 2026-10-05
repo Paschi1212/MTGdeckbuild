@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { useLobby, hostingSettings, forgetHosting } from '../lib/table/lobby'
 import { useGame, loadGameRecord, saveGameRecord, nextTurn, nextStep, TURN_STEPS } from '../lib/table/game'
-import { loadOwnDecks, fetchBorrowedDecks, loadCommanderCard, deckCardCount, artCrop } from '../lib/table/decks'
+import { loadOwnDecks, fetchBorrowedDecks, groupDecksByOwner, loadCommanderCard, deckCardCount, artCrop } from '../lib/table/decks'
 import { firstName, rememberPlayers } from '../lib/table/players'
 import PlayerPanel from '../components/table/PlayerPanel'
 import GameLog from '../components/table/GameLog'
@@ -27,12 +27,6 @@ export default function TableRoomPage({ user }) {
 
 // ── Lobby ─────────────────────────────────────────────────────────────────────────────────
 
-const SOURCE_GROUPS = [
-  ['manabox', 'Deine Decks (ManaBox)'],
-  ['draft', 'Deine Entwürfe'],
-  ['borrowed', 'Geliehen']
-]
-
 function CommanderThumb({ image, size = 'md' }) {
   const art = artCrop(image)
   const cls = size === 'sm' ? 'w-10 h-7' : 'w-14 h-10'
@@ -53,15 +47,16 @@ function LobbyView({ lobbyId, me, onStarted, onSpectate }) {
   const decks = useMemo(() => [...own.decks, ...borrowed], [own, borrowed])
   const selected = decks.find(deck => deck.key === deckKey) || null
 
-  // A friend may lend a deck while this lobby is open — keep the list current.
+  // Friends' decks: free unless their owner locked them, and they change (a deck edited, a
+  // new player at the table) — keep the list current.
+  const refreshBorrowed = () => fetchBorrowedDecks().then(setBorrowed)
   useEffect(() => {
-    const refresh = () => fetchBorrowedDecks().then(setBorrowed)
-    refresh()
-    const timer = setInterval(refresh, 20000)
-    window.addEventListener('focus', refresh)
+    refreshBorrowed()
+    const timer = setInterval(refreshBorrowed, 20000)
+    window.addEventListener('focus', refreshBorrowed)
     return () => {
       clearInterval(timer)
-      window.removeEventListener('focus', refresh)
+      window.removeEventListener('focus', refreshBorrowed)
     }
   }, [])
   useEffect(() => {
@@ -85,6 +80,15 @@ function LobbyView({ lobbyId, me, onStarted, onSpectate }) {
   const { members, status, mine, update, start, host, lobby } = useLobby(lobbyId, me, { hosting, onStart: handleStart })
 
   useEffect(() => { rememberPlayers(members, me.playerId) }, [members, me.playerId])
+  // Someone new at the table: both sides remember each other and sync that (about a second),
+  // then each other's decks are free to pick — fetch them without waiting for the next round.
+  const memberIds = members.map(member => member.playerId).sort().join(',')
+  useEffect(() => {
+    if (!memberIds) return undefined
+    const timer = setTimeout(refreshBorrowed, 4000)
+    return () => clearTimeout(timer)
+  }, [memberIds])
+  const deckGroups = useMemo(() => groupDecksByOwner(decks, memberIds.split(',')), [decks, memberIds])
 
   // Picking a deck: show its commander and tell the others (without the card list).
   useEffect(() => {
@@ -220,8 +224,8 @@ function LobbyView({ lobbyId, me, onStarted, onSpectate }) {
           )}
           {decks.length === 0 ? (
             <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-              Du hast noch kein Deck hier. <Link to="/upload" className="underline">Sammlung hochladen</Link> oder dir von einem
-              Mitspieler ein Deck leihen lassen – geliehene Decks erscheinen hier automatisch.
+              Du hast noch kein Deck hier. <Link to="/upload" className="underline">Sammlung hochladen</Link> – oder ein Deck
+              eines Mitspielers spielen: Seine Decks erscheinen hier wenige Sekunden, nachdem ihr zusammen in der Lobby seid.
             </p>
           ) : (
             <select
@@ -231,19 +235,15 @@ function LobbyView({ lobbyId, me, onStarted, onSpectate }) {
               aria-label="Deck wählen"
             >
               <option value="">Deck wählen …</option>
-              {SOURCE_GROUPS.map(([source, label]) => {
-                const group = decks.filter(deck => deck.source === source)
-                if (!group.length) return null
-                return (
-                  <optgroup key={source} label={label}>
-                    {group.map(deck => (
-                      <option key={deck.key} value={deck.key}>
-                        {deck.label}{deck.commander ? ` – ${deck.commander}` : ''}{deck.ownerName ? ` (von ${deck.ownerName})` : ''}
-                      </option>
-                    ))}
-                  </optgroup>
-                )
-              })}
+              {deckGroups.map(group => (
+                <optgroup key={group.key} label={group.label}>
+                  {group.decks.map(deck => (
+                    <option key={deck.key} value={deck.key}>
+                      {deck.label}{deck.commander ? ` – ${deck.commander}` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           )}
 
