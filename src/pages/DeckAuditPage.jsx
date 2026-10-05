@@ -9,6 +9,7 @@ import { loadCollection, buildLocationIndex, locationsFromIndex, formatCardLocat
 import { getDeckMemory, updateDeckMemory, forgetDeckMemoryEntry } from '../lib/deckMemory'
 import { getBrainMirror, refreshBrain, brainRequestFields, logToBrain } from '../lib/brain'
 import { useAiMode } from '../hooks/useAiMode'
+import { useAiJobProgress, describeAiProgress } from '../hooks/useAiJobProgress'
 
 const normalizeName = (name) => String(name || '').split('//')[0].trim().toLowerCase()
 const sameCard = (a, b) => normalizeName(a) === normalizeName(b)
@@ -76,6 +77,9 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
   // browser reloaded the page meanwhile (tablet in standby) — see aiFetch/resumeAiJob.
   const strategyJobKey = `audit:${storageKey}:strategy`
   const suggestionsJobKey = `audit:${storageKey}:suggestions`
+  // What Claude is doing in each of them right now — so a long run visibly lives.
+  const strategyProgress = describeAiProgress(useAiJobProgress(strategyJobKey))
+  const suggestionsProgress = describeAiProgress(useAiJobProgress(suggestionsJobKey))
 
   // Running time while Claude works — an Opus analysis takes minutes, the suggestions too.
   const [loadingSince, setLoadingSince] = useState(null)
@@ -297,6 +301,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
           {isClaudeActive() && (
             <p className="text-sm text-fg-muted mt-3">
               Läuft auf {getBridgeTarget() === 'remote' ? 'deinem PC' : 'diesem PC'} · <span className="tabular-nums">{elapsedLabel}</span>
+              {strategyProgress && <><br />Claude {strategyProgress}</>}
               {getBridgeTarget() === 'remote' && <><br />Du kannst das Gerät zwischendurch sperren – das Ergebnis wartet auf dem PC.</>}
             </p>
           )}
@@ -503,6 +508,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
               <span className="block text-xs text-fg-muted mt-0.5">
                 Läuft auf {getBridgeTarget() === 'remote' ? 'deinem PC' : 'diesem PC'} · <span className="tabular-nums">{clock(suggestionsSince)}</span>
                 {getClaudeModelLabel() === 'Opus' && ' · mit Opus meist 4–6 Minuten'}
+                {suggestionsProgress && <span className="block">Claude {suggestionsProgress}</span>}
               </span>
             )}
           </p>

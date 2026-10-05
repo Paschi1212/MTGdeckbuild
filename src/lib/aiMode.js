@@ -207,6 +207,26 @@ function clearPending(key, id) {
 
 const cancelledJobs = new Set()
 
+// What Claude is doing in a remembered job right now ({ label, toolCalls, attempt }), for the
+// page's progress line. Keyed like the job, so a resumed job reports to the same place.
+const progressListeners = new Map()
+const lastProgress = new Map()
+
+function publishProgress(key, progress) {
+  if (!key) return
+  if (progress) lastProgress.set(key, progress)
+  else lastProgress.delete(key)
+  progressListeners.get(key)?.forEach(listener => listener(progress || null))
+}
+
+/** Calls `listener` with each progress report of the job under `key`. Returns unsubscribe. */
+export function subscribeAiJobProgress(key, listener) {
+  if (!progressListeners.has(key)) progressListeners.set(key, new Set())
+  progressListeners.get(key).add(listener)
+  listener(lastProgress.get(key) || null)
+  return () => progressListeners.get(key)?.delete(listener)
+}
+
 /** Stops a remembered job, on the PC too — a newer request replaces it. */
 export function cancelAiJob(key) {
   const entry = getPendingAiJob(key)
@@ -268,6 +288,7 @@ async function waitForJob(entry, key) {
         throw new Error('Die Claude-Brücke wurde zwischendurch neu gestartet, dabei ging dieser Auftrag verloren – bitte noch einmal starten.')
       }
       const data = await response.json().catch(() => ({}))
+      if (data.state === 'running') publishProgress(key, data.progress)
       if (data.state === 'done') {
         const result = new Response(data.body ?? '', {
           status: data.statusCode || 200,
@@ -282,6 +303,7 @@ async function waitForJob(entry, key) {
     }
   } finally {
     clearPending(key, entry.id)
+    publishProgress(key, null)
   }
 }
 

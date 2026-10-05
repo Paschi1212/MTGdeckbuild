@@ -39,6 +39,29 @@ const MCP_CONFIG = JSON.stringify({ mcpServers: { mtg: { type: 'http', url: MCP_
 // The bridge runs every call as a job the page polls, so a long answer no longer has to fit a
 // waiting browser request. Opus suggestion runs regularly take 4–6 minutes, sometimes more.
 const CLI_TIMEOUT_MS = 15 * 60 * 1000
+// Claude streams its work (thinking, tool calls, every written chunk), so silence means a
+// hang — not a long answer. After this long without a sign of life the run is restarted once.
+const STALL_MS = Number(process.env.CLAUDE_STALL_MS) || 3 * 60 * 1000
+// The process ended but its output pipe stayed open (a leftover helper process holds it):
+// don't wait for that, take what arrived.
+const EXIT_GRACE_MS = 5000
+
+// What Claude is doing right now, for the page's progress line.
+const TOOL_LABELS = {
+  card_lookup: 'prüft Kartentexte bei Scryfall',
+  scryfall_search: 'sucht Karten bei Scryfall',
+  deck_check: 'prüft das Deck',
+  edhrec_commander: 'liest EDHREC-Daten',
+  edhrec_card: 'liest EDHREC-Daten',
+  edhrec_themes: 'liest EDHREC-Daten',
+  edhrec_theme_commanders: 'liest EDHREC-Daten',
+  StructuredOutput: 'schreibt das Ergebnis'
+}
+
+function toolLabel(name) {
+  const short = String(name || '').replace(/^mcp__mtg__/, '')
+  return TOOL_LABELS[short] || 'nutzt ein Werkzeug'
+}
 
 const SYSTEM_PROMPT = `Du arbeitest als KI-Backend einer Magic: The Gathering Commander-Deckbau-App. Dir stehen Werkzeuge für Scryfall (exakte Kartentexte, Farbidentität, Legalität, Preise) und EDHREC (was echte Decks spielen) zur Verfügung.
 Verlass dich nie auf dein Gedächtnis, was eine Karte tut: Prüfe Kartentexte mit card_lookup, bevor du Karten bewertest, streichst oder empfiehlst — bündle dabei viele Namen in EINEM Aufruf. Nutze edhrec_commander für die Daten echter Decks und scryfall_search, um passende Karten zu finden. Halte die Zahl der Werkzeugaufrufe klein.
@@ -103,11 +126,15 @@ function friendlyCliError(message) {
   return `Claude-CLI: ${message}`
 }
 
-function runClaudeCli({ prompt, schema, model }) {
+function runClaudeCli({ prompt, schema, model, attempt = 1 }) {
   const request = requestContext.getStore()
   const args = [
     '-p',
-    '--output-format', 'json',
+    // A stream of events instead of one final JSON: shows what Claude is doing and lets a
+    // hang be told apart from a long answer.
+    '--output-format', 'stream-json',
+    '--verbose',
+    '--include-partial-messages',
     '--model', model || request?.model || process.env.CLAUDE_MODEL || 'opus',
     '--tools', '',
     '--strict-mcp-config',
@@ -123,47 +150,131 @@ function runClaudeCli({ prompt, schema, model }) {
 
   return new Promise((resolve, reject) => {
     const child = spawn(process.env.CLAUDE_BIN || 'claude', args, { cwd: os.tmpdir(), windowsHide: true })
-    let stdout = ''
+    let pending = '' // an event line that hasn't fully arrived yet
+    let otherOutput = '' // anything that isn't an event — the CLI's own error text
     let stderr = ''
+    let result = null
+    let settled = false
+    let lastSignAt = Date.now()
+    const progress = { label: 'startet', toolCalls: 0, attempt }
+    const report = (label) => {
+      if (label) progress.label = label
+      request?.onProgress?.({ ...progress })
+    }
+    report()
+
+    const finish = (error, value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      clearInterval(watchdog)
+      clearTimeout(exitTimer)
+      request?.signal?.removeEventListener('abort', onAbort)
+      if (error) {
+        if (child.exitCode === null) child.kill()
+        reject(error)
+      } else {
+        resolve(value)
+      }
+    }
+
     const timer = setTimeout(() => {
-      child.kill()
-      reject(new Error(`Claude hat nach ${CLI_TIMEOUT_MS / 60000} Minuten nicht geantwortet.`))
+      finish(new Error(`Claude hat nach ${CLI_TIMEOUT_MS / 60000} Minuten nicht geantwortet.`))
     }, CLI_TIMEOUT_MS)
+    const watchdog = setInterval(() => {
+      if (Date.now() - lastSignAt < STALL_MS) return
+      finish(Object.assign(
+        new Error(`Claude hing – seit ${STALL_MS / 60000} Minuten kein Lebenszeichen mehr (zuletzt: ${progress.label}).`),
+        { retryable: true }
+      ))
+    }, 10 * 1000)
+    let exitTimer = null
     // A job cancelled on the bridge (a newer analysis replaced it) stops Claude right away
     // instead of using up the subscription for an answer nobody reads.
-    const onAbort = () => {
-      clearTimeout(timer)
-      child.kill()
-      reject(new Error('Abgebrochen – eine neuere Anfrage hat diese ersetzt.'))
-    }
+    const onAbort = () => finish(new Error('Abgebrochen – eine neuere Anfrage hat diese ersetzt.'))
     if (request?.signal?.aborted) return onAbort()
     request?.signal?.addEventListener('abort', onAbort, { once: true })
 
-    child.stdout.on('data', chunk => { stdout += chunk })
-    child.stderr.on('data', chunk => { stderr += chunk })
+    const onEvent = (event) => {
+      lastSignAt = Date.now()
+      if (event.type === 'result') {
+        result = event
+      } else if (event.type === 'stream_event') {
+        const block = event.event?.content_block
+        if (event.event?.type === 'content_block_start' && block?.type === 'tool_use') {
+          if (block.name !== 'StructuredOutput') {
+            progress.toolCalls++
+            console.log(`[Claude]   ↳ ${String(block.name).replace(/^mcp__mtg__/, '')}`)
+          }
+          report(toolLabel(block.name))
+        } else if (event.event?.type === 'content_block_start' && block?.type === 'thinking') {
+          report('denkt nach')
+        } else if (event.event?.type === 'content_block_start' && block?.type === 'text') {
+          report('schreibt')
+        }
+      } else if (event.type === 'rate_limit_event' && event.rate_limit_info?.status && event.rate_limit_info.status !== 'allowed') {
+        console.log(`[Claude] ⏳ Claude-Limit: ${event.rate_limit_info.status} (${event.rate_limit_info.rateLimitType || '?'})`)
+        report('wartet auf dein Claude-Limit')
+      }
+    }
+
+    child.stdout.on('data', chunk => {
+      lastSignAt = Date.now()
+      const lines = (pending + chunk).split('\n')
+      pending = lines.pop()
+      for (const line of lines) {
+        if (!line.trim()) continue
+        let event
+        try { event = JSON.parse(line) } catch { otherOutput = (otherOutput + line + '\n').slice(-2000); continue }
+        onEvent(event)
+      }
+    })
+    child.stderr.on('data', chunk => { lastSignAt = Date.now(); stderr = (stderr + chunk).slice(-4000) })
     child.on('error', error => {
-      clearTimeout(timer)
-      reject(new Error(error.code === 'ENOENT'
+      finish(new Error(error.code === 'ENOENT'
         ? 'Claude-CLI nicht gefunden — ist Claude Code installiert und "claude" im PATH?'
         : `Claude-CLI konnte nicht starten: ${error.message}`))
     })
-    child.on('close', () => {
-      clearTimeout(timer)
-      request?.signal?.removeEventListener('abort', onAbort)
-      let result
-      try {
-        result = JSON.parse(stdout)
-      } catch {
-        return reject(new Error(friendlyCliError((stderr || stdout || 'keine Ausgabe').trim().slice(0, 300))))
+
+    const settle = () => {
+      if (pending.trim()) {
+        try { onEvent(JSON.parse(pending)) } catch { otherOutput += pending }
+        pending = ''
       }
-      if (result.is_error) return reject(new Error(friendlyCliError(String(result.result || result.subtype || 'unbekannter Fehler'))))
+      if (!result) {
+        // Ended without an answer: an error text (not logged in, ...) — or it just vanished.
+        const text = (stderr || otherOutput).trim()
+        return finish(Object.assign(
+          new Error(text ? friendlyCliError(text.slice(0, 300)) : 'Claude hat sich ohne Antwort beendet.'),
+          { retryable: !text }
+        ))
+      }
+      if (result.is_error) return finish(new Error(friendlyCliError(String(result.result || result.subtype || 'unbekannter Fehler'))))
       const answeredBy = mainModel(result.modelUsage)
       if (answeredBy) request?.modelsUsed?.add(answeredBy)
-      resolve(result)
-    })
+      finish(null, result)
+    }
+    child.on('close', settle)
+    child.on('exit', () => { exitTimer = setTimeout(settle, EXIT_GRACE_MS) })
 
+    // Claude dying before it read the whole prompt must not take the bridge down with it.
+    child.stdin.on('error', () => {})
     child.stdin.end(prompt)
   })
+}
+
+// One hung run (no sign of life, or the process vanished without an answer) is restarted
+// automatically — the player shouldn't have to notice. Real errors (login, limits) are not.
+async function runClaudeWithRetry(params) {
+  const request = requestContext.getStore()
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await runClaudeCli({ ...params, attempt })
+    } catch (error) {
+      if (!error.retryable || attempt >= 2 || request?.signal?.aborted) throw error
+      console.log(`[Claude] ⚠ ${error.message} Neuer Versuch …`)
+    }
+  }
 }
 
 async function generateWithClaude(params, { model } = {}) {
@@ -178,7 +289,7 @@ async function generateWithClaude(params, { model } = {}) {
   }
 
   const startedAt = Date.now()
-  const result = await runClaudeCli({ prompt, schema, model })
+  const result = await runClaudeWithRetry({ prompt, schema, model })
   console.log(`[Claude] answered in ${((Date.now() - startedAt) / 1000).toFixed(1)}s (${result.num_turns ?? '?'} turns, model ${mainModel(result.modelUsage) || '?'})`)
 
   const structured = result.structured_output

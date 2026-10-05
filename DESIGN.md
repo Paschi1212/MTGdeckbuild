@@ -75,7 +75,9 @@ farbiges Element in Listen; alles andere bleibt ruhig.
   „· Claude nicht bereit“) – ab `sm:` als Text, darunter nur der graue Punkt.
 - **Lange Claude-Läufe** zeigen, wo sie laufen und wie lange schon („Läuft auf deinem PC · 1:42“) und
   dass man das Gerät sperren darf. Nach einem Neuladen öffnet die Seite den Reiter, in dem der
-  Auftrag lief, und holt das Ergebnis ab.
+  Auftrag lief, und holt das Ergebnis ab. Darunter eine Zeile, was Claude gerade tut („Claude prüft
+  Kartentexte bei Scryfall · 3 Abfragen“, „denkt nach“, „schreibt das Ergebnis“) – so sieht man,
+  dass ein langer Lauf lebt. Hing ein Lauf und wurde neu gestartet: „· 2. Versuch – der erste hing“.
 - **Zwei Geräte:** Hat ein anderes Gerät gespeichert, erscheint oben ein Hinweis (`SyncBanner`) mit
   Akzent-Kante links: „Neu laden“ bzw. bei einem Konflikt die Wahl „Stand von … laden“ / „Meinen Stand
   behalten“. Nie still überschreiben.

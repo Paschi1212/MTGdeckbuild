@@ -238,7 +238,7 @@ const server = http.createServer(async (req, res) => {
     const seconds = Math.round(((job.finishedAt || Date.now()) - job.startedAt) / 1000)
     return send(res, 200, job.finishedAt
       ? { state: 'done', seconds, statusCode: job.statusCode, body: job.body, model: job.answeredBy }
-      : { state: 'running', seconds, model: job.model }, origin)
+      : { state: 'running', seconds, model: job.model, progress: job.progress || null }, origin)
   }
 
   const jobStart = url.pathname.match(/^\/jobs\/([a-z-]+)$/)
@@ -264,11 +264,13 @@ const server = http.createServer(async (req, res) => {
   const requestedModel = String(req.headers['x-claude-model'] || '').toLowerCase()
   const model = MODELS.includes(requestedModel) ? requestedModel : MODEL
   const controller = new AbortController()
-  const run = runFunction(name, body, model, req.headers, `/.netlify/functions/${name}`, url.searchParams, controller.signal)
+  // What Claude is doing right now (checking card texts, writing, retrying …) — the page shows it.
+  const job = { model, startedAt: Date.now(), finishedAt: null, controller, progress: null }
+  const onProgress = progress => { job.progress = progress }
+  const run = runFunction(name, body, model, req.headers, `/.netlify/functions/${name}`, url.searchParams, controller.signal, onProgress)
 
   if (jobStart) {
     const id = randomUUID()
-    const job = { model, startedAt: Date.now(), finishedAt: null, controller }
     jobs.set(id, job)
     run.then(result => Object.assign(job, result, { finishedAt: Date.now() }))
     return send(res, 202, { id }, origin)
@@ -280,8 +282,8 @@ const server = http.createServer(async (req, res) => {
 })
 
 // Runs one of the app's Netlify AI functions with Claude. Never throws.
-async function runFunction(name, body, model, headers, functionPath, searchParams, signal) {
-  const claudeRequest = { model, modelsUsed: new Set(), signal }
+async function runFunction(name, body, model, headers, functionPath, searchParams, signal, onProgress) {
+  const claudeRequest = { model, modelsUsed: new Set(), signal, onProgress }
   const startedAt = Date.now()
   activeRequests++
   console.log(`[${time()}] → ${name} (${model}) …`)
