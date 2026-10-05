@@ -117,6 +117,11 @@ farbiges Element in Listen; alles andere bleibt ruhig.
 - **Marken auf Karten:** als Plaketten unten auf der Karte – +N/+N grün, −N/−N rot, Loyalität ◆ lila,
   alles andere grau mit Namen. +1/+1 und −1/−1 heben sich auf; beim Verlassen des Spielfelds fallen
   Marken ab.
+- **Volle Breite:** eine laufende Partie (`/spieltisch/:id`) nutzt die ganze Bildschirmbreite (`PageFrame`
+  in App.jsx); alle anderen Seiten behalten die Lesebreite.
+- **Hand immer ganz sichtbar** (`HandRow`): nebeneinander, solange es passt, sonst überlappend
+  aufgefächert (mind. 26 px je Karte sichtbar, notfalls kleiner) – nie scrollen; die Karte unter der
+  Maus kommt nach vorn.
 - **Probetisch:** eigene Decks an einem Tisch, man sitzt immer an einem Platz („Du sitzt bei …“, folgt
   standardmäßig dem Zug) — die anderen Plätze sieht man wie Gegner.
 

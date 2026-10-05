@@ -6,9 +6,9 @@ import { Battlefield, TableCard, CardBack } from './TableCard'
 import NumberPrompt from './NumberPrompt'
 import TokenPicker from './TokenPicker'
 import CounterEditor from './CounterEditor'
+import HandRow from './HandRow'
 import { BF_W, CARD_W, ZONE_LABEL } from '../../lib/table/board'
 
-const HAND_CARD_W = 88
 const PILE_CARD_W = 58
 const LONG_PRESS_MS = 450
 const DRAG_THRESHOLD = 6
@@ -253,25 +253,15 @@ export default function MyArea({ seat, seats, player, board, act, isActive, isMo
           <div className="text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>
             {label ? `Hand von ${label}` : 'Deine Hand'} ({board.hand.length}) – nur hier sichtbar
           </div>
-          <div
-            data-dropzone={zone('hand')}
-            className="flex gap-2 overflow-x-auto pb-1 items-start"
-            style={{ minHeight: HAND_CARD_W * 1.4 + 6, background: drag ? 'rgba(205,178,126,0.06)' : 'transparent', borderRadius: 'var(--radius-sm)' }}
-          >
-            {board.hand.length === 0 && <p className="text-sm py-6" style={{ color: 'var(--color-text-muted)' }}>Keine Karten auf der Hand.</p>}
-            {board.hand.map(card => (
-              <TableCard
-                key={card.iid}
-                card={card}
-                width={HAND_CARD_W}
-                interactive
-                dim={drag?.card.iid === card.iid}
-                onPointerDown={(e) => onCardPointerDown(e, card, 'hand')}
-                onContextMenu={(e) => onCardContextMenu(e, card, 'hand')}
-                onHover={onHover}
-              />
-            ))}
-          </div>
+          <HandRow
+            cards={board.hand}
+            dropzone={zone('hand')}
+            highlight={Boolean(drag)}
+            draggingId={drag?.card.iid}
+            onCardPointerDown={onCardPointerDown}
+            onCardContextMenu={onCardContextMenu}
+            onHover={onHover}
+          />
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import Navigation from './components/Navigation'
 import HomePage from './pages/HomePage'
 import UploadPage from './pages/UploadPage'
@@ -21,6 +21,14 @@ const TableRoomPage = lazy(() => import('./pages/TableRoomPage'))
 import { pullFromCloud, scheduleCloudPush, checkForRemoteChanges } from './lib/cloudSync'
 import { checkBridge } from './lib/aiMode'
 import { flushBrainOutbox } from './lib/brain'
+
+// Pages keep a comfortable reading width; a running game table takes the whole screen —
+// 4–6 boards and your full hand need every pixel.
+function PageFrame({ children }) {
+  const { pathname } = useLocation()
+  const wide = /^\/spieltisch\/[^/]+/.test(pathname)
+  return <main className={wide ? 'w-full px-2 md:px-4 py-3' : 'container mx-auto px-4 md:px-12 py-8'}>{children}</main>
+}
 
 function App() {
   const [user, setUser] = useState(null)
@@ -109,7 +117,7 @@ function App() {
     <BrowserRouter>
       <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
         <Navigation user={user} onLogout={handleLogout} />
-        <main className="container mx-auto px-4 md:px-12 py-8">
+        <PageFrame>
           {user && <SyncBanner />}
           <Routes>
             <Route path="/" element={<HomePage user={user} onLogin={handleLogin} />} />
@@ -128,7 +136,7 @@ function App() {
             <Route path="/spieltisch" element={user ? <Suspense fallback={<p className="text-fg-muted">Lade Spieltisch …</p>}><TablePage user={user} /></Suspense> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/spieltisch/:lobbyId" element={user ? <Suspense fallback={<p className="text-fg-muted">Lade Spieltisch …</p>}><TableRoomPage key={window.location.pathname} user={user} /></Suspense> : <HomePage user={user} onLogin={handleLogin} />} />
           </Routes>
-        </main>
+        </PageFrame>
       </div>
     </BrowserRouter>
   )
