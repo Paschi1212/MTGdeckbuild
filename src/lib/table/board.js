@@ -70,7 +70,8 @@ export function publicSnapshot(board) {
     exile: board.exile.map(publicCard),
     command: board.command.map(publicCard),
     hand: board.hand.length,
-    library: board.library.length
+    library: board.library.length,
+    mulligans: board.mulligans || 0
   }
 }
 
@@ -140,7 +141,8 @@ export function applyAction(board, action) {
         note: null
       }
     case 'untapAll':
-      return { board: { ...board, battlefield: board.battlefield.map(c => ({ ...c, tapped: false })) }, note: 'enttappt alles' }
+      // `silent`: the automatic untap at the start of each turn needs no log line.
+      return { board: { ...board, battlefield: board.battlefield.map(c => ({ ...c, tapped: false })) }, note: action.silent ? null : 'enttappt alles' }
     case 'draw': {
       const drawn = board.library.slice(0, action.count || 1)
       if (!drawn.length) return { board, note: null }

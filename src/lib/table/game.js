@@ -9,6 +9,18 @@ import { joinChannel, randomId } from './realtime'
 
 export const STARTING_LIFE = 40
 export const COMMANDER_DAMAGE_LETHAL = 21
+// The steps of a turn. Untap and draw happen by themselves (in the active player's browser);
+// the others are stops where the player clicks "Weiter".
+export const TURN_STEPS = [
+  { key: 'untap', label: 'Enttappen' },
+  { key: 'upkeep', label: 'Versorgung' },
+  { key: 'draw', label: 'Ziehen' },
+  { key: 'main1', label: 'Hauptphase 1' },
+  { key: 'combat', label: 'Kampf' },
+  { key: 'main2', label: 'Hauptphase 2' },
+  { key: 'end', label: 'Ende' }
+]
+
 export const PLAYER_COUNTERS = [
   { key: 'poison', label: 'Gift', lethal: 10 },
   { key: 'energy', label: 'Energie' },
@@ -44,13 +56,24 @@ export function saveGameRecord(gameId, record) {
 
 const byTime = (a, b) => a.ts - b.ts || (a.id < b.id ? -1 : 1)
 
-/** Table state + a log with the value after each change. */
+/**
+ * Table state + a log with the value after each change.
+ *   phase  – 'setup' (opening hands, mulligans, turn order) until someone starts the game
+ *   order  – turn order (player ids); starts as the seating, cards may change it
+ *   turn   – { player, round }: whose turn it is
+ */
 export function foldGame(seats, events) {
   const players = Object.fromEntries((seats || []).map(seat => [seat.playerId, {
-    life: STARTING_LIFE, counters: {}, commanderDamage: {}, tax: 0, out: false
+    life: STARTING_LIFE, counters: {}, commanderDamage: {}, tax: 0, out: false, kept: false
   }]))
+  const ids = (seats || []).map(seat => seat.playerId)
   let monarch = null
-  let turn = { seat: 0, round: 1 }
+  let order = ids
+  // key: id of the event that began this turn (automation runs once per key and step);
+  // auto: turns begun with phases (older games had none — nothing happens by itself there).
+  let turn = { player: ids[0] || null, round: 1, step: 'main1', key: null, auto: false, firstTurn: false }
+  // Games from before the setup phase existed have no 'begin' — they are already running.
+  let phase = events.some(event => event.type === 'turn') ? 'playing' : 'setup'
   const log = []
 
   for (const event of [...events].sort(byTime)) {
@@ -84,12 +107,32 @@ export function foldGame(seats, events) {
         if (!player) continue
         player.out = Boolean(event.value)
         break
+      case 'keep':
+        if (!player) continue
+        player.kept = event.value !== false
+        break
       case 'monarch':
         monarch = event.target || null
         break
-      case 'turn':
-        turn = { seat: event.seat, round: event.round }
+      case 'order': {
+        // Only known players, each once; anyone missing keeps their place at the end.
+        const next = (event.order || []).filter((id, index, list) => ids.includes(id) && list.indexOf(id) === index)
+        order = [...next, ...ids.filter(id => !next.includes(id))]
         break
+      }
+      case 'begin':
+        phase = 'playing'
+        turn = { player: event.first || order[0], round: 1, step: event.phases ? 'untap' : 'main1', key: event.id, auto: Boolean(event.phases), firstTurn: true }
+        break
+      case 'turn':
+        phase = 'playing'
+        // Older events name the seat index instead of the player.
+        turn = { player: event.activePlayer || ids[event.seat] || ids[0], round: event.round, step: event.phases ? 'untap' : 'main1', key: event.id, auto: Boolean(event.phases), firstTurn: false }
+        break
+      case 'step':
+        // Moving through the steps of the current turn — shown in the turn bar, not logged.
+        if (!event.turnKey || event.turnKey === turn.key) turn = { ...turn, step: event.step }
+        continue
       case 'note':
         // What a player did with their cards ("spielt Sol Ring") — log only.
         break
@@ -98,7 +141,26 @@ export function foldGame(seats, events) {
     }
     log.push(entry)
   }
-  return { players, monarch, turn, log }
+  return { players, monarch, order, turn, phase, log }
+}
+
+/** Who comes after the active player in the turn order (skipping those who are out). */
+export function nextTurn(state) {
+  const { order, turn, players } = state
+  if (!order.length) return null
+  let index = Math.max(0, order.indexOf(turn.player))
+  let round = turn.round
+  for (let step = 0; step < order.length; step++) {
+    index = (index + 1) % order.length
+    if (index === 0) round += 1
+    if (!players[order[index]]?.out) break
+  }
+  return { activePlayer: order[index], round, phases: true }
+}
+
+export function nextStep(step) {
+  const index = TURN_STEPS.findIndex(s => s.key === step)
+  return TURN_STEPS[index + 1]?.key || null
 }
 
 /** Who is dead by the numbers (the table still decides — this only marks it). */

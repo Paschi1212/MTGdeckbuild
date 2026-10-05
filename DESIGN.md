@@ -98,6 +98,13 @@ farbiges Element in Listen; alles andere bleibt ruhig.
   in der Höhe begrenzt (eigenes 38vh, Gegner 30vh/22vh), damit der ganze Tisch auf einen Bildschirm passt.
 - **Bedienung, Maus und Finger gleich:** ziehen = verschieben/Zone wechseln, antippen = tappen
   (Spielfeld) bzw. Menü (Hand, Stapel), lange drücken oder Rechtsklick = Menü. Kartenbild groß per Hover.
+- **Vorbereitung vor Runde 1:** goldumrandetes Feld mit der Zugreihenfolge (↑/↓, wer oben steht, fängt
+  an) und dem Starthand-Status je Spieler; im eigenen Board „Behalten“ / „Mulligan“. „Spiel starten“ ist
+  Hauptknopf, sobald alle behalten haben, sonst „Trotzdem starten“.
+- **Phasen:** Reihe unter der Zuginfo (Enttappen · Versorgung · Ziehen · Hauptphase 1 · Kampf ·
+  Hauptphase 2 · Ende), aktuelle Phase in Gold; der Aktive klickt „Weiter: …“ (im Endsegment „Zug
+  abgeben“) oder springt per Klick auf eine Phase. Enttappen und Ziehen passieren automatisch.
+- **Zugreihenfolge im Spiel ändern** nur über das kleine ⇅ neben „Runde“ – bewusst unauffällig.
 - **Probetisch:** eigene Decks an einem Tisch, man sitzt immer an einem Platz („Du sitzt bei …“, folgt
   standardmäßig dem Zug) — die anderen Plätze sieht man wie Gegner.
 

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { useLobby, hostingSettings, forgetHosting } from '../lib/table/lobby'
-import { useGame, loadGameRecord, saveGameRecord } from '../lib/table/game'
+import { useGame, loadGameRecord, saveGameRecord, nextTurn, nextStep, TURN_STEPS } from '../lib/table/game'
 import { loadOwnDecks, fetchBorrowedDecks, loadCommanderCard, deckCardCount, artCrop } from '../lib/table/decks'
 import { firstName, rememberPlayers } from '../lib/table/players'
 import PlayerPanel from '../components/table/PlayerPanel'
@@ -10,6 +10,8 @@ import OpponentBoard from '../components/table/OpponentBoard'
 import MyArea from '../components/table/MyArea'
 import { HoverPreview } from '../components/table/TableCard'
 import { useOwnBoards } from '../lib/table/board'
+import { OrderList, TurnOrderButton } from '../components/table/TurnOrder'
+import PhaseBar from '../components/table/PhaseBar'
 
 // /spieltisch/:lobbyId — the lobby until the host starts, then the game for everyone.
 export default function TableRoomPage({ user }) {
@@ -297,10 +299,37 @@ function GameView({ lobbyId, me }) {
   }, [dispatch])
   const { boards: ownBoards, act } = useOwnBoards(lobbyId, controlled, { publish: publishBoard, onAction })
 
+  // The automatic steps of a turn, done by the browser that runs the active board: untap at the
+  // start, draw on reaching the draw step (the starting player of a two-player game skips the
+  // first draw — rule 103.7). Remembered per turn, so a reload never untaps or draws twice.
+  const autoKey = `mtg_table_auto:${lobbyId}`
+  const handled = useRef(null)
+  if (!handled.current) {
+    try { handled.current = new Set(JSON.parse(localStorage.getItem(autoKey) || '[]')) } catch { handled.current = new Set() }
+  }
+  const { turn } = state
+  useEffect(() => {
+    if (state.phase !== 'playing' || !turn.auto || !turn.key) return
+    if (!controlled.some(seat => seat.playerId === turn.player)) return
+    if (turn.step !== 'untap' && turn.step !== 'draw') return
+    const key = `${turn.key}:${turn.step}`
+    if (handled.current.has(key)) return
+    handled.current.add(key)
+    try { localStorage.setItem(autoKey, JSON.stringify([...handled.current].slice(-200))) } catch {}
+    if (turn.step === 'untap') {
+      act(turn.player, { type: 'untapAll', silent: true })
+      dispatch('step', { step: 'upkeep', turnKey: turn.key, by: turn.player })
+    } else {
+      if (turn.firstTurn && seats.length <= 2) dispatch('note', { text: 'überspringt das erste Ziehen (Startspieler im Zweierspiel)', by: turn.player })
+      else act(turn.player, { type: 'draw', count: 1 })
+      dispatch('step', { step: 'main1', turnKey: turn.key, by: turn.player })
+    }
+  }, [state.phase, turn.auto, turn.key, turn.step, turn.player, turn.firstTurn, controlled, act, dispatch, seats.length, autoKey])
+
   // Practice: you sit at one seat at a time — by default the one whose turn it is.
   const [viewSeat, setViewSeat] = useState(null)
   const [followTurn, setFollowTurn] = useState(true)
-  const activeId = (seats[state.turn.seat] || seats[0])?.playerId
+  const activeId = state.turn.player || seats[0]?.playerId
   useEffect(() => { if (practice && followTurn && activeId) setViewSeat(activeId) }, [practice, followTurn, activeId])
 
   useEffect(() => {
@@ -328,23 +357,40 @@ function GameView({ lobbyId, me }) {
   const onlineIds = new Set(online.map(entry => entry.playerId))
   const mySeatId = practice ? (viewSeat || activeId) : (seats.some(seat => seat.playerId === me.playerId) ? me.playerId : null)
   const mySeat = seats.find(seat => seat.playerId === mySeatId) || null
-  // The others in table order, starting after your seat.
-  const myIndex = seats.findIndex(seat => seat.playerId === mySeatId)
-  const others = myIndex >= 0 ? [...seats.slice(myIndex + 1), ...seats.slice(0, myIndex)] : seats
-  const active = seats[state.turn.seat] || seats[0]
+  // The others in turn order, starting after your seat.
+  const seatOf = (playerId) => seats.find(seat => seat.playerId === playerId)
+  const ordered = state.order.map(seatOf).filter(Boolean)
+  const myIndex = ordered.findIndex(seat => seat.playerId === mySeatId)
+  const others = myIndex >= 0 ? [...ordered.slice(myIndex + 1), ...ordered.slice(0, myIndex)] : ordered
+  const active = seatOf(activeId) || seats[0]
+  const nameOf = (playerId) => seatOf(playerId)?.name || '?'
+  const setup = state.phase === 'setup'
   const detailsSeat = seats.find(seat => seat.playerId === detailsFor)
   // On the practice table you act as the seat you sit at (the log then names that seat).
   const seatDispatch = practice ? (type, fields) => dispatch(type, { by: mySeatId, ...fields }) : dispatch
 
-  const endTurn = () => {
-    let next = state.turn.seat
-    let round = state.turn.round
-    for (let step = 0; step < seats.length; step++) {
-      next = (next + 1) % seats.length
-      if (next === 0) round += 1
-      if (!state.players[seats[next].playerId]?.out) break
-    }
-    seatDispatch('turn', { seat: next, round, activePlayer: seats[next].playerId })
+  // "Zug abgeben": the next one in the turn order (cards may have changed it) is up.
+  const passTurn = () => {
+    const next = nextTurn(state)
+    if (next) seatDispatch('turn', next)
+  }
+  const myTurn = !setup && (practice || active?.playerId === me.playerId)
+  // Next step, or — in the end step — the next player.
+  const upcoming = nextStep(turn.step)
+  const advance = () => {
+    if (!upcoming) passTurn()
+    else seatDispatch('step', { step: upcoming, turnKey: turn.key })
+  }
+  const advanceLabel = upcoming ? `Weiter: ${TURN_STEPS.find(s => s.key === upcoming).label}` : 'Zug abgeben'
+  const jumpTo = (step) => seatDispatch('step', { step, turnKey: turn.key })
+  const allKept = seats.every(seat => state.players[seat.playerId]?.kept)
+  const startGame = () => {
+    seatDispatch('begin', { first: state.order[0], phases: true })
+    if (practice) setFollowTurn(true) // after checking every opening hand: back to following the turn
+  }
+  const statusOf = (playerId) => {
+    const mulligans = (practice ? ownBoards[playerId]?.mulligans : publicBoards[playerId]?.mulligans) || 0
+    return `${state.players[playerId]?.kept ? '✓ behalten' : 'prüft Starthand'}${mulligans ? ` · ${mulligans} Mulligan` : ''}`
   }
 
   return (
@@ -355,12 +401,20 @@ function GameView({ lobbyId, me }) {
       >
         <div className="min-w-0">
           <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            {practice ? 'Probetisch · ' : ''}Runde <span className="tabular-nums">{state.turn.round}</span>
+            {practice ? 'Probetisch · ' : ''}
+            {setup ? 'Vorbereitung' : <>Runde <span className="tabular-nums">{state.turn.round}</span><TurnOrderButton order={state.order} nameOf={nameOf} onSave={(order) => seatDispatch('order', { order })} /></>}
             {!practice && !mySeat && ' · du schaust zu'}
             {status !== 'SUBSCRIBED' && ' · Verbindung wird hergestellt …'}
           </div>
-          <div className="font-bold text-fg truncate">Am Zug: {active?.name}{active?.playerId === me.playerId && !practice && ' (du)'}</div>
+          <div className="font-bold text-fg truncate">
+            {setup ? 'Starthände prüfen, Reihenfolge festlegen' : <>Am Zug: {active?.name}{active?.playerId === me.playerId && !practice && ' (du)'}</>}
+          </div>
         </div>
+        {!setup && (
+          <div className="order-last basis-full">
+            <PhaseBar step={turn.step} canControl={myTurn} onJump={jumpTo} />
+          </div>
+        )}
         {practice && (
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <label className="flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
@@ -375,11 +429,36 @@ function GameView({ lobbyId, me }) {
           </div>
         )}
         <div className="flex flex-wrap gap-2">
-          {(mySeat || practice) && <button type="button" onClick={endTurn} className="btn-primary text-sm px-5 min-h-[44px]">Zug beenden</button>}
+          {setup && (mySeat || practice) && (
+            <button type="button" onClick={startGame} className={allKept ? 'btn-primary text-sm px-5 min-h-[44px]' : 'btn-secondary text-sm px-5 min-h-[44px]'} title={allKept ? '' : 'Noch nicht alle haben ihre Starthand behalten'}>
+              {allKept ? 'Spiel starten' : 'Trotzdem starten'}
+            </button>
+          )}
+          {myTurn && <button type="button" onClick={advance} className="btn-primary text-sm px-5 min-h-[44px] whitespace-nowrap">{advanceLabel}</button>}
+          {myTurn && upcoming && <button type="button" onClick={passTurn} className="btn-secondary text-sm px-4 min-h-[44px] whitespace-nowrap">Zug abgeben</button>}
+          {!setup && !myTurn && mySeat && (
+            // For when the active player stepped away and forgot.
+            <button type="button" onClick={passTurn} className="text-xs underline px-1" style={{ color: 'var(--color-text-muted)' }}>Zug von {active?.name} beenden</button>
+          )}
           <button type="button" onClick={() => setShowLog(v => !v)} className="btn-secondary text-sm px-4 min-h-[44px]" aria-pressed={showLog}>Verlauf</button>
           <button type="button" onClick={() => navigate('/spieltisch')} className="btn-secondary text-sm px-4 min-h-[44px]">Tisch verlassen</button>
         </div>
       </div>
+
+      {setup && (
+        <div className="mb-3 px-4 py-3 grid md:grid-cols-[minmax(0,420px)_1fr] gap-4" style={{ background: 'var(--color-surface)', border: '1px solid var(--gold)', borderRadius: 'var(--radius-md)' }}>
+          <div>
+            <h2 className="text-sm font-bold mb-2 text-fg">Zugreihenfolge – wer oben steht, fängt an</h2>
+            <OrderList order={state.order} nameOf={nameOf} statusOf={statusOf} onChange={(order) => seatDispatch('order', { order })} />
+          </div>
+          <p className="text-sm leading-relaxed self-center" style={{ color: 'var(--color-text-secondary)' }}>
+            Jeder prüft unten seine Starthand und klickt <strong>Behalten</strong> oder <strong>Mulligan</strong>.
+            Die Reihenfolge ist ausgelost – für Treachery z. B. den Leader nach oben schieben.
+            {' '}Sind alle bereit, startet <strong>Spiel starten</strong> die erste Runde.
+            {practice && ' Am Probetisch wechselst du oben über „Du sitzt bei“ zu den anderen Starthänden.'}
+          </p>
+        </div>
+      )}
 
       <div className={showLog ? 'grid xl:grid-cols-[1fr_300px] gap-3 items-start' : ''}>
         <div className="flex flex-col gap-3 min-w-0">
@@ -417,6 +496,8 @@ function GameView({ lobbyId, me }) {
               onDetails={() => setDetailsFor(mySeat.playerId)}
               onHover={onHover}
               label={practice ? mySeat.name : null}
+              phase={state.phase}
+              turnControls={myTurn && mySeat.playerId === active?.playerId ? { label: advanceLabel, onAdvance: advance, onPass: upcoming ? passTurn : null } : null}
             />
           )}
         </div>

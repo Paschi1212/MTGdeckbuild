@@ -3,6 +3,7 @@ import BoardHeader from './BoardHeader'
 import CardMenu from './CardMenu'
 import ZoneViewer, { SmallButton, TopCardsViewer } from './ZoneViewer'
 import { Battlefield, TableCard, CardBack } from './TableCard'
+import NumberPrompt from './NumberPrompt'
 import { BF_W, CARD_W, ZONE_LABEL } from '../../lib/table/board'
 
 const HAND_CARD_W = 88
@@ -14,10 +15,13 @@ const DRAG_THRESHOLD = 6
 // (command zone, library, graveyard, exile) and your hand — which only you see.
 // Mouse and touch work the same: drag a card to move it, tap a battlefield card to tap/untap,
 // long-press or right-click any card for everything else.
-export default function MyArea({ seat, seats, player, board, act, isActive, isMonarch, dispatch, onDetails, onHover, label }) {
+// `phase`: 'setup' shows the opening-hand strip (keep / mulligan); `turnControls`
+// ({ label, onAdvance, onPass }) is set while it is this seat's turn.
+export default function MyArea({ seat, seats, player, board, act, isActive, isMonarch, dispatch, onDetails, onHover, label, phase, turnControls }) {
   const [drag, setDrag] = useState(null) // { card, from, w, h, offset, x, y }
   const [menu, setMenu] = useState(null)
   const [viewer, setViewer] = useState(null) // 'graveyard' | 'exile' | 'search' | { top: n }
+  const [prompt, setPrompt] = useState(null) // "how many?" for draw/look/mill X
   const zone = (name) => `${seat.playerId}:${name}`
 
   const move = useCallback((card, to, at) => act({ type: 'move', iid: card.iid, to, at }), [act])
@@ -114,12 +118,11 @@ export default function MyArea({ seat, seats, player, board, act, isActive, isMo
       y: r.bottom,
       items: [
         { label: 'Karte ziehen', onClick: () => act({ type: 'draw', count: 1 }) },
+        { label: 'Karten ziehen …', onClick: () => setPrompt({ title: 'Wie viele Karten ziehen?', initial: 2, max: board.library.length, confirmLabel: 'Ziehen', onConfirm: (n) => act({ type: 'draw', count: n }) }) },
         { label: 'Oberste Karte ansehen', onClick: () => setViewer({ top: 1 }) },
-        { label: 'Oberste 3 ansehen (Scry/Surveil)', onClick: () => setViewer({ top: 3 }) },
-        { label: 'Oberste 5 ansehen', onClick: () => setViewer({ top: 5 }) },
+        { label: 'Oberste … ansehen (Scry, Surveil)', onClick: () => setPrompt({ title: 'Wie viele oberste Karten ansehen?', initial: 2, max: board.library.length, confirmLabel: 'Ansehen', onConfirm: (n) => setViewer({ top: n }) }) },
         { label: 'Durchsuchen', onClick: () => setViewer('search') },
-        { label: '1 Karte fräsen', onClick: () => act({ type: 'mill', count: 1 }) },
-        { label: '3 Karten fräsen', onClick: () => act({ type: 'mill', count: 3 }) },
+        { label: 'Karten fräsen …', onClick: () => setPrompt({ title: 'Wie viele Karten fräsen?', initial: 1, max: board.library.length, confirmLabel: 'Fräsen', onConfirm: (n) => act({ type: 'mill', count: n }) }) },
         { label: 'Mischen', onClick: () => act({ type: 'shuffle' }) },
         { label: 'Mulligan (neue 7 Karten)', onClick: () => act({ type: 'mulligan' }), danger: true }
       ]
@@ -199,13 +202,38 @@ export default function MyArea({ seat, seats, player, board, act, isActive, isMo
           </div>
 
           <div className="flex flex-col gap-2 self-center">
-            <button type="button" onClick={() => act({ type: 'draw', count: 1 })} disabled={!board.library.length} className="btn-primary text-sm px-3 min-h-[44px] whitespace-nowrap">Karte ziehen</button>
+            {turnControls && (
+              <button type="button" onClick={turnControls.onAdvance} className="btn-primary text-sm px-3 min-h-[44px] whitespace-nowrap">{turnControls.label}</button>
+            )}
+            <button type="button" onClick={() => act({ type: 'draw', count: 1 })} disabled={!board.library.length} className={turnControls ? 'btn-secondary text-sm px-3 min-h-[40px] whitespace-nowrap' : 'btn-primary text-sm px-3 min-h-[44px] whitespace-nowrap'}>Karte ziehen</button>
             <button type="button" onClick={() => act({ type: 'untapAll' })} className="btn-secondary text-sm px-3 min-h-[40px] whitespace-nowrap">Alles enttappen</button>
+            {turnControls?.onPass && (
+              <button type="button" onClick={turnControls.onPass} className="text-xs underline" style={{ color: 'var(--color-text-muted)' }} title="Der Nächste in der Zugreihenfolge ist dran">Zug abgeben</button>
+            )}
           </div>
         </div>
 
         {/* Hand — only on this screen */}
         <div className="flex-1 min-w-0">
+          {phase === 'setup' && (
+            <div className="flex flex-wrap items-center gap-2 mb-2 px-3 py-2" style={{ border: '1px solid var(--gold)', borderRadius: 'var(--radius-sm)', background: 'rgba(205,178,126,0.07)' }}>
+              <span className="text-sm font-semibold text-fg">Starthand{board.mulligans ? ` · ${board.mulligans}. Mulligan` : ''}</span>
+              {player?.kept ? (
+                <>
+                  <span className="text-sm" style={{ color: 'var(--g)' }}>✓ behalten</span>
+                  <button type="button" onClick={() => dispatch('keep', { target: seat.playerId, value: false })} className="text-xs underline" style={{ color: 'var(--color-text-muted)' }}>doch nicht</button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => dispatch('keep', { target: seat.playerId, value: true })} className="btn-primary text-sm px-4 min-h-[40px]">Behalten</button>
+                  <button type="button" onClick={() => act({ type: 'mulligan' })} className="btn-secondary text-sm px-4 min-h-[40px]">Mulligan</button>
+                </>
+              )}
+              <span className="text-xs basis-full leading-snug" style={{ color: 'var(--color-text-muted)' }}>
+                Im Commander ist der erste Mulligan frei. Ab dem zweiten legst du nach dem Behalten je Mulligan eine Karte unter die Bibliothek (Karte lange drücken → „Unter die Bibliothek“).
+              </span>
+            </div>
+          )}
           <div className="text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>
             {label ? `Hand von ${label}` : 'Deine Hand'} ({board.hand.length}) – nur hier sichtbar
           </div>
@@ -239,6 +267,7 @@ export default function MyArea({ seat, seats, player, board, act, isActive, isMo
       )}
 
       <CardMenu menu={menu} onClose={() => setMenu(null)} />
+      <NumberPrompt prompt={prompt} onClose={() => setPrompt(null)} />
 
       {(viewer === 'graveyard' || viewer === 'exile') && (
         <ZoneViewer
