@@ -80,6 +80,19 @@ farbiges Element in Listen; alles andere bleibt ruhig.
   Akzent-Kante links: „Neu laden“ bzw. bei einem Konflikt die Wahl „Stand von … laden“ / „Meinen Stand
   behalten“. Nie still überschreiben.
 
+## Muster: Spieltisch (src/pages/TablePage.jsx, TableRoomPage.jsx)
+
+- **Küchentisch, keine Regel-Engine:** Jeder darf jede Zahl ändern; der **Spielverlauf** rechts (Handy:
+  unten) macht sichtbar, wer was getan hat. Schnelles Tippen auf dieselbe Zahl wird zu einer Zeile
+  zusammengefasst („Leben −6 → 34“).
+- **Spielertafel:** oben ein **dunkler Streifen mit dem Art-Crop des Commanders** (immer dunkel, damit die
+  weiße Schrift in beiden Schemata trägt), darunter Leben groß in der Mitte (±1, ±5), Zähler nur wenn > 0
+  („+ Zähler“ fügt hinzu), Commander-Schaden je gegnerischem Commander (zieht auch Leben ab), Steuer in
+  2er-Schritten. Wer am Zug ist, bekommt den goldenen Rahmen (`--gold`); Tödliches (0 Leben, 10 Gift,
+  21 Commander-Schaden) wird rot markiert, ausscheiden entscheidet der Tisch.
+- **Eigene Tafel zuerst**, danach die anderen in Sitzreihenfolge; die Zug-Leiste („Am Zug: …“ / „Zug
+  beenden“) bleibt unter der Navigation stehen.
+
 ## Bewegung
 
 Nur zur Orientierung, nie als Deko: Hover-Vorschau, Einblenden der Zeilen-Bedienelemente. Keine

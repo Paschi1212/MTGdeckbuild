@@ -11,7 +11,8 @@ const NAV_LINKS = [
   { to: '/upload', label: 'Sammlung' },
   { to: '/collection', label: 'Meine Sammlung' },
   { to: '/decks', label: 'Meine Decks' },
-  { to: '/select-commander', label: 'Deck bauen' }
+  { to: '/select-commander', label: 'Deck bauen' },
+  { to: '/spieltisch', label: 'Spieltisch' }
 ]
 
 function LogoIcon({ size = 44 }) {
@@ -107,7 +108,8 @@ export default function Navigation({ user, onLogout }) {
     >
       <Link to="/" className="flex items-center gap-3 flex-1 min-w-0" style={{ color: 'var(--color-text)' }}>
         <LogoIcon size={36} />
-        <span className="font-bold text-base tracking-wide hidden sm:inline truncate" style={{ letterSpacing: '0.5px' }}>
+        {/* Between 1024 and 1280px the five links need the room — the logo alone says it then. */}
+        <span className="font-bold text-base tracking-wide hidden sm:inline lg:hidden xl:inline truncate" style={{ letterSpacing: '0.5px' }}>
           MTG DECK BUILDER
         </span>
       </Link>

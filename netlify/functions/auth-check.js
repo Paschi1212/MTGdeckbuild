@@ -1,4 +1,5 @@
 import { parseSessionCookie } from './lib/session.js'
+import { playerIdFor } from './lib/player-id.js'
 
 export const handler = async (event) => {
   const session = parseSessionCookie(event.headers.cookie)
@@ -15,7 +16,9 @@ export const handler = async (event) => {
     body: JSON.stringify({
       user: {
         email: session.email,
-        name: session.name
+        name: session.name,
+        // Identity at the game table (lobbies, deck shares) — see lib/player-id.js.
+        playerId: playerIdFor(session.email)
       }
     })
   }

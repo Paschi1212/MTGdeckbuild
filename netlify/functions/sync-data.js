@@ -26,7 +26,8 @@ const SYNCED_KEYS = [
   'mtg_deck_audits',
   'mtg_commander_overrides',
   'mtg_brain_outbox',
-  'mtg_bridge_remote'
+  'mtg_bridge_remote',
+  'mtg_known_players'
 ]
 
 export const handler = async (event) => {

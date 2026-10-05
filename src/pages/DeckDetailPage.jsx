@@ -9,6 +9,7 @@ import CommanderAutocompleteInput from '../components/CommanderAutocompleteInput
 import DeckAuditPage from './DeckAuditPage'
 import { getPendingAiJob } from '../lib/aiMode'
 import EditDeckPage from './EditDeckPage'
+import DeckShareCard from '../components/DeckShareCard'
 
 // Was 150 — far too small to let the AI actually consider "which of my cards would fit" for
 // a real collection (observed live: ~2790 unique priced cards, only the first 150 in
@@ -228,6 +229,8 @@ export default function DeckDetailPage() {
               </p>
             </div>
           )}
+
+          <DeckShareCard deckName={deckName} />
 
           {loadingImages && (
             <p className="text-cmd-muted text-sm mb-4">Lade Kartenbilder…</p>

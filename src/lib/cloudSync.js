@@ -13,7 +13,9 @@ const SYNCED_KEYS = [
   // Obsidian-brain logbook entries written while no bridge was reachable (e.g. on the phone)
   'mtg_brain_outbox',
   // The PC bridge's Tailscale address, so a tablet can reach it without typing (aiMode.js)
-  'mtg_bridge_remote'
+  'mtg_bridge_remote',
+  // Players met at the game table — whom a deck can be lent to (lib/table/players.js)
+  'mtg_known_players'
 ]
 
 // Two devices (PC + tablet): the server numbers every saved snapshot. This device remembers
