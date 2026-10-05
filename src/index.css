@@ -291,3 +291,9 @@
 @media (max-width: 480px) {
   h1 { font-size: 1.5rem; }
 }
+
+/* Game table: the gold marker of the phase rail slides to the next step (src/components/table/PhaseRail.jsx) */
+.phase-rail-marker { transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .phase-rail-marker { transition: none; }
+}

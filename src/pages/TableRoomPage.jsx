@@ -12,6 +12,8 @@ import { HoverPreview } from '../components/table/TableCard'
 import { useOwnBoards } from '../lib/table/board'
 import { OrderList, TurnOrderButton } from '../components/table/TurnOrder'
 import PhaseBar from '../components/table/PhaseBar'
+import PhaseRail from '../components/table/PhaseRail'
+import BoardZoom from '../components/table/BoardZoom'
 
 // /spieltisch/:lobbyId — the lobby until the host starts, then the game for everyone.
 export default function TableRoomPage({ user }) {
@@ -282,6 +284,7 @@ function GameView({ lobbyId, me }) {
   const { record, state, online, status, dispatch, boards: publicBoards, publishBoard, practice } = useGame(lobbyId, me)
   const [waitedLong, setWaitedLong] = useState(false)
   const [detailsFor, setDetailsFor] = useState(null)
+  const [zoomFor, setZoomFor] = useState(null) // another player's board, big
   const [showLog, setShowLog] = useState(() => window.innerWidth >= 1600)
   const [preview, setPreview] = useState(null)
   const seats = useMemo(() => record?.seats || [], [record])
@@ -411,7 +414,7 @@ function GameView({ lobbyId, me }) {
           </div>
         </div>
         {!setup && (
-          <div className="order-last basis-full">
+          <div className="order-last basis-full lg:hidden">
             <PhaseBar step={turn.step} canControl={myTurn} onJump={jumpTo} />
           </div>
         )}
@@ -434,8 +437,9 @@ function GameView({ lobbyId, me }) {
               {allKept ? 'Spiel starten' : 'Trotzdem starten'}
             </button>
           )}
-          {myTurn && <button type="button" onClick={advance} className="btn-primary text-sm px-5 min-h-[44px] whitespace-nowrap">{advanceLabel}</button>}
-          {myTurn && upcoming && <button type="button" onClick={passTurn} className="btn-secondary text-sm px-4 min-h-[44px] whitespace-nowrap">Zug abgeben</button>}
+          {/* On large screens these sit in the phase rail at the left edge */}
+          {myTurn && <button type="button" onClick={advance} className="lg:hidden btn-primary text-sm px-5 min-h-[44px] whitespace-nowrap">{advanceLabel}</button>}
+          {myTurn && upcoming && <button type="button" onClick={passTurn} className="lg:hidden btn-secondary text-sm px-4 min-h-[44px] whitespace-nowrap">Zug abgeben</button>}
           {!setup && !myTurn && mySeat && (
             // For when the active player stepped away and forgot.
             <button type="button" onClick={passTurn} className="text-xs underline px-1" style={{ color: 'var(--color-text-muted)' }}>Zug von {active?.name} beenden</button>
@@ -460,53 +464,90 @@ function GameView({ lobbyId, me }) {
         </div>
       )}
 
-      <div className={showLog ? 'grid xl:grid-cols-[1fr_300px] gap-3 items-start' : ''}>
-        <div className="flex flex-col gap-3 min-w-0">
-          {others.length > 0 && (
-            <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${others.length === 1 ? 560 : 380}px, 1fr))` }}>
-              {others.map(seat => (
-                <OpponentBoard
-                  key={seat.playerId}
-                  seat={seat}
-                  seats={seats}
-                  player={state.players[seat.playerId]}
-                  snapshot={publicBoards[seat.playerId]}
-                  isActive={seat.playerId === active?.playerId}
-                  isMonarch={state.monarch === seat.playerId}
-                  online={onlineIds.has(seat.playerId)}
-                  dispatch={seatDispatch}
-                  onDetails={() => setDetailsFor(seat.playerId)}
-                  onHover={onHover}
-                  compact={others.length > 3}
-                />
-              ))}
+      <div className="lg:grid lg:grid-cols-[156px_minmax(0,1fr)] lg:gap-3 lg:items-start">
+        {/* The turn at a glance, along the left edge — stays put while scrolling */}
+        <div className="hidden lg:block lg:sticky z-20" style={{ top: 'calc(var(--nav-h, 0px) + 5.25rem)' }}>
+          <PhaseRail
+            setup={setup}
+            round={turn.round}
+            activeSeat={active}
+            step={turn.step}
+            canControl={myTurn}
+            onJump={jumpTo}
+            advanceLabel={advanceLabel}
+            onAdvance={advance}
+            onPass={upcoming ? passTurn : null}
+          />
+        </div>
+        <div className={showLog ? 'grid xl:grid-cols-[1fr_300px] gap-3 items-start' : ''}>
+          <div className="flex flex-col gap-3 min-w-0">
+            {others.length > 0 && (
+              <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${others.length === 1 ? 560 : 380}px, 1fr))` }}>
+                {others.map(seat => (
+                  <OpponentBoard
+                    key={seat.playerId}
+                    seat={seat}
+                    seats={seats}
+                    player={state.players[seat.playerId]}
+                    snapshot={publicBoards[seat.playerId]}
+                    isActive={seat.playerId === active?.playerId}
+                    isMonarch={state.monarch === seat.playerId}
+                    online={onlineIds.has(seat.playerId)}
+                    dispatch={seatDispatch}
+                    onDetails={() => setDetailsFor(seat.playerId)}
+                    onHover={onHover}
+                    compact={others.length > 3}
+                    onZoom={() => setZoomFor(seat.playerId)}
+                  />
+                ))}
+              </div>
+            )}
+            {mySeat && ownBoards[mySeat.playerId] && (
+              <MyArea
+                key={mySeat.playerId}
+                seat={mySeat}
+                seats={seats}
+                player={state.players[mySeat.playerId]}
+                board={ownBoards[mySeat.playerId]}
+                act={(action) => act(mySeat.playerId, action)}
+                isActive={mySeat.playerId === active?.playerId}
+                isMonarch={state.monarch === mySeat.playerId}
+                dispatch={seatDispatch}
+                onDetails={() => setDetailsFor(mySeat.playerId)}
+                onHover={onHover}
+                label={practice ? mySeat.name : null}
+                phase={state.phase}
+                turnControls={myTurn && mySeat.playerId === active?.playerId ? { label: advanceLabel, onAdvance: advance, onPass: upcoming ? passTurn : null } : null}
+              />
+            )}
+          </div>
+          {showLog && (
+            <div className="xl:sticky xl:max-h-[calc(100vh-9rem)] flex flex-col mt-3 xl:mt-0" style={{ top: 'calc(var(--nav-h, 0px) + 4.5rem)' }}>
+              <GameLog log={state.log} seats={seats} />
             </div>
           )}
-          {mySeat && ownBoards[mySeat.playerId] && (
-            <MyArea
-              key={mySeat.playerId}
-              seat={mySeat}
-              seats={seats}
-              player={state.players[mySeat.playerId]}
-              board={ownBoards[mySeat.playerId]}
-              act={(action) => act(mySeat.playerId, action)}
-              isActive={mySeat.playerId === active?.playerId}
-              isMonarch={state.monarch === mySeat.playerId}
-              dispatch={seatDispatch}
-              onDetails={() => setDetailsFor(mySeat.playerId)}
-              onHover={onHover}
-              label={practice ? mySeat.name : null}
-              phase={state.phase}
-              turnControls={myTurn && mySeat.playerId === active?.playerId ? { label: advanceLabel, onAdvance: advance, onPass: upcoming ? passTurn : null } : null}
-            />
-          )}
         </div>
-        {showLog && (
-          <div className="xl:sticky xl:max-h-[calc(100vh-9rem)] flex flex-col mt-3 xl:mt-0" style={{ top: 'calc(var(--nav-h, 0px) + 4.5rem)' }}>
-            <GameLog log={state.log} seats={seats} />
-          </div>
-        )}
       </div>
+
+      {zoomFor && others.length > 0 && (
+        <BoardZoom
+          seats={seats}
+          others={others}
+          current={zoomFor}
+          onSelect={setZoomFor}
+          onClose={() => setZoomFor(null)}
+          boardProps={(seat) => ({
+            player: state.players[seat.playerId],
+            snapshot: publicBoards[seat.playerId],
+            isActive: seat.playerId === active?.playerId,
+            isMonarch: state.monarch === seat.playerId,
+            online: onlineIds.has(seat.playerId),
+            dispatch: seatDispatch,
+            onDetails: () => setDetailsFor(seat.playerId),
+            onHover
+          })}
+        />
+      )}
 
       {detailsSeat && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4" style={{ background: 'rgba(8,8,10,0.8)' }} onClick={() => setDetailsFor(null)}>

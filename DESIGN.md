@@ -104,6 +104,12 @@ farbiges Element in Listen; alles andere bleibt ruhig.
 - **Phasen:** Reihe unter der Zuginfo (Enttappen · Versorgung · Ziehen · Hauptphase 1 · Kampf ·
   Hauptphase 2 · Ende), aktuelle Phase in Gold; der Aktive klickt „Weiter: …“ (im Endsegment „Zug
   abgeben“) oder springt per Klick auf eine Phase. Enttappen und Ziehen passieren automatisch.
+- **Phasenleiste am linken Rand** (ab 1024 px, mitlaufend): oben wer am Zug ist (Commander-Art dahinter),
+  darunter die Phasen untereinander mit einer goldenen Markierung, die zur nächsten Phase gleitet
+  (`.phase-rail-marker`, ohne Animation bei `prefers-reduced-motion`), unten „Weiter“ / „Zug abgeben“.
+  Darunter (Tablet hoch, Handy) bleibt die waagerechte Phasenreihe in der Zugleiste.
+- **Gegner-Board groß:** „⤢ Groß“ oder Klick aufs Spielfeld öffnet es bildschirmfüllend; Reiter bzw.
+  ← → wechseln zwischen den Mitspielern, Esc schließt.
 - **Zugreihenfolge im Spiel ändern** nur über das kleine ⇅ neben „Runde“ – bewusst unauffällig.
 - **Probetisch:** eigene Decks an einem Tisch, man sitzt immer an einem Platz („Du sitzt bei …“, folgt
   standardmäßig dem Zug) — die anderen Plätze sieht man wie Gegner.

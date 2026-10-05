@@ -78,7 +78,8 @@ export function CardBack({ width, count, label }) {
  * A battlefield drawn from virtual coordinates at whatever width it gets. `dropzone` marks it
  * as a target for dragged cards (own board only); `onCardPointerDown` makes cards interactive.
  */
-export function Battlefield({ cards, dropzone, onCardPointerDown, onCardContextMenu, onHover, emptyText, highlight, maxHeight = '40vh' }) {
+// `onOpen`: a click on a (read-only) battlefield opens it big.
+export function Battlefield({ cards, dropzone, onCardPointerDown, onCardContextMenu, onHover, emptyText, highlight, maxHeight = '40vh', onOpen }) {
   const outer = useRef(null)
   const probe = useRef(null)
   const [size, setSize] = useState({ width: 0, maxHeight: 0 })
@@ -100,7 +101,10 @@ export function Battlefield({ cards, dropzone, onCardPointerDown, onCardContextM
     <div
       data-dropzone={dropzone}
       className="relative overflow-hidden"
+      onClick={onOpen}
+      title={onOpen ? 'Groß ansehen' : undefined}
       style={{
+        cursor: onOpen ? 'zoom-in' : undefined,
         width: BF_W * scale || '100%',
         height: BF_H * scale || 200,
         background: highlight ? 'rgba(205,178,126,0.08)' : 'rgba(255,255,255,0.025)',
