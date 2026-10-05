@@ -24,7 +24,11 @@ function buildLibrary(cards) {
 }
 
 const CARD_W = 110
-const CARD_H = 172 // ~110 * 5/7 image + the name label strip below it
+const CARD_IMG_H = 154 // 110 * 7/5 — the card image itself
+const CARD_H = 172 // image + the name label strip below it
+// A tapped card lies sideways: its frame turns landscape (154 × 110) so the whole card stays
+// visible — rotating only the picture inside the upright frame cut off both ends.
+const cardWidth = (card) => (card.tapped ? CARD_IMG_H : CARD_W)
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value))
@@ -40,14 +44,24 @@ function MiniCard({ card, onDragStart, style, extraActions }) {
       onDragStart={(e) => onDragStart(e, card)}
       onClick={extraActions?.onToggleTap ? () => extraActions.onToggleTap(card) : undefined}
       className="relative rounded-lg overflow-hidden bg-black/30 flex-shrink-0"
-      style={{ width: CARD_W, cursor: extraActions?.onToggleTap ? 'pointer' : 'grab', ...style }}
-      title={card.name}
+      style={{ width: cardWidth(card), cursor: extraActions?.onToggleTap ? 'pointer' : 'grab', ...style }}
+      title={card.tapped ? `${card.name} (getappt)` : card.name}
     >
       <div
-        className="aspect-[5/7] w-full bg-black/40"
-        style={{ transform: card.tapped ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }}
+        className="relative overflow-hidden"
+        style={{ width: cardWidth(card), height: card.tapped ? CARD_W : CARD_IMG_H }}
       >
-        {card.image && <img src={card.image} alt={card.name} className="w-full h-full object-cover" loading="lazy" draggable={false} />}
+        <div
+          className="absolute left-1/2 top-1/2 bg-black/40"
+          style={{
+            width: CARD_W,
+            height: CARD_IMG_H,
+            transform: `translate(-50%, -50%) rotate(${card.tapped ? 90 : 0}deg)`,
+            transition: 'transform 0.15s ease'
+          }}
+        >
+          {card.image && <img src={card.image} alt={card.name} className="w-full h-full object-cover rounded-lg" loading="lazy" draggable={false} />}
+        </div>
       </div>
       <div className="text-[10px] text-cmd-muted text-center py-0.5 truncate px-1">{card.name}</div>
       {extraActions?.buttons?.map((btn) => (
@@ -205,7 +219,7 @@ export default function PlaytestModal({ cards, commanderCard, onClose }) {
     if (!card) return
 
     const rect = battlefieldRef.current.getBoundingClientRect()
-    const x = clamp(e.clientX - rect.left - payload.offsetX, 0, Math.max(0, rect.width - CARD_W))
+    const x = clamp(e.clientX - rect.left - payload.offsetX, 0, Math.max(0, rect.width - cardWidth(card)))
     const y = clamp(e.clientY - rect.top - payload.offsetY, 0, Math.max(0, rect.height - CARD_H))
     moveCard(card, payload.zone, 'battlefield', { x, y })
   }
@@ -217,10 +231,16 @@ export default function PlaytestModal({ cards, commanderCard, onClose }) {
   const returnFromGraveyard = { label: '◀', title: 'Zurück auf die Hand', position: { right: 2 }, onClick: (card) => moveCard(card, 'graveyard', 'hand') }
   const returnFromExile = { label: '◀', title: 'Zurück auf die Hand', position: { right: 2 }, onClick: (card) => moveCard(card, 'exile', 'hand') }
 
+  useEffect(() => {
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previous }
+  }, [])
+
   return (
     <div
       className="fixed inset-0 z-[100] flex flex-col p-4 overflow-y-auto"
-      style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}
+      style={{ backgroundColor: 'rgba(8,8,10,0.96)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
     >
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <h2 className="text-lg font-bold text-white">🎲 Live Tester</h2>
