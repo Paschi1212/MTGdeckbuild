@@ -1,12 +1,14 @@
 import { TURN_STEPS } from '../../lib/table/game'
 import { artCrop } from '../../lib/table/decks'
+import ManualStepsToggle from './ManualStepsToggle'
 
 const ROW = 40 // px per step — the gold marker slides by exactly this much
 
 // The turn at a glance, along the left edge of the table: whose turn, which round, every step
 // of the turn with a gold marker that moves on to the next step. The active player can click a
-// step to jump there and has "Weiter" / "Zug abgeben" right below.
-export default function PhaseRail({ setup, round, activeSeat, step, canControl, onJump, advanceLabel, onAdvance, onPass }) {
+// step to jump there and has "Weiter" / "Zug abgeben" right below; every player at the table
+// chooses at the bottom whether their turns run on by themselves up to main phase 1.
+export default function PhaseRail({ setup, round, activeSeat, step, canControl, onJump, advanceLabel, onAdvance, onPass, manual, onToggleManual }) {
   const current = Math.max(0, TURN_STEPS.findIndex(s => s.key === step))
   const art = artCrop(activeSeat?.deck?.commanderImage)
 
@@ -78,6 +80,12 @@ export default function PhaseRail({ setup, round, activeSeat, step, canControl, 
         <div className="flex flex-col gap-2 p-2" style={{ borderTop: '1px solid var(--color-border)' }}>
           <button type="button" onClick={onAdvance} className="btn-primary text-sm min-h-[44px] px-2 leading-tight">{advanceLabel}</button>
           {onPass && <button type="button" onClick={onPass} className="btn-secondary text-xs min-h-[36px] px-2">Zug abgeben</button>}
+        </div>
+      )}
+
+      {onToggleManual && (
+        <div className="px-3 py-1.5" style={{ borderTop: '1px solid var(--color-border)' }}>
+          <ManualStepsToggle manual={manual} onToggle={onToggleManual} className="w-full" />
         </div>
       )}
     </nav>

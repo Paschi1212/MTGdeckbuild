@@ -108,6 +108,10 @@ farbiges Element in Listen; alles andere bleibt ruhig.
   abgeben“) oder springt per Klick auf eine Phase. Enttappen und Ziehen passieren automatisch – es gibt
   dafür keine eigenen Knöpfe (Ziehen für Effekte: Bibliotheksmenü). Betäubungsmarken: Karte bleibt
   getappt, eine Marke fällt weg.
+- **Zugbeginn wie MTG Arena:** Enttappen → Versorgung → Ziehen laufen von selbst durch (je 0,7 s
+  sichtbar, die Goldmarke gleitet mit) und halten in Hauptphase 1. Schalter **„Manuell“** (unten in
+  der Phasenleiste, auf Tablet/Handy neben der Phasenreihe; pro Gerät gespeichert): hält an jeder
+  Phase – Enttappen und Ziehen passieren trotzdem automatisch.
 - **Probetisch-Platzwechsel** wird unten kurz angesagt („Du sitzt jetzt bei …“), damit es nicht so
   aussieht, als wären die eigenen Karten verschwunden.
 - **Phasenleiste am linken Rand** (ab 1024 px, mitlaufend): oben wer am Zug ist (Commander-Art dahinter),

@@ -15,6 +15,12 @@ import PhaseBar from '../components/table/PhaseBar'
 import PhaseRail from '../components/table/PhaseRail'
 import BoardZoom from '../components/table/BoardZoom'
 
+// Where a turn runs on by itself (see GameView): untap → upkeep → draw → main phase 1.
+const AUTO_NEXT_STEP = { untap: 'upkeep', upkeep: 'draw', draw: 'main1' }
+const STEP_PAUSE_MS = 700
+// "Manuell": stop at every step — this player's choice on this device.
+const MANUAL_STEPS_KEY = 'mtg_table_manual_steps'
+
 // /spieltisch/:lobbyId — the lobby until the host starts, then the game for everyone.
 export default function TableRoomPage({ user }) {
   const { lobbyId } = useParams()
@@ -302,32 +308,51 @@ function GameView({ lobbyId, me }) {
   }, [dispatch])
   const { boards: ownBoards, act } = useOwnBoards(lobbyId, controlled, { publish: publishBoard, onAction })
 
-  // The automatic steps of a turn, done by the browser that runs the active board: untap at the
-  // start, draw on reaching the draw step (the starting player of a two-player game skips the
-  // first draw — rule 103.7). Remembered per turn, so a reload never untaps or draws twice.
+  // The automatic part of a turn, done by the browser that runs the active board — like MTG
+  // Arena: untap at the start, then (unless manual mode is on) on through upkeep and draw by
+  // itself, drawing on the way (the starting player of a two-player game skips the first
+  // draw — rule 103.7), and stop in main phase 1. Each step stays up a moment, so everyone
+  // sees the turn go by. Manual mode still untaps and draws, but waits for "Weiter" at every
+  // step. Remembered per turn, so a reload never untaps or draws twice, and jumping back to a
+  // step stays there.
   const autoKey = `mtg_table_auto:${lobbyId}`
   const handled = useRef(null)
   if (!handled.current) {
     try { handled.current = new Set(JSON.parse(localStorage.getItem(autoKey) || '[]')) } catch { handled.current = new Set() }
   }
+  const [manualSteps, setManualSteps] = useState(() => {
+    try { return localStorage.getItem(MANUAL_STEPS_KEY) === '1' } catch { return false }
+  })
+  const toggleManualSteps = () => setManualSteps(on => {
+    try { localStorage.setItem(MANUAL_STEPS_KEY, on ? '0' : '1') } catch {}
+    return !on
+  })
   const { turn } = state
+  const runsActiveBoard = controlled.some(seat => seat.playerId === turn.player)
   useEffect(() => {
-    if (state.phase !== 'playing' || !turn.auto || !turn.key) return
-    if (!controlled.some(seat => seat.playerId === turn.player)) return
-    if (turn.step !== 'untap' && turn.step !== 'draw') return
-    const key = `${turn.key}:${turn.step}`
-    if (handled.current.has(key)) return
-    handled.current.add(key)
-    try { localStorage.setItem(autoKey, JSON.stringify([...handled.current].slice(-200))) } catch {}
-    if (turn.step === 'untap') {
-      act(turn.player, { type: 'untapAll', silent: true })
-      dispatch('step', { step: 'upkeep', turnKey: turn.key, by: turn.player })
-    } else {
-      if (turn.firstTurn && seats.length <= 2) dispatch('note', { text: 'überspringt das erste Ziehen (Startspieler im Zweierspiel)', by: turn.player })
-      else act(turn.player, { type: 'draw', count: 1 })
-      dispatch('step', { step: 'main1', turnKey: turn.key, by: turn.player })
+    if (state.phase !== 'playing' || !turn.auto || !turn.key || !runsActiveBoard) return undefined
+    const remember = (key) => {
+      handled.current.add(key)
+      try { localStorage.setItem(autoKey, JSON.stringify([...handled.current].slice(-200))) } catch {}
     }
-  }, [state.phase, turn.auto, turn.key, turn.step, turn.player, turn.firstTurn, controlled, act, dispatch, seats.length, autoKey])
+
+    const actionKey = `${turn.key}:${turn.step}`
+    if ((turn.step === 'untap' || turn.step === 'draw') && !handled.current.has(actionKey)) {
+      remember(actionKey)
+      if (turn.step === 'untap') act(turn.player, { type: 'untapAll', silent: true })
+      else if (turn.firstTurn && seats.length <= 2) dispatch('note', { text: 'überspringt das erste Ziehen (Startspieler im Zweierspiel)', by: turn.player })
+      else act(turn.player, { type: 'draw', count: 1 })
+    }
+
+    const next = AUTO_NEXT_STEP[turn.step]
+    const nextKey = `${turn.key}:${turn.step}:next`
+    if (!next || (manualSteps && turn.step !== 'untap') || handled.current.has(nextKey)) return undefined
+    const timer = setTimeout(() => {
+      remember(nextKey)
+      dispatch('step', { step: next, turnKey: turn.key, by: turn.player })
+    }, STEP_PAUSE_MS)
+    return () => clearTimeout(timer)
+  }, [state.phase, turn.auto, turn.key, turn.step, turn.player, turn.firstTurn, runsActiveBoard, manualSteps, act, dispatch, seats.length, autoKey])
 
   // Practice: you sit at one seat at a time — by default the one whose turn it is.
   const [viewSeat, setViewSeat] = useState(null)
@@ -428,7 +453,7 @@ function GameView({ lobbyId, me }) {
         </div>
         {!setup && (
           <div className="order-last basis-full lg:hidden">
-            <PhaseBar step={turn.step} canControl={myTurn} onJump={jumpTo} />
+            <PhaseBar step={turn.step} canControl={myTurn} onJump={jumpTo} manual={manualSteps} onToggleManual={mySeat || practice ? toggleManualSteps : null} />
           </div>
         )}
         {practice && (
@@ -490,6 +515,8 @@ function GameView({ lobbyId, me }) {
             advanceLabel={advanceLabel}
             onAdvance={advance}
             onPass={upcoming ? passTurn : null}
+            manual={manualSteps}
+            onToggleManual={mySeat || practice ? toggleManualSteps : null}
           />
         </div>
         <div className={showLog ? 'grid xl:grid-cols-[1fr_300px] gap-3 items-start' : ''}>
