@@ -252,6 +252,9 @@ export default function MyArea({ seat, seats, player, board, act, isActive, isMo
           )}
           <div className="text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>
             {label ? `Hand von ${label}` : 'Deine Hand'} ({board.hand.length}) – nur hier sichtbar
+            {isActive && phase === 'playing' && board.hand.length > 7 && (
+              <span className="font-semibold" style={{ color: 'var(--gold)' }}> · mehr als 7: am Zugende wirfst du auf 7 ab</span>
+            )}
           </div>
           <HandRow
             cards={board.hand}

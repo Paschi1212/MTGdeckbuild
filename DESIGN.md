@@ -112,6 +112,11 @@ farbiges Element in Listen; alles andere bleibt ruhig.
   sichtbar, die Goldmarke gleitet mit) und halten in Hauptphase 1. Schalter **„Manuell“** (unten in
   der Phasenleiste, auf Tablet/Handy neben der Phasenreihe; pro Gerät gespeichert): hält an jeder
   Phase – Enttappen und Ziehen passieren trotzdem automatisch.
+- **Handkartenlimit (Regel 514.1):** Hat der Aktive mehr als 7 Handkarten, steht über seiner Hand in
+  Gold „mehr als 7: am Zugende wirfst du auf 7 ab“. „Zug abgeben“ öffnet dann das Aufräumen-Fenster
+  (Goldrahmen): Karten antippen → rot „wird abgeworfen“, Knopf „N abwerfen & Zug abgeben“ erst bei
+  genau N; „Zurück zum Zug“; klein „Kein Handkartenlimit … ohne Abwerfen abgeben“. Beides steht im
+  Verlauf. Nicht-aktive Spieler werfen nie ab.
 - **Probetisch-Platzwechsel** wird unten kurz angesagt („Du sitzt jetzt bei …“), damit es nicht so
   aussieht, als wären die eigenen Karten verschwunden.
 - **Phasenleiste am linken Rand** (ab 1024 px, mitlaufend): oben wer am Zug ist (Commander-Art dahinter),

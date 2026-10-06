@@ -14,6 +14,7 @@ import { OrderList, TurnOrderButton } from '../components/table/TurnOrder'
 import PhaseBar from '../components/table/PhaseBar'
 import PhaseRail from '../components/table/PhaseRail'
 import BoardZoom from '../components/table/BoardZoom'
+import CleanupDiscard, { MAX_HAND_SIZE } from '../components/table/CleanupDiscard'
 
 // Where a turn runs on by itself (see GameView): untap → upkeep → draw → main phase 1.
 const AUTO_NEXT_STEP = { untap: 'upkeep', upkeep: 'draw', draw: 'main1' }
@@ -291,6 +292,7 @@ function GameView({ lobbyId, me }) {
   const [waitedLong, setWaitedLong] = useState(false)
   const [detailsFor, setDetailsFor] = useState(null)
   const [zoomFor, setZoomFor] = useState(null) // another player's board, big
+  const [cleanupFor, setCleanupFor] = useState(null) // the seat discarding down to seven before passing
   const [showLog, setShowLog] = useState(() => window.innerWidth >= 1600)
   const [preview, setPreview] = useState(null)
   const seats = useMemo(() => record?.seats || [], [record])
@@ -412,14 +414,21 @@ function GameView({ lobbyId, me }) {
 
   // "Zug abgeben": the next one in the turn order (cards may have changed it) is up.
   const passTurn = () => {
+    setCleanupFor(null)
     const next = nextTurn(state)
     if (next) seatDispatch('turn', next)
+  }
+  // Ending your turn with more than seven cards in hand: discard down to seven first (cleanup
+  // step, rule 514.1 — only the active player, only at the end of their turn).
+  const endTurn = () => {
+    if ((ownBoards[turn.player]?.hand.length || 0) > MAX_HAND_SIZE) setCleanupFor(turn.player)
+    else passTurn()
   }
   const myTurn = !setup && (practice || active?.playerId === me.playerId)
   // Next step, or — in the end step — the next player.
   const upcoming = nextStep(turn.step)
   const advance = () => {
-    if (!upcoming) passTurn()
+    if (!upcoming) endTurn()
     else seatDispatch('step', { step: upcoming, turnKey: turn.key })
   }
   const advanceLabel = upcoming ? `Weiter: ${TURN_STEPS.find(s => s.key === upcoming).label}` : 'Zug abgeben'
@@ -477,7 +486,7 @@ function GameView({ lobbyId, me }) {
           )}
           {/* On large screens these sit in the phase rail at the left edge */}
           {myTurn && <button type="button" onClick={advance} className="lg:hidden btn-primary text-sm px-5 min-h-[44px] whitespace-nowrap">{advanceLabel}</button>}
-          {myTurn && upcoming && <button type="button" onClick={passTurn} className="lg:hidden btn-secondary text-sm px-4 min-h-[44px] whitespace-nowrap">Zug abgeben</button>}
+          {myTurn && upcoming && <button type="button" onClick={endTurn} className="lg:hidden btn-secondary text-sm px-4 min-h-[44px] whitespace-nowrap">Zug abgeben</button>}
           {!setup && !myTurn && mySeat && (
             // For when the active player stepped away and forgot.
             <button type="button" onClick={passTurn} className="text-xs underline px-1" style={{ color: 'var(--color-text-muted)' }}>Zug von {active?.name} beenden</button>
@@ -514,7 +523,7 @@ function GameView({ lobbyId, me }) {
             onJump={jumpTo}
             advanceLabel={advanceLabel}
             onAdvance={advance}
-            onPass={upcoming ? passTurn : null}
+            onPass={upcoming ? endTurn : null}
             manual={manualSteps}
             onToggleManual={mySeat || practice ? toggleManualSteps : null}
           />
@@ -557,7 +566,7 @@ function GameView({ lobbyId, me }) {
                 onHover={onHover}
                 label={practice ? mySeat.name : null}
                 phase={state.phase}
-                turnControls={myTurn && mySeat.playerId === active?.playerId ? { label: advanceLabel, onAdvance: advance, onPass: upcoming ? passTurn : null } : null}
+                turnControls={myTurn && mySeat.playerId === active?.playerId ? { label: advanceLabel, onAdvance: advance, onPass: upcoming ? endTurn : null } : null}
               />
             )}
           </div>
@@ -568,6 +577,23 @@ function GameView({ lobbyId, me }) {
           )}
         </div>
       </div>
+
+      {cleanupFor && ownBoards[cleanupFor] && cleanupFor === turn.player && (
+        <CleanupDiscard
+          hand={ownBoards[cleanupFor].hand}
+          playerName={practice ? nameOf(cleanupFor) : null}
+          onHover={onHover}
+          onDiscard={(iids) => {
+            act(cleanupFor, { type: 'discard', iids, reason: 'cleanup' })
+            passTurn()
+          }}
+          onSkip={() => {
+            seatDispatch('note', { text: `behält ${ownBoards[cleanupFor].hand.length} Handkarten (kein Handkartenlimit)`, by: cleanupFor })
+            passTurn()
+          }}
+          onCancel={() => setCleanupFor(null)}
+        />
+      )}
 
       {zoomFor && others.length > 0 && (
         <BoardZoom

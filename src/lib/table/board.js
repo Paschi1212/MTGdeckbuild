@@ -154,6 +154,18 @@ export function applyAction(board, action) {
       else if (to === 'command') note = `bringt ${name} zurück in die Commandzone`
       return { board: next, note, castCommander: from === 'command' && to === 'battlefield' }
     }
+    case 'discard': {
+      // { iids, reason } → these hand cards onto the graveyard at once ('cleanup': discarding
+      // down to the maximum hand size at the end of the turn — rule 514.1).
+      const chosen = board.hand.filter(card => (action.iids || []).includes(card.iid))
+      if (!chosen.length) return { board, note: null }
+      const names = chosen.map(card => card.name).join(', ')
+      const count = chosen.length === 1 ? 'eine Karte' : `${chosen.length} Karten`
+      return {
+        board: { ...board, hand: board.hand.filter(card => !chosen.includes(card)), graveyard: [...board.graveyard, ...chosen] },
+        note: action.reason === 'cleanup' ? `wirft beim Aufräumen ${count} ab: ${names}` : `wirft ${names} ab`
+      }
+    }
     case 'token': {
       // { tokens: [{ name, image, pt }], count } → new tokens on the battlefield, untapped.
       const created = []
