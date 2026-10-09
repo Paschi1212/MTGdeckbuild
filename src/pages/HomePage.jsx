@@ -127,7 +127,7 @@ function Dashboard() {
         </div>
         <div className="card">
           <div className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Sammlungswert</div>
-          <div className="text-3xl font-bold" style={{ color: 'var(--color-accent)' }}>€{collection.totalValue.toFixed(0)}</div>
+          <div className="text-3xl font-bold" style={{ color: 'var(--color-accent)' }}>€{(collection.totalValue || 0).toFixed(0)}</div>
         </div>
         <div className="card">
           <div className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Decks</div>

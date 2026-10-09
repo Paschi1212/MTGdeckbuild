@@ -43,6 +43,10 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
   const rememberedStrategy = deckPrefs.strategyOverride && planBelongsTo(deckPrefs.strategyCommander, deckPrefs.strategyOverride, commander)
     ? deckPrefs.strategyOverride
     : ''
+  // Only a plan the player wrote or corrected binds the next analysis. The AI's own last read is
+  // kept for display, but sending it back as "confirmed by the player" made the AI repeat its
+  // first guess forever (e.g. a Nekusar deck analysed around Ghyrson Starn from its 99 every time).
+  const playerStrategy = deckPrefs.strategyByPlayer ? rememberedStrategy : ''
 
   const [audit, setAudit] = useState(cachedAudit || null)
   // The user's own collection — for where each "Aus deiner Sammlung" card is stored.
@@ -189,7 +193,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
     if (!strategyOverride) {
       const formatted = formatStrategy(data.strategy)
       setStrategyDraft(formatted)
-      if (formatted) setDeckPreferences(storageKey, { strategyOverride: formatted, strategyCommander: commander })
+      if (formatted) setDeckPreferences(storageKey, { strategyOverride: formatted, strategyCommander: commander, strategyByPlayer: false })
     }
     setEditingStrategy(false)
     setLoading(false)
@@ -262,7 +266,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
     : Boolean(audit.strategy) && !mentionsCommander(formatStrategy(audit.strategy), commander))
 
   const runFreshForCommander = () => {
-    setDeckPreferences(storageKey, { strategyOverride: '', strategyCommander: commander })
+    setDeckPreferences(storageKey, { strategyOverride: '', strategyCommander: commander, strategyByPlayer: false })
     setStrategyDraft('')
     setEditingStrategy(false)
     runAudit()
@@ -280,7 +284,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
           Commander: <strong className="text-fg">{commander}</strong>
           {onChangeCommander && <> · <button type="button" onClick={onChangeCommander} className="underline">ändern</button></>}
         </p>
-        <button onClick={() => runAudit(rememberedStrategy || undefined)} className="btn-primary">
+        <button onClick={() => runAudit(playerStrategy || undefined)} className="btn-primary">
           🔍 Jetzt analysieren
         </button>
       </div>
@@ -435,7 +439,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
               />
               <div className="flex gap-2 mt-3">
                 <button
-                  onClick={() => { setDeckPreferences(storageKey, { strategyOverride: strategyDraft, strategyCommander: commander }); runAudit(strategyDraft) }}
+                  onClick={() => { setDeckPreferences(storageKey, { strategyOverride: strategyDraft, strategyCommander: commander, strategyByPlayer: true }); runAudit(strategyDraft) }}
                   className="btn-primary text-sm flex-1"
                 >
                   🔄 Neu bewerten mit diesem Spielplan
@@ -450,13 +454,16 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
               <p><strong>Win Condition:</strong> {audit.strategy.winCondition}</p>
               <p><strong>Spielplan:</strong> {audit.strategy.gamePlan}</p>
               <p><strong>Schwächen:</strong> {audit.strategy.weaknesses}</p>
-              {rememberedStrategy && (
-                <button
-                  onClick={() => { setDeckPreferences(storageKey, { strategyOverride: '', strategyCommander: commander }); runAudit() }}
-                  className="text-xs text-cmd-muted underline"
-                >
-                  Gemerkte Korrektur verwerfen & KI neu raten lassen
-                </button>
+              {playerStrategy && (
+                <p className="text-xs text-cmd-muted">
+                  Von dir festgelegt – jede Analyse richtet sich danach.{' '}
+                  <button
+                    onClick={() => { setDeckPreferences(storageKey, { strategyOverride: '', strategyCommander: commander, strategyByPlayer: false }); runAudit() }}
+                    className="underline"
+                  >
+                    Festlegung aufheben & KI neu einschätzen lassen
+                  </button>
+                </p>
               )}
             </div>
           )}
@@ -478,12 +485,12 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
         )}
 
         {audit?.parseError && (
-          <button onClick={() => runAudit(rememberedStrategy || undefined)} className="btn-primary text-sm mt-2">
+          <button onClick={() => runAudit(playerStrategy || undefined)} className="btn-primary text-sm mt-2">
             🔄 Erneut versuchen
           </button>
         )}
 
-        <button onClick={() => runAudit(rememberedStrategy || undefined)} className="btn-secondary text-xs mt-3">
+        <button onClick={() => runAudit(playerStrategy || undefined)} className="btn-secondary text-xs mt-3">
           🔄 Neu analysieren
         </button>
       </div>

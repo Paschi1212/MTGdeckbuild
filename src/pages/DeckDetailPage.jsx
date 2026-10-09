@@ -85,6 +85,7 @@ export default function DeckDetailPage() {
   // Set once a user has corrected/confirmed the AI's strategy read on the Deck-Analyse tab —
   // surfaced here too so it's visible without switching to Analyse.
   const rememberedStrategy = getDeckPreferences(deckName).strategyOverride || ''
+  const strategyByPlayer = Boolean(getDeckPreferences(deckName).strategyByPlayer)
 
   const deckCards = useMemo(() => getCardsForBinder(collection, deckName), [collection, deckName])
 
@@ -224,8 +225,9 @@ export default function DeckDetailPage() {
               <h2 className="text-lg font-bold mb-2" style={{ color: 'var(--u)' }}>🎯 Spielplan</h2>
               <p className="text-sm text-fg-2 whitespace-pre-wrap leading-relaxed mb-3">{rememberedStrategy}</p>
               <p className="text-xs text-cmd-muted">
-                Aus der letzten Analyse — wird bei jeder künftigen Analyse als Grundlage verwendet. Zum Ändern:
-                Tab "📊 Analyse" öffnen und dort auf "✏️ Korrigieren" klicken.
+                {strategyByPlayer
+                  ? 'Von dir festgelegt — jede Analyse richtet sich danach. Zum Ändern: Tab "📊 Analyse" öffnen und dort auf "✏️ Korrigieren" klicken.'
+                  : 'Einschätzung der letzten Analyse — die nächste Analyse liest den Spielplan neu aus dem Deck. Soll er so bleiben: Tab "📊 Analyse" → "✏️ Korrigieren" → "Neu bewerten mit diesem Spielplan".'}
               </p>
             </div>
           )}
