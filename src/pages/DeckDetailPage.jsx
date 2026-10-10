@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import CardTile from '../components/CardTile'
 import { loadCollection, getCardsForBinder, getAvailableCardNames } from '../lib/collection'
@@ -7,7 +7,7 @@ import { getDeckPreferences, setDeckPreferences } from '../lib/deckPreferences'
 import { getSavedAudit, setSavedAudit } from '../lib/deckAudit'
 import CommanderAutocompleteInput from '../components/CommanderAutocompleteInput'
 import DeckAuditPage from './DeckAuditPage'
-import { getPendingAiJob } from '../lib/aiMode'
+import { getPendingAiJob, cancelAiJob } from '../lib/aiMode'
 import EditDeckPage from './EditDeckPage'
 import DeckLockCard from '../components/DeckLockCard'
 
@@ -67,14 +67,24 @@ export default function DeckDetailPage() {
   const [auditResult, setAuditResult] = useState(() => getSavedAudit(deckName))
   const [editorHandoff, setEditorHandoff] = useState(null)
 
+  // The commander right now — a result can arrive from an older render (a job that was still
+  // running when the commander was changed) and must be compared with this, not with its own.
+  const commanderRef = useRef(commander)
+  commanderRef.current = commander
+  const sameName = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase()
+
   const handleAuditComplete = (data) => {
+    // A result made for another commander neither replaces this one's analysis nor switches the
+    // commander back (that is how a late Olivia result reset a deck changed to Strefan).
+    if (data.commander && !sameName(data.commander, commanderRef.current)) return
     setAuditResult(data)
     setSavedAudit(deckName, data)
-    // Analysing with a commander confirms it — no separate "Merken" needed for that.
-    if (data.commander && data.commander !== savedOverride) {
-      setCommanderOverride(deckName, data.commander)
-      setSavedOverride(data.commander)
-    }
+  }
+
+  // Analysing with a commander confirms it — no separate "Merken" needed for that.
+  const confirmCommanderForAnalysis = () => {
+    const current = commanderRef.current.trim()
+    if (current && current !== savedOverride) saveCommander(current)
   }
 
   const handlePowerLevelChange = (value) => {
@@ -118,11 +128,16 @@ export default function DeckDetailPage() {
     }
   }, [imageMap, commanderInitialized, deckCards])
 
-  const handleSaveCommander = () => {
-    const trimmed = commander.trim()
-    setCommanderOverride(deckName, trimmed)
-    setSavedOverride(trimmed)
+  // A new commander makes analyses still running for the old one worthless: stop them on the PC.
+  const saveCommander = (name) => {
+    for (const key of [`audit:${deckName}:strategy`, `audit:${deckName}:suggestions`]) {
+      const job = getPendingAiJob(key)
+      if (job && !sameName(job.meta?.commander, name)) cancelAiJob(key)
+    }
+    setCommanderOverride(deckName, name)
+    setSavedOverride(name)
   }
+  const handleSaveCommander = () => saveCommander(commander.trim())
 
   // Available (not already committed to a DIFFERENT deck) and not already in this one — don't
   // suggest adding a card that's either already here or physically used elsewhere.
@@ -268,6 +283,7 @@ export default function DeckDetailPage() {
             powerLevel={powerLevel}
             cachedAudit={auditResult}
             onAuditComplete={handleAuditComplete}
+            onAnalysisStart={confirmCommanderForAnalysis}
             onOpenEditor={(cardsToAdd, cardsToCut) => {
               setEditorHandoff({ cardsToAdd, cardsToCut })
               setActiveTab('editor')

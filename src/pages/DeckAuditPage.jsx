@@ -35,7 +35,7 @@ function planBelongsTo(savedFor, text, commander) {
 // `storageKey` (default: deckName) is where the strategy correction is remembered — a draft
 // passes "draft:<id>" so it never collides with a real ManaBox deck of the same name.
 // `onChangeCommander`: lets the Analyse tab send the player to wherever the commander is set.
-export default function DeckAuditPage({ commander, deckName, storageKey = deckName, deckCards, collectionSampleNames, powerLevel, cachedAudit, onAuditComplete, onOpenEditor, onBack, onChangeCommander, backLabel = '← Zurück zur Übersicht' }) {
+export default function DeckAuditPage({ commander, deckName, storageKey = deckName, deckCards, collectionSampleNames, powerLevel, cachedAudit, onAuditComplete, onAnalysisStart, onOpenEditor, onBack, onChangeCommander, backLabel = '← Zurück zur Übersicht' }) {
   // The remembered game plan belongs to ONE commander. It is fed into every new analysis as
   // binding — so after switching the commander (e.g. the guess said Sheoldred, the deck is
   // Wrexial) the old plan must not come along, or the analysis can never leave it.
@@ -148,7 +148,7 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
       const response = pending ? await pending : await aiFetch('/.netlify/functions/audit-deck', {
         method: 'POST',
         body: JSON.stringify({ commander, deckName, deckCards, collectionSampleNames, strategy, phase: 'suggestions', removedCards: getDeckMemory(storageKey).removed, brainNotes: brainRequestFields(getBrainMirror(storageKey)).brainNotes })
-      }, { jobKey: suggestionsJobKey })
+      }, { jobKey: suggestionsJobKey, jobMeta: { commander } })
       if (run !== runRef.current) return
       await handleSuggestionsResponse(response)
     } catch (err) {
@@ -161,7 +161,12 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
   }
 
   // context: what the logbook entry needs besides the answer — kept with a remembered job.
-  const handleStrategyResponse = async (response, { engine, newlyKept = [], newlyRemoved = [], strategyOverride = null }) => {
+  const handleStrategyResponse = async (response, { engine, newlyKept = [], newlyRemoved = [], strategyOverride = null, commander: madeFor = commander }) => {
+    // A result for another commander (the commander was changed while it ran) is obsolete.
+    if (!sameCard(madeFor, commander)) {
+      setLoading(false)
+      return
+    }
     if (!response.ok) {
       setError(await readApiError(response))
       setLoading(false)
@@ -227,7 +232,8 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
 
       // Remembered with the result, so a saved analysis still says which AI wrote it.
       const engine = isClaudeActive() ? 'claude' : 'gemini'
-      const context = { engine, newlyKept, newlyRemoved, strategyOverride: strategyOverride || null }
+      const context = { engine, newlyKept, newlyRemoved, strategyOverride: strategyOverride || null, commander }
+      onAnalysisStart?.()
       const response = await aiFetch('/.netlify/functions/audit-deck', {
         method: 'POST',
         body: JSON.stringify({ commander, deckName, deckCards, strategyOverride, powerLevel, phase: 'strategy', keptCards: memory.kept, ...brainRequestFields(brain) })
@@ -248,14 +254,17 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
   useEffect(() => {
     if (resumedRef.current) return
     resumedRef.current = true
-    const pendingStrategy = getPendingAiJob(strategyJobKey)
+    // A job made for another commander is not picked up — its result would show up under this
+    // one. (Changing the commander stops such jobs on the PC: DeckDetailPage.saveCommander.)
+    const forThisCommander = (job) => job && (!job.meta?.commander || sameCard(job.meta.commander, commander))
+    const pendingStrategy = forThisCommander(getPendingAiJob(strategyJobKey)) ? getPendingAiJob(strategyJobKey) : null
     if (pendingStrategy) {
       setLoading(true)
       setLoadingSince(pendingStrategy.startedAt)
       resumeAiJob(strategyJobKey)
         .then(response => handleStrategyResponse(response, { ...(pendingStrategy.meta || {}), engine: 'claude' }))
         .catch(err => { setError(err.message); setLoading(false) })
-    } else if (getPendingAiJob(suggestionsJobKey)) {
+    } else if (forThisCommander(getPendingAiJob(suggestionsJobKey))) {
       runSuggestions(null, resumeAiJob(suggestionsJobKey))
     }
   }, [])
