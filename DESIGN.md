@@ -117,6 +117,15 @@ farbiges Element in Listen; alles andere bleibt ruhig.
   (Goldrahmen): Karten antippen → rot „wird abgeworfen“, Knopf „N abwerfen & Zug abgeben“ erst bei
   genau N; „Zurück zum Zug“; klein „Kein Handkartenlimit … ohne Abwerfen abgeben“. Beides steht im
   Verlauf. Nicht-aktive Spieler werfen nie ab.
+- **Timer (optional):** „⏱ Timer“ in der Zugleiste → Minuten pro Zug (1/2/3/5, startet mit jedem Zug neu)
+  oder für die Partie (45/60/90/120, ab „Spiel starten“). Gilt für alle (Ereignis `timer`, im Verlauf).
+  Anzeige als Countdown „⏱ 1:42 Zug“; letzte 30 s (Zug) bzw. 5 min (Partie) gold, danach rot „Zeit um
+  −0:10“ – nur Erinnerung, keine erzwungene Aktion.
+
+## Muster: Deck-Übersicht
+
+- **Commander-Farben** unter dem Commander-Feld (`CommanderColors`): Manasymbole der Farbidentität
+  plus Name der Kombination („Grixis · Blau, Schwarz, Rot“, „Mono-Grün“, „Farblos“).
 - **Probetisch-Platzwechsel** wird unten kurz angesagt („Du sitzt jetzt bei …“), damit es nicht so
   aussieht, als wären die eigenen Karten verschwunden.
 - **Phasenleiste am linken Rand** (ab 1024 px, mitlaufend): oben wer am Zug ist (Commander-Art dahinter),

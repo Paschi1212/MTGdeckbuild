@@ -15,6 +15,7 @@ import PhaseBar from '../components/table/PhaseBar'
 import PhaseRail from '../components/table/PhaseRail'
 import BoardZoom from '../components/table/BoardZoom'
 import CleanupDiscard, { MAX_HAND_SIZE } from '../components/table/CleanupDiscard'
+import TableTimer from '../components/table/TableTimer'
 
 // Where a turn runs on by itself (see GameView): untap → upkeep → draw → main phase 1.
 const AUTO_NEXT_STEP = { untap: 'upkeep', upkeep: 'draw', draw: 'main1' }
@@ -491,6 +492,13 @@ function GameView({ lobbyId, me }) {
             // For when the active player stepped away and forgot.
             <button type="button" onClick={passTurn} className="text-xs underline px-1" style={{ color: 'var(--color-text-muted)' }}>Zug von {active?.name} beenden</button>
           )}
+          <TableTimer
+            timer={state.timer}
+            turnStartedAt={setup ? null : turn.startedAt}
+            gameStartedAt={state.startedAt}
+            canSet={Boolean(mySeat || practice)}
+            onSet={(mode, minutes) => seatDispatch('timer', mode ? { mode, minutes } : { mode: null })}
+          />
           <button type="button" onClick={() => setShowLog(v => !v)} className="btn-secondary text-sm px-4 min-h-[44px]" aria-pressed={showLog}>Verlauf</button>
           <button type="button" onClick={() => navigate('/spieltisch')} className="btn-secondary text-sm px-4 min-h-[44px]">Tisch verlassen</button>
         </div>

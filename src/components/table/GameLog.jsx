@@ -41,6 +41,7 @@ function describe(entry, nameOf, commanderOf) {
     case 'note': return `${nameOf(entry.by)} ${entry.text}`
     case 'keep': return entry.value === false ? `${target} überlegt noch einmal` : `${target} behält die Starthand`
     case 'begin': return `Das Spiel beginnt – ${nameOf(entry.first)} fängt an`
+    case 'timer': return entry.mode ? `${nameOf(entry.by)} stellt den Timer: ${entry.minutes} Min. ${entry.mode === 'turn' ? 'pro Zug' : 'für die Partie'}` : `${nameOf(entry.by)} schaltet den Timer aus`
     case 'order': return `Neue Zugreihenfolge: ${(entry.order || []).map(nameOf).join(' → ')}`
     default: return null
   }

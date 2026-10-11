@@ -10,6 +10,7 @@ import DeckAuditPage from './DeckAuditPage'
 import { getPendingAiJob, cancelAiJob } from '../lib/aiMode'
 import EditDeckPage from './EditDeckPage'
 import DeckLockCard from '../components/DeckLockCard'
+import CommanderColors from '../components/CommanderColors'
 
 // Was 150 — far too small to let the AI actually consider "which of my cards would fit" for
 // a real collection (observed live: ~2790 unique priced cards, only the first 150 in
@@ -205,6 +206,7 @@ export default function DeckDetailPage() {
                 {commander.trim() && commander.trim() === savedOverride ? '✓ Gemerkt' : '📌 Merken'}
               </button>
             </div>
+            <CommanderColors name={commander} />
             {!savedOverride && commanderInitialized && (
               <p className="text-xs text-cmd-muted mt-2">
                 Dies ist nur eine Schätzung (legendäre Kreatur, deren Farben das ganze Deck abdecken). Falls falsch: korrigieren und auf "Merken" klicken.

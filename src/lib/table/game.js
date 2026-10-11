@@ -60,7 +60,8 @@ const byTime = (a, b) => a.ts - b.ts || (a.id < b.id ? -1 : 1)
  * Table state + a log with the value after each change.
  *   phase  – 'setup' (opening hands, mulligans, turn order) until someone starts the game
  *   order  – turn order (player ids); starts as the seating, cards may change it
- *   turn   – { player, round }: whose turn it is
+ *   turn   – { player, round, startedAt }: whose turn it is, since when
+ *   timer  – optional clock: { mode: 'turn' | 'game', minutes } or null; startedAt – game start
  */
 export function foldGame(seats, events) {
   const players = Object.fromEntries((seats || []).map(seat => [seat.playerId, {
@@ -74,6 +75,8 @@ export function foldGame(seats, events) {
   let turn = { player: ids[0] || null, round: 1, step: 'main1', key: null, auto: false, firstTurn: false }
   // Games from before the setup phase existed have no 'begin' — they are already running.
   let phase = events.some(event => event.type === 'turn') ? 'playing' : 'setup'
+  let timer = null
+  let startedAt = null
   const log = []
 
   for (const event of [...events].sort(byTime)) {
@@ -122,12 +125,18 @@ export function foldGame(seats, events) {
       }
       case 'begin':
         phase = 'playing'
-        turn = { player: event.first || order[0], round: 1, step: event.phases ? 'untap' : 'main1', key: event.id, auto: Boolean(event.phases), firstTurn: true }
+        startedAt = event.ts
+        turn = { player: event.first || order[0], round: 1, step: event.phases ? 'untap' : 'main1', key: event.id, auto: Boolean(event.phases), firstTurn: true, startedAt: event.ts }
         break
       case 'turn':
         phase = 'playing'
         // Older events name the seat index instead of the player.
-        turn = { player: event.activePlayer || ids[event.seat] || ids[0], round: event.round, step: event.phases ? 'untap' : 'main1', key: event.id, auto: Boolean(event.phases), firstTurn: false }
+        startedAt ??= event.ts
+        turn = { player: event.activePlayer || ids[event.seat] || ids[0], round: event.round, step: event.phases ? 'untap' : 'main1', key: event.id, auto: Boolean(event.phases), firstTurn: false, startedAt: event.ts }
+        break
+      case 'timer':
+        // An optional clock for everyone: per turn or for the whole game (null = off).
+        timer = event.mode === 'turn' || event.mode === 'game' ? { mode: event.mode, minutes: Math.max(1, Math.min(600, Number(event.minutes) || 0)) } : null
         break
       case 'step':
         // Moving through the steps of the current turn — shown in the turn bar, not logged.
@@ -141,7 +150,7 @@ export function foldGame(seats, events) {
     }
     log.push(entry)
   }
-  return { players, monarch, order, turn, phase, log }
+  return { players, monarch, order, turn, phase, log, timer, startedAt }
 }
 
 /** Who comes after the active player in the turn order (skipping those who are out). */
