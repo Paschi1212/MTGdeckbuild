@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { loadCollection } from '../lib/collection'
+import { getCommanderOverride } from '../lib/commanderOverrides'
+import CommanderColors from '../components/CommanderColors'
 import { loadDraftDecks, deleteDraftDeck, saveDraftDeck, draftStorageKey } from '../lib/draftDecks'
 import { getSavedAudit } from '../lib/deckAudit'
 import { parseDeckListText } from '../lib/deckListImport'
@@ -121,7 +123,13 @@ export default function DecksPage() {
                 onClick={() => navigate(`/decks/${encodeURIComponent(deck.name)}`)}
                 className="card-hover text-left"
               >
-                <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--u)' }}>{deck.name}</h3>
+                <h3 className="text-lg font-bold mb-1" style={{ color: 'var(--u)' }}>{deck.name}</h3>
+                {getCommanderOverride(deck.name) && (
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2 min-h-[18px]">
+                    <span className="text-xs text-cmd-muted truncate max-w-full">{getCommanderOverride(deck.name)}</span>
+                    <CommanderColors name={getCommanderOverride(deck.name)} compact />
+                  </div>
+                )}
                 <div className="flex justify-between text-sm text-cmd-muted">
                   <span>{deck.cardCount} Karten</span>
                   <span style={{ color: 'var(--g)' }}>€{(deck.totalValue ?? 0).toFixed(2)}</span>
@@ -199,8 +207,11 @@ export default function DecksPage() {
                       <h3 className="text-lg font-bold mb-1" style={{ color: 'var(--u)' }}>
                         {draft.name || draft.commander || 'Unbenannter Entwurf'}
                       </h3>
-                      {draft.commander && draft.name && draft.name !== draft.commander && (
-                        <p className="text-xs text-cmd-muted mb-2">Commander: {draft.commander}</p>
+                      {draft.commander && (
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2">
+                          {draft.name && draft.name !== draft.commander && <span className="text-xs text-cmd-muted">Commander: {draft.commander}</span>}
+                          <CommanderColors name={draft.commander} compact />
+                        </div>
                       )}
                       <div className="flex justify-between text-sm text-cmd-muted mb-1">
                         <span>{deckSize} / 99 Karten</span>
