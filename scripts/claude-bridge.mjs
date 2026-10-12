@@ -59,7 +59,7 @@ const PORT = Number(process.env.CLAUDE_BRIDGE_PORT || 8787)
 // back to this default. Aliases — the CLI resolves each to the newest model of that family.
 const MODELS = ['opus', 'sonnet', 'haiku']
 const MODEL = MODELS.includes(process.env.CLAUDE_MODEL) ? process.env.CLAUDE_MODEL : 'opus'
-const AI_FUNCTIONS = ['audit-deck', 'chat-assistant', 'analyze-deck', 'suggest-commanders']
+const AI_FUNCTIONS = ['audit-deck', 'chat-assistant', 'analyze-deck', 'suggest-commanders', 'check-cards']
 const ALLOWED_ORIGINS = new Set([
   'https://mtgepicdeckbuilder.netlify.app',
   'http://localhost:3000',

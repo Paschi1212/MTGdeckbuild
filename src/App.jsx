@@ -18,6 +18,7 @@ import SyncBanner from './components/SyncBanner'
 // The game table pulls in the live-connection library — loaded only when someone goes there.
 const TablePage = lazy(() => import('./pages/TablePage'))
 const TableRoomPage = lazy(() => import('./pages/TableRoomPage'))
+const CardFitPage = lazy(() => import('./pages/CardFitPage'))
 import { pullFromCloud, scheduleCloudPush, checkForRemoteChanges } from './lib/cloudSync'
 import { checkBridge } from './lib/aiMode'
 import { flushBrainOutbox } from './lib/brain'
@@ -125,6 +126,7 @@ function App() {
             <Route path="/upload" element={user ? <UploadPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/collection" element={user ? <CollectionPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/decks" element={user ? <DecksPage /> : <HomePage user={user} onLogin={handleLogin} />} />
+            <Route path="/karten-pruefen" element={user ? <Suspense fallback={<p className="text-fg-muted">Lade …</p>}><CardFitPage /></Suspense> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/decks/:deckName" element={user ? <DeckDetailPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/select-commander" element={user ? <CommanderSelectPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/strategy" element={user ? <StrategyPage /> : <HomePage user={user} onLogin={handleLogin} />} />

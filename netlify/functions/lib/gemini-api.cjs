@@ -1528,8 +1528,151 @@ Antworte auf Deutsch, knapp und konkret (max. ca. 150 Wörter, außer der Nutzer
   }
 }
 
+
+// ── Neue Karten gegen alle Decks prüfen ("Karten prüfen") ─────────────────────────────────
+// The reverse of the deck audit: a pile of new cards (a booster display, a trade) checked
+// against every deck. Color identity, "already in the deck" and basic lands are decided here
+// in code; the AI only judges which legal cards really improve which deck, and what they
+// would replace.
+
+const CARD_FIT_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+    decks: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          deck: { type: 'string' },
+          picks: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                card: { type: 'string' },
+                reason: { type: 'string' },
+                cut: { type: 'string' },
+                cutReason: { type: 'string' }
+              },
+              required: ['card', 'reason']
+            }
+          }
+        },
+        required: ['deck', 'picks']
+      }
+    }
+  },
+  required: ['summary', 'decks']
+}
+
+const BASIC_LANDS = new Set(['plains', 'island', 'swamp', 'mountain', 'forest', 'wastes', 'snow-covered plains', 'snow-covered island', 'snow-covered swamp', 'snow-covered mountain', 'snow-covered forest'])
+const MAX_PICKS_PER_DECK = 10
+
+async function checkCardsAgainstDecks({ cards, decks, preferences = '' }) {
+  const candidateNames = [...new Set(cards.map(c => c.name))].filter(name => !BASIC_LANDS.has(normalizeCardName(name)))
+  const commanderParts = (commander) => String(commander || '').split(/\s*(?:\+|&&)\s*/).map(n => n.trim()).filter(Boolean)
+  const commanderNames = [...new Set(decks.flatMap(deck => commanderParts(deck.commander)))]
+  const info = await getBulkPrices([...candidateNames, ...commanderNames])
+  const lookup = (name) => info[name] || Object.values(info).find(entry => normalizeCardName(entry.name) === normalizeCardName(name)) || null
+  const identity = (entry) => String(entry?.colorIdentity || '').split(/\s+/).filter(Boolean)
+
+  const deckInfo = decks.map(deck => {
+    const parts = commanderParts(deck.commander).map(lookup)
+    const colors = new Set(parts.flatMap(identity))
+    const inDeck = new Set(deck.cards.map(normalizeCardName))
+    return { ...deck, colors, known: parts.length > 0 && parts.every(Boolean), commanderText: parts.map(e => (e ? `${e.name}: ${e.oracleText}` : '')).join(' | '), inDeck }
+  })
+
+  const unknown = []
+  const fitsNowhere = []
+  const candidates = []
+  for (const name of candidateNames) {
+    const entry = lookup(name)
+    if (!entry) { unknown.push(name); continue }
+    const colors = identity(entry)
+    const legalIn = deckInfo.filter(deck => deck.known && colors.every(c => deck.colors.has(c)) && !deck.inDeck.has(normalizeCardName(entry.name)))
+    if (!legalIn.length) { fitsNowhere.push(entry.name); continue }
+    candidates.push({ name: entry.name, entry, legalIn: legalIn.map(deck => deck.name) })
+  }
+
+  if (!candidates.length) {
+    return { summary: 'Keine der Karten passt farblich in eines deiner Decks (oder sie stecken schon drin).', results: [], unpicked: [], fitsNowhere, unknown }
+  }
+
+  const deckBlock = deckInfo.filter(deck => deck.known).map(deck => [
+    `### ${deck.name} — Commander: ${deck.commander} (Farben: ${[...deck.colors].join('') || 'farblos'})`,
+    `Commander-Text: ${deck.commanderText.slice(0, 600)}`,
+    deck.strategy ? `Spielplan (letzte Analyse/Spieler): ${deck.strategy.slice(0, 600)}` : null,
+    `Aktuelle Karten (ohne Standardländer): ${deck.cards.filter(n => !BASIC_LANDS.has(normalizeCardName(n))).join(', ')}`
+  ].filter(Boolean).join('\n')).join('\n\n')
+  const candidateBlock = candidates.map(({ name, entry, legalIn }) =>
+    `- ${name} [${entry.manaCost || '–'} · ${entry.typeLine || ''}] ${String(entry.oracleText || '').replace(/\s+/g, ' ').slice(0, 260)} → farblich erlaubt in: ${legalIn.join(', ')}`
+  ).join('\n')
+
+  const prompt = `Ein Commander-Spieler hat neue Karten bekommen (z. B. aus einem Booster-Display) und will wissen, welche davon seine bestehenden Decks WIRKLICH verbessern.
+
+SEINE DECKS:
+${deckBlock}
+${preferences ? `\nVORLIEBEN DES SPIELERS (gelten für alle Decks):\n${preferences.slice(0, 3000)}\n` : ''}
+NEUE KARTEN (Farbidentität ist bereits geprüft — eine Karte darf NUR in die Decks, die hinter "farblich erlaubt in" stehen):
+${candidateBlock}
+
+AUFGABE:
+Ordne die neuen Karten den Decks zu, in denen sie eine echte Verbesserung sind — gemessen am Commander und Spielplan des jeweiligen Decks, nicht an der Kartenstärke allgemein. Eine Karte darf in mehreren Decks auftauchen, wenn sie überall wirklich passt. Nenne pro Deck höchstens ${MAX_PICKS_PER_DECK} Karten, die besten zuerst; ein Deck ohne passende Karte bekommt eine leere Liste.
+Für jede Karte: "reason" = EIN kurzer Satz, was sie in DIESEM Deck konkret leistet (Bezug zu Commander/Spielplan/Synergie). "cut" = eine Karte, die AKTUELL in diesem Deck steht und für dieselbe Rolle schwächer ist (wortwörtlich aus der Kartenliste des Decks), "cutReason" = ein kurzer Satz warum. Ohne sinnvollen Tausch: "cut" leer lassen.
+"summary": 2–3 Sätze Gesamtfazit (welche Decks profitieren am meisten, auffällige Treffer).
+Prüfe Kartentexte, bei denen du unsicher bist, mit card_lookup. Antworte NUR mit dem JSON-Objekt; "deck" ist exakt der Deckname wie oben.`
+
+  console.log(`[Gemini] checkCardsAgainstDecks: ${candidates.length} candidates × ${deckInfo.length} decks (model: ${GEMINI_MODEL_AUDIT})`)
+  const result = await generateContentWithRetry({
+    model: GEMINI_MODEL_AUDIT,
+    contents: prompt,
+    config: { temperature: 0.3, responseMimeType: 'application/json', responseSchema: CARD_FIT_SCHEMA, maxOutputTokens: 16000 }
+  })
+  const parsed = parseJson(result.text)
+  if (!parsed) {
+    return { summary: '', results: [], unpicked: candidates.map(c => c.name), fitsNowhere, unknown, parseError: true }
+  }
+
+  const byName = new Map(candidates.map(c => [normalizeCardName(c.name), c]))
+  const picked = new Set()
+  const results = []
+  for (const deck of deckInfo) {
+    const answer = (parsed.decks || []).find(d => normalizeCardName(d.deck) === normalizeCardName(deck.name))
+    const picks = []
+    for (const pick of answer?.picks || []) {
+      const candidate = byName.get(normalizeCardName(pick.card))
+      // Only cards from the pile, only where their colors are allowed, each once per deck.
+      if (!candidate || !candidate.legalIn.includes(deck.name) || picks.some(p => p.card === candidate.name)) continue
+      const cut = pick.cut && deck.inDeck.has(normalizeCardName(pick.cut)) ? deck.cards.find(n => normalizeCardName(n) === normalizeCardName(pick.cut)) : ''
+      picks.push({
+        card: candidate.name,
+        image: candidate.entry.image || null,
+        eur: candidate.entry.eur || null,
+        reason: String(pick.reason || '').slice(0, 400),
+        cut: cut || '',
+        cutReason: cut ? String(pick.cutReason || '').slice(0, 300) : ''
+      })
+      picked.add(candidate.name)
+      if (picks.length >= MAX_PICKS_PER_DECK) break
+    }
+    results.push({ deck: deck.name, commander: deck.commander, colors: [...deck.colors], known: deck.known, picks })
+  }
+
+  return {
+    summary: String(parsed.summary || ''),
+    results,
+    unpicked: candidates.map(c => c.name).filter(name => !picked.has(name)),
+    fitsNowhere,
+    unknown,
+    usage: mapUsage(result)
+  }
+}
+
 module.exports = {
   analyzeDeck,
+  checkCardsAgainstDecks,
   auditDeckStrategy,
   auditDeckSuggestions,
   suggestCommanders,

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { loadCollection } from '../lib/collection'
 import { loadDraftDecks, deleteDraftDeck, saveDraftDeck, draftStorageKey } from '../lib/draftDecks'
 import { getSavedAudit } from '../lib/deckAudit'
@@ -84,6 +84,13 @@ export default function DecksPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <h1>🃏 Meine Decks</h1>
+      <Link to="/karten-pruefen" className="card mb-6 flex items-center justify-between gap-3 hover:opacity-90" style={{ textDecoration: 'none' }}>
+        <span>
+          <span className="font-bold text-fg block">Neue Karten prüfen</span>
+          <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Display geöffnet oder getauscht? Welche Karten machen welches Deck besser – und was fliegt dafür raus.</span>
+        </span>
+        <span aria-hidden="true" className="text-xl" style={{ color: 'var(--color-text-muted)' }}>›</span>
+      </Link>
 
       <div className="flex gap-2 mb-6">
         <TabButton active={tab === 'decks'} onClick={() => setTab('decks')}>Decks</TabButton>

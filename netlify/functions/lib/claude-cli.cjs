@@ -214,7 +214,8 @@ function runClaudeCli({ prompt, schema, model, attempt = 1 }) {
         }
       } else if (event.type === 'rate_limit_event' && event.rate_limit_info?.status && event.rate_limit_info.status !== 'allowed') {
         console.log(`[Claude] ⏳ Claude-Limit: ${event.rate_limit_info.status} (${event.rate_limit_info.rateLimitType || '?'})`)
-        report('wartet auf dein Claude-Limit')
+        // 'allowed_warning' only means the limit is getting close — the run goes on.
+        if (event.rate_limit_info.status !== 'allowed_warning') report('wartet auf dein Claude-Limit')
       }
     }
 
