@@ -53,6 +53,9 @@ export function parseCollectionCsv(file) {
               rarity: row['Rarity'] || '',
               scryfallId: row['Scryfall ID'] || '',
               purchasePrice: price,
+              // When the card was scanned into ManaBox ("Added", ISO time) — e.g. to find
+              // everything from a freshly opened display.
+              added: row['Added'] || '',
               binderName,
               binderType
             })

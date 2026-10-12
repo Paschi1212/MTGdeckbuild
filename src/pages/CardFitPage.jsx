@@ -24,6 +24,13 @@ function parseList(text) {
   return [...new Set(names)]
 }
 
+// "2026-10-12T09:41:07.123Z" → the local calendar day "2026-10-12".
+const localDay = (iso) => {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('sv-SE')
+}
+const formatDay = (day) => new Date(`${day}T12:00:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })
+
 const loadLast = () => { try { return JSON.parse(localStorage.getItem(LAST_KEY) || 'null') } catch { return null } }
 
 // The deck audit turned around: a pile of new cards (a booster display, a trade, a set in the
@@ -47,6 +54,20 @@ export default function CardFitPage() {
     return [...bySet.values()].sort((a, b) => (b.loose - a.loose) || (b.count - a.count))
   }, [collection])
 
+  // Scan days from ManaBox's "Added" column, newest first: a display is scanned in one go.
+  const scanDays = useMemo(() => {
+    const byDay = new Map()
+    for (const card of collection?.cards || []) {
+      const day = card.added ? localDay(card.added) : ''
+      if (!day) continue
+      const entry = byDay.get(day) || { day, count: 0, loose: 0 }
+      entry.count += card.quantity || 1
+      if (card.binderType !== 'deck') entry.loose += card.quantity || 1
+      byDay.set(day, entry)
+    }
+    return [...byDay.values()].sort((a, b) => b.day.localeCompare(a.day))
+  }, [collection])
+
   const decks = useMemo(() => (collection?.decks || []).map(deck => ({
     name: deck.name,
     commander: getCommanderOverride(deck.name) || '',
@@ -54,7 +75,9 @@ export default function CardFitPage() {
     strategy: getDeckPreferences(deck.name).strategyOverride || ''
   })).sort((a, b) => a.name.localeCompare(b.name, 'de')), [collection])
 
-  const [source, setSource] = useState(sets.length ? 'set' : 'list')
+  const [source, setSource] = useState(scanDays.length ? 'added' : sets.length ? 'set' : 'list')
+  const [fromDay, setFromDay] = useState(scanDays[0]?.day || '')
+  const [toDay, setToDay] = useState(scanDays[0]?.day || '')
   const [setCode, setSetCode] = useState(sets[0]?.code || '')
   const [looseOnly, setLooseOnly] = useState(true)
   const [listText, setListText] = useState('')
@@ -62,11 +85,15 @@ export default function CardFitPage() {
 
   const cards = useMemo(() => {
     if (source === 'list') return parseList(listText)
+    const inRange = (card) => {
+      const day = card.added ? localDay(card.added) : ''
+      return day && (!fromDay || day >= fromDay) && (!toDay || day <= toDay)
+    }
     const names = (collection?.cards || [])
-      .filter(card => card.setCode === setCode && (!looseOnly || card.binderType !== 'deck'))
+      .filter(card => (source === 'added' ? inRange(card) : card.setCode === setCode) && (!looseOnly || card.binderType !== 'deck'))
       .map(card => card.name)
     return [...new Set(names)]
-  }, [source, listText, setCode, looseOnly, collection])
+  }, [source, listText, setCode, fromDay, toDay, looseOnly, collection])
 
   const [last, setLast] = useState(loadLast)
   const [running, setRunning] = useState(false)
@@ -103,9 +130,10 @@ export default function CardFitPage() {
       .finally(() => setRunning(false))
   }, [])
 
-  const sourceLabel = source === 'set'
-    ? `${sets.find(s => s.code === setCode)?.name || setCode}${looseOnly ? ' (nicht in Decks)' : ''}`
-    : 'Eingefügte Liste'
+  const rangeLabel = fromDay === toDay ? `erfasst am ${formatDay(fromDay)}` : `erfasst ${fromDay ? `ab ${formatDay(fromDay)}` : ''}${toDay ? ` bis ${formatDay(toDay)}` : ''}`
+  const sourceLabel = source === 'list'
+    ? 'Eingefügte Liste'
+    : `${source === 'set' ? sets.find(s => s.code === setCode)?.name || setCode : rangeLabel}${looseOnly ? ' (nicht in Decks)' : ''}`
   const selectedDecks = decks.filter(deck => deck.commander && chosenDecks.has(deck.name))
 
   const run = async () => {
@@ -161,8 +189,8 @@ export default function CardFitPage() {
       <div className="grid lg:grid-cols-[1fr_320px] gap-6 items-start mb-8">
         <section className="card space-y-4">
           <h2 className="text-lg font-bold">1. Welche Karten?</h2>
-          <div className="flex gap-2">
-            {[['set', 'Set aus deiner Sammlung'], ['list', 'Liste einfügen']].map(([key, label]) => (
+          <div className="flex flex-wrap gap-2">
+            {[['added', 'Nach Erfassungsdatum'], ['set', 'Nach Set'], ['list', 'Liste einfügen']].map(([key, label]) => (
               <button
                 key={key}
                 type="button"
@@ -181,23 +209,73 @@ export default function CardFitPage() {
             ))}
           </div>
 
-          {source === 'set' ? (
-            sets.length ? (
+          {source === 'added' && (
+            scanDays.length ? (
               <div className="space-y-3">
-                <select value={setCode} onChange={(e) => setSetCode(e.target.value)} className="w-full text-fg rounded-xl p-2.5 text-sm min-h-[44px]" aria-label="Set wählen">
-                  {sets.map(set => (
-                    <option key={set.code} value={set.code}>{set.name} ({set.code}) – {set.count} Karten, {set.loose} nicht in Decks</option>
-                  ))}
-                </select>
-                <label className="flex items-start gap-2 text-sm cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
-                  <input type="checkbox" checked={looseOnly} onChange={(e) => setLooseOnly(e.target.checked)} className="mt-1" />
-                  <span>Nur Karten, die noch in keinem Deck stecken</span>
-                </label>
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                    <span className="block mb-1">Erfasst ab</span>
+                    <input type="date" value={fromDay} max={toDay || undefined} onChange={(e) => setFromDay(e.target.value)} className="text-fg rounded-xl p-2 text-sm min-h-[44px]" />
+                  </label>
+                  <label className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                    <span className="block mb-1">bis</span>
+                    <input type="date" value={toDay} min={fromDay || undefined} onChange={(e) => setToDay(e.target.value)} className="text-fg rounded-xl p-2 text-sm min-h-[44px]" />
+                  </label>
+                </div>
+                <div>
+                  <span className="text-xs block mb-1.5" style={{ color: 'var(--color-text-muted)' }}>Deine letzten Scan-Tage</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {scanDays.slice(0, 8).map(day => {
+                      const on = fromDay === day.day && toDay === day.day
+                      return (
+                        <button
+                          key={day.day}
+                          type="button"
+                          onClick={() => { setFromDay(day.day); setToDay(day.day) }}
+                          aria-pressed={on}
+                          className="px-2.5 min-h-[36px] [@media(pointer:coarse)]:min-h-[40px] text-xs tabular-nums"
+                          style={{
+                            background: on ? 'var(--color-accent)' : 'var(--color-surface)',
+                            color: on ? 'var(--color-bg)' : 'var(--color-text)',
+                            border: '1px solid var(--color-border)',
+                            borderRadius: 'var(--radius-sm)'
+                          }}
+                        >
+                          {formatDay(day.day)} · {day.count}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
               </div>
+            ) : (
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                Deine gespeicherte Sammlung kennt das Erfassungsdatum noch nicht. Lade deinen ManaBox-Export einmal neu hoch
+                (<Link to="/upload" className="underline">Sammlung hochladen</Link>) – danach kannst du hier nach Scan-Tag filtern.
+              </p>
+            )
+          )}
+
+          {source === 'set' && (
+            sets.length ? (
+              <select value={setCode} onChange={(e) => setSetCode(e.target.value)} className="w-full text-fg rounded-xl p-2.5 text-sm min-h-[44px]" aria-label="Set wählen">
+                {sets.map(set => (
+                  <option key={set.code} value={set.code}>{set.name} ({set.code}) – {set.count} Karten, {set.loose} nicht in Decks</option>
+                ))}
+              </select>
             ) : (
               <p className="text-sm text-cmd-muted">In deiner Sammlung stehen keine Set-Angaben – füge die Karten als Liste ein.</p>
             )
-          ) : (
+          )}
+
+          {source !== 'list' && (scanDays.length > 0 || source === 'set') && (
+            <label className="flex items-start gap-2 text-sm cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
+              <input type="checkbox" checked={looseOnly} onChange={(e) => setLooseOnly(e.target.checked)} className="mt-1" />
+              <span>Nur Karten, die noch in keinem Deck stecken</span>
+            </label>
+          )}
+
+          {source === 'list' && (
             <textarea
               value={listText}
               onChange={(e) => setListText(e.target.value)}
