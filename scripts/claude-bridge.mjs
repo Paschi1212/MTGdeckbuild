@@ -17,17 +17,20 @@
  * long analysis survives a locked tablet screen.
  */
 
+import { root } from './bridge-env.mjs' // first: settings (.env, AI_PROVIDER) before the AI code loads
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
-import { createRequire } from 'node:module'
-import { fileURLToPath } from 'node:url'
-import dotenv from 'dotenv'
 import { randomUUID, createHash } from 'node:crypto'
 import { readBrain, appendDeckLog, vaultPath, vaultAvailable } from './obsidian-brain.mjs'
 import { setupRemote } from './tailscale-remote.mjs'
-
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+// The app's AI functions, imported statically so the download can be bundled into one file.
+import claudeCli from '../netlify/functions/lib/claude-cli.cjs'
+import auditDeck from '../netlify/functions/audit-deck.cjs'
+import chatAssistant from '../netlify/functions/chat-assistant.cjs'
+import analyzeDeck from '../netlify/functions/analyze-deck.cjs'
+import suggestCommanders from '../netlify/functions/suggest-commanders.cjs'
+import checkCards from '../netlify/functions/check-cards.cjs'
 
 // Everything the bridge window shows also goes to claude-bridge.log (fresh on every start,
 // gitignored) — so a start that fails or a window that was closed can still be diagnosed.
@@ -51,11 +54,7 @@ process.on('uncaughtException', error => {
   process.exit(1)
 })
 
-dotenv.config({ path: path.join(root, '.env') })
-process.env.AI_PROVIDER = 'claude'
-
-const require = createRequire(import.meta.url)
-const { runClaudeCli, withClaudeRequest } = require(path.join(root, 'netlify/functions/lib/claude-cli.cjs'))
+const { runClaudeCli, withClaudeRequest } = claudeCli
 
 const PORT = Number(process.env.CLAUDE_BRIDGE_PORT || 8787)
 // The website sends the model picked on /claude-modus (X-Claude-Model); anything else falls
@@ -153,13 +152,14 @@ function readBody(req) {
   })
 }
 
-const handlers = new Map()
-function getHandler(name) {
-  if (!handlers.has(name)) {
-    handlers.set(name, require(path.join(root, 'netlify/functions', `${name}.cjs`)).handler)
-  }
-  return handlers.get(name)
+const HANDLERS = {
+  'audit-deck': auditDeck.handler,
+  'chat-assistant': chatAssistant.handler,
+  'analyze-deck': analyzeDeck.handler,
+  'suggest-commanders': suggestCommanders.handler,
+  'check-cards': checkCards.handler
 }
+const getHandler = (name) => HANDLERS[name]
 
 const time = () => new Date().toLocaleTimeString('de-DE')
 
@@ -355,7 +355,7 @@ server.on('error', error => {
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`🧠 Claude-Brücke läuft auf http://127.0.0.1:${PORT} — prüfe Claude-Login …`)
   console.log('   (Fenster offen lassen; beenden mit Strg+C)')
-  vaultAvailable().then(ok => console.log(ok ? `🧠 Obsidian-Gehirn: ${vaultPath()}` : `⚠️ Obsidian-Tresor nicht gefunden (${vaultPath()}) – Analysen laufen ohne Gehirn.`))
+  vaultAvailable().then(ok => console.log(ok ? `🧠 Obsidian-Gehirn: ${vaultPath()}` : `ℹ️ Kein Obsidian-Gehirn (${vaultPath()}) – optional, Analysen laufen auch ohne.`))
   selfTest()
   ensureRemote()
 })

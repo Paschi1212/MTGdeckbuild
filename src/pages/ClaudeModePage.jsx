@@ -248,16 +248,40 @@ export default function ClaudeModePage() {
         </div>
       )}
 
+      <div className="card mb-6 space-y-3" style={{ borderLeft: '4px solid var(--gold)' }}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 basis-72">
+            <h2 className="text-lg font-bold mb-1">Claude-Brücke herunterladen</h2>
+            <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+              Für alle mit eigenem Claude-Abo (Pro oder Max): Die Brücke läuft auf deinem Rechner und lässt
+              dein Claude die Analysen, den Assistenten und „Neue Karten prüfen“ übernehmen – ohne Zeitlimit.
+              Windows, macOS und Linux.
+            </p>
+          </div>
+          <a href="/downloads/mtg-claude-bridge.zip" download className="btn-primary text-sm px-5 min-h-[44px] inline-flex items-center whitespace-nowrap">
+            Brücke herunterladen (ZIP)
+          </a>
+        </div>
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+          Voraussetzungen: <a href="https://nodejs.org" target="_blank" rel="noreferrer" className="underline">Node.js</a> (LTS) und{' '}
+          <a href="https://claude.com/claude-code" target="_blank" rel="noreferrer" className="underline">Claude Code</a>, einmal mit
+          deinem Claude-Konto angemeldet. Die Anfragen laufen über dein Abo und zählen gegen dessen Limits.
+        </p>
+      </div>
+
       <div className="card mb-6 space-y-4">
         <h2 className="text-lg font-bold">Anleitung – am PC</h2>
         <ol className="list-decimal pl-5 space-y-3 leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
           <li>
-            <strong>Einmalig – Claude anmelden:</strong> Terminal öffnen, <Code>claude</Code> eingeben, dort{' '}
-            <Code>/login</Code> ausführen und anmelden. Danach das Terminal schließen.
+            <strong>Einmalig – einrichten:</strong> <a href="https://nodejs.org" target="_blank" rel="noreferrer" className="underline">Node.js</a> und{' '}
+            <a href="https://claude.com/claude-code" target="_blank" rel="noreferrer" className="underline">Claude Code</a> installieren.
+            Terminal öffnen, <Code>claude</Code> eingeben, dort <Code>/login</Code> ausführen und anmelden. Danach das Terminal schließen.
+            Die Brücke oben herunterladen und den ZIP-Ordner an einen festen Platz entpacken (z. B. Dokumente).
           </li>
           <li>
-            <strong>Jedes Mal – Brücke starten:</strong> Doppelklick auf <strong>Claude-Bridge-starten</strong> (Desktop).
-            Warten auf „✅ Claude-Modus bereit“ und das Fenster offen lassen (minimieren geht).
+            <strong>Jedes Mal – Brücke starten:</strong> Im entpackten Ordner Doppelklick auf <strong>Claude-Bridge-starten</strong>{' '}
+            (macOS: <strong>claude-bridge-starten.command</strong>). Warten auf „✅ Claude-Modus bereit“ und das Fenster offen lassen
+            (minimieren geht).
           </li>
           <li>
             <strong>Einmalig pro Browser – freischalten:</strong> Auf dieser Seite „Auf diesem Gerät freischalten“ klicken.
