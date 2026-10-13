@@ -58,27 +58,39 @@ function AiModeSwitch() {
     else setPreferredMode(claudeActive ? 'gemini' : 'claude')
   }
   const title = claudeActive
-    ? `Claude ${modelLabel} beantwortet die KI-Anfragen (über ${where}). Klick: zu Gemini wechseln. Modell ändern: Seite /claude-modus.`
+    ? `Claude ${modelLabel} beantwortet die KI-Anfragen (über ${where}). Klick: zu Gemini wechseln. Übersicht & Modell: Klick aufs Symbol.`
     : bridge.ready
       ? 'Gemini aktiv. Klick: zu Claude wechseln.'
       : `Gemini aktiv — ${fallbackNote || 'Claude-Brücke nicht bereit'}. Klick: Status & Anleitung.`
 
+  // One control, two targets: the icon opens the KI-Modus overview (status, model, download,
+  // instructions), the name switches between Claude and Gemini.
+  const colors = {
+    background: claudeActive ? 'var(--color-accent)' : 'var(--color-surface)',
+    color: claudeActive ? 'var(--color-bg)' : 'var(--color-text)'
+  }
   return (
-    <button
-      onClick={handleClick}
-      title={title}
-      className="h-11 md:h-12 px-3 flex items-center gap-1.5 text-sm font-semibold whitespace-nowrap"
-      style={{
-        background: claudeActive ? 'var(--color-accent)' : 'var(--color-surface)',
-        color: claudeActive ? 'var(--color-bg)' : 'var(--color-text)',
-        border: '1px solid var(--color-border)',
-        borderRadius: 'var(--radius-sm)'
-      }}
-    >
-      {claudeActive ? `🧠 ${modelLabel}` : '✨ Gemini'}
-      {fallbackNote && <span className="hidden sm:inline font-normal text-xs" style={{ color: 'var(--color-text-muted)' }}>· {fallbackNote}</span>}
-      {!bridge.ready && <span className="w-2 h-2 rounded-full" style={{ background: 'var(--color-text-muted)' }} />}
-    </button>
+    <div className="h-11 md:h-12 flex items-stretch whitespace-nowrap" style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+      <button
+        onClick={() => navigate('/claude-modus')}
+        title="KI-Modus: Status, Modell, Brücke & Anleitung"
+        aria-label="KI-Modus-Übersicht öffnen"
+        className="px-2.5 flex items-center text-base"
+        style={{ ...colors, borderRight: `1px solid ${claudeActive ? 'rgba(0,0,0,0.25)' : 'var(--color-border)'}` }}
+      >
+        {claudeActive ? '🧠' : '✨'}
+      </button>
+      <button
+        onClick={handleClick}
+        title={title}
+        className="pl-2 pr-3 flex items-center gap-1.5 text-sm font-semibold"
+        style={colors}
+      >
+        {claudeActive ? modelLabel : 'Gemini'}
+        {fallbackNote && <span className="hidden sm:inline font-normal text-xs" style={{ color: 'var(--color-text-muted)' }}>· {fallbackNote}</span>}
+        {!bridge.ready && <span className="w-2 h-2 rounded-full" style={{ background: 'var(--color-text-muted)' }} />}
+      </button>
+    </div>
   )
 }
 
