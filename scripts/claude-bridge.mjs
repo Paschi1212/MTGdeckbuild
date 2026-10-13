@@ -23,7 +23,7 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import dotenv from 'dotenv'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash } from 'node:crypto'
 import { readBrain, appendDeckLog, vaultPath, vaultAvailable } from './obsidian-brain.mjs'
 import { setupRemote } from './tailscale-remote.mjs'
 
@@ -35,6 +35,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const LOG_FILE = path.join(root, process.env.CLAUDE_BRIDGE_PORT && process.env.CLAUDE_BRIDGE_PORT !== '8787'
   ? `claude-bridge-${process.env.CLAUDE_BRIDGE_PORT}.log`
   : 'claude-bridge.log')
+// The previous run's log is kept next to it (*.prev.log): problems are usually reported after
+// the bridge was restarted, which would otherwise have wiped exactly the lines that matter.
+try { if (fs.existsSync(LOG_FILE)) fs.copyFileSync(LOG_FILE, LOG_FILE.replace(/\.log$/, '.prev.log')) } catch {}
 try { fs.writeFileSync(LOG_FILE, `Start ${new Date().toLocaleString('de-DE')} · Node ${process.version}\n`) } catch {}
 for (const level of ['log', 'warn', 'error']) {
   const original = console[level].bind(console)
@@ -226,7 +229,8 @@ const server = http.createServer(async (req, res) => {
   const jobResult = url.pathname.match(/^\/jobs\/([0-9a-f-]{36})$/)
   if (req.method === 'DELETE' && jobResult) {
     const job = jobs.get(jobResult[1])
-    if (job && !job.finishedAt) {
+    // A shared job only stops when everyone waiting for it has let it go.
+    if (job && !job.finishedAt && --job.subscribers <= 0) {
       job.controller.abort()
       console.log(`[${time()}] ✋ Auftrag abgebrochen (durch eine neuere Anfrage ersetzt)`)
     }
@@ -263,9 +267,22 @@ const server = http.createServer(async (req, res) => {
   }
   const requestedModel = String(req.headers['x-claude-model'] || '').toLowerCase()
   const model = MODELS.includes(requestedModel) ? requestedModel : MODEL
+
+  // The same request while it is still running (a second tab, the tablet next to the PC picking
+  // up the same analysis) joins that job instead of letting Claude do the whole work twice.
+  const sameKey = `${name}:${model}:${createHash('sha1').update(body).digest('hex')}`
+  if (jobStart) {
+    const running = [...jobs].find(([, job]) => job.key === sameKey && !job.finishedAt && !job.controller.signal.aborted)
+    if (running) {
+      running[1].subscribers++
+      console.log(`[${time()}] ↺ ${name}: gleicher Auftrag läuft schon – wird mitbenutzt`)
+      return send(res, 202, { id: running[0] }, origin)
+    }
+  }
+
   const controller = new AbortController()
   // What Claude is doing right now (checking card texts, writing, retrying …) — the page shows it.
-  const job = { model, startedAt: Date.now(), finishedAt: null, controller, progress: null }
+  const job = { model, startedAt: Date.now(), finishedAt: null, controller, progress: null, key: sameKey, subscribers: 1 }
   const onProgress = progress => { job.progress = progress }
   const run = runFunction(name, body, model, req.headers, `/.netlify/functions/${name}`, url.searchParams, controller.signal, onProgress)
 
