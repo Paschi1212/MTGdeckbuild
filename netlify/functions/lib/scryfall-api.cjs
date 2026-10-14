@@ -303,7 +303,9 @@ async function getCardsByIds(scryfallIds) {
             typeLine: card.type_line,
             cmc: card.cmc ?? 0,
             // Shown as mana pips in the deck editor; a DFC/split card lists each face's cost.
-            manaCost: card.mana_cost ?? (card.card_faces || []).map(f => f.mana_cost).filter(Boolean).join(' // ')
+            manaCost: card.mana_cost ?? (card.card_faces || []).map(f => f.mana_cost).filter(Boolean).join(' // '),
+            // For searching the collection by rules text (both faces of a double-faced card).
+            oracleText: card.oracle_text ?? (card.card_faces || []).map(f => f.oracle_text).filter(Boolean).join(' // ')
           }
           result[card.id] = entry
           cache.set(`id:${card.id}`, { data: entry, timestamp: Date.now() })

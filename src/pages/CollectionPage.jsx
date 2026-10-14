@@ -101,6 +101,8 @@ export default function CollectionPage() {
   const collection = source === 'mine' ? myCollection : secondaryCollections.find(c => c.id === source) || myCollection
 
   const [search, setSearch] = useState('')
+  // Rules text (Scryfall's English oracle text), e.g. "proliferate" or "draw a card".
+  const [textSearch, setTextSearch] = useState('')
   const [imageMap, setImageMap] = useState({ byId: {}, byName: {} })
   const [loadingImages, setLoadingImages] = useState(true)
   // Cards whose image/price didn't come back (Scryfall rate limit) — retried automatically
@@ -194,6 +196,16 @@ export default function CollectionPage() {
       result = result.filter(c => c.name.toLowerCase().includes(q))
     }
 
+    // Every word must appear somewhere in the rules text ("draw card" finds "draw a card");
+    // a phrase in quotes must appear exactly.
+    if (textSearch.trim()) {
+      const terms = [...textSearch.toLowerCase().matchAll(/"([^"]+)"|(\S+)/g)].map(m => m[1] || m[2])
+      result = result.filter(c => {
+        const text = String(resolveCard(c)?.oracleText || '').toLowerCase()
+        return text && terms.every(term => text.includes(term))
+      })
+    }
+
     if (selectedColors.length > 0) {
       result = result.filter(c => {
         // Subset match, not overlap: a card must not contain any color OUTSIDE the
@@ -245,7 +257,7 @@ export default function CollectionPage() {
     }
 
     return result
-  }, [collection, search, selectedColors, selectedType, availability, selectedBinder, minQuantity, minPrice, maxPrice, minCmc, maxCmc, sortBy, imageMap])
+  }, [collection, search, textSearch, selectedColors, selectedType, availability, selectedBinder, minQuantity, minPrice, maxPrice, minCmc, maxCmc, sortBy, imageMap])
 
   if (!collection) {
     return (
@@ -293,14 +305,33 @@ export default function CollectionPage() {
       )}
 
       <div className="card mb-6">
-        <input
-          type="text"
-          placeholder="Karte suchen…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full text-fg rounded-xl p-3 mb-4"
-          style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
-        />
+        <div className="grid sm:grid-cols-2 gap-3 mb-4">
+          <input
+            type="text"
+            placeholder="Kartenname…"
+            aria-label="Nach Kartenname suchen"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full text-fg rounded-xl p-3"
+            style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
+          />
+          <div>
+            <input
+              type="text"
+              placeholder='Kartentext enthält… (z. B. proliferate, "draw a card")'
+              aria-label="Nach Kartentext suchen"
+              value={textSearch}
+              onChange={(e) => setTextSearch(e.target.value)}
+              className="w-full text-fg rounded-xl p-3"
+              style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
+            />
+            {textSearch.trim() && (
+              <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                Englischer Kartentext (Oracle){loadingImages ? ' – Kartendaten laden noch, die Treffer werden mehr' : ''}.
+              </p>
+            )}
+          </div>
+        </div>
 
         <div className="flex flex-wrap gap-4 items-end">
           <div>
@@ -452,10 +483,11 @@ export default function CollectionPage() {
             </select>
           </div>
 
-          {(selectedColors.length > 0 || selectedType || availability !== 'all' || selectedBinder || minQuantity || minPrice || maxPrice || minCmc || maxCmc || sortBy !== 'none' || search) && (
+          {(selectedColors.length > 0 || selectedType || availability !== 'all' || selectedBinder || minQuantity || minPrice || maxPrice || minCmc || maxCmc || sortBy !== 'none' || search || textSearch) && (
             <button
               onClick={() => {
                 setSearch('')
+                setTextSearch('')
                 setSelectedColors([])
                 setSelectedType('')
                 setAvailability('all')

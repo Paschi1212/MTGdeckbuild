@@ -43,7 +43,9 @@ async function readCache(keys) {
       const request = store.get(key)
       request.onsuccess = () => {
         const value = request.result
-        if (value && now - value.t < TTL_MS) hits.set(key, value.d)
+        // Entries cached before the rules text was part of the data count as missing, so the
+        // text search finds every card (one refresh per collection).
+        if (value && now - value.t < TTL_MS && value.d && 'oracleText' in value.d) hits.set(key, value.d)
       }
     }
     tx.oncomplete = () => resolve(hits)
@@ -66,13 +68,6 @@ async function writeCache(entries) {
 
 const idKey = (id) => `id:${id}`
 const nameKey = (name) => `name:${name.toLowerCase()}`
-
-// The by-name lookup also returns rules text — not needed for display, and it's most of the
-// size, so it isn't cached.
-function slim(entry) {
-  const { oracleText, ...rest } = entry || {}
-  return rest
-}
 
 async function postChunk(body) {
   try {
@@ -127,7 +122,7 @@ export async function loadCardData({ ids = [], names = [], onUpdate, isCancelled
     const fresh = []
     for (const name of chunk) {
       if (data[name]) {
-        byName[name] = slim(data[name])
+        byName[name] = data[name] // incl. rules text, for the collection's text search
         fresh.push([nameKey(name), byName[name]])
       } else {
         stillMissing.names.push(name)
