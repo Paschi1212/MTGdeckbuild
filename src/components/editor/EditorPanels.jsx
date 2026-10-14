@@ -97,7 +97,7 @@ export function ShoppingPanel({ items, total, onExport }) {
         <p className="text-sm" style={textStyle}>
           {count} {count === 1 ? 'Karte' : 'Karten'} · <span className="font-semibold tabular-nums">€{total.toFixed(2)}</span>
         </p>
-        <SmallButton onClick={onExport}>Als .txt exportieren</SmallButton>
+        <SmallButton onClick={onExport}>Kartennamen als .txt</SmallButton>
       </div>
       <ul className="text-sm space-y-1">
         {items.map(c => (

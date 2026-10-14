@@ -236,23 +236,12 @@ export default function EditDeckPage(embeddedState) {
   )
   const shoppingTotal = shoppingList.reduce((sum, c) => sum + c.missingCount * c.price, 0)
 
+  // The shopping list as plain card names, one per line ("2 Forest" when several are missing) —
+  // ready to paste into Cardmarket, no title, prices or total.
   const handleExportShoppingList = () => {
-    const title = commanderCard?.name || commanderName || 'Deck'
-    const lines = [
-      `Einkaufsliste – ${title}`,
-      `Stand: ${new Date().toLocaleDateString('de-DE')}`,
-      '',
-      ...shoppingList.map(c => `${c.missingCount}x ${c.name} — €${(c.missingCount * c.price).toFixed(2)}`),
-      '',
-      `Gesamt: €${shoppingTotal.toFixed(2)}`
-    ]
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `einkaufsliste-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.txt`
-    a.click()
-    URL.revokeObjectURL(url)
+    const title = deckName || commanderCard?.name || commanderName || 'Deck'
+    const lines = shoppingList.map(c => (c.missingCount > 1 ? `${c.missingCount} ${c.name}` : c.name))
+    downloadTextFile(`${exportFileBase(title)}-zukauf.txt`, lines.join('\n') + '\n', 'text/plain')
   }
 
   const manaCurveData = useMemo(() => {
