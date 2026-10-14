@@ -60,7 +60,8 @@ farbiges Element in Listen; alles andere bleibt ruhig.
 - **Ablageort 📍**: Bei Karten aus der eigenen Sammlung steht der ManaBox-Ordner mit freien Exemplaren
   (Analyse „Aus deiner Sammlung“, Vorschläge, Tabelle, Excel-Export) – verbaute Deck-Exemplare zählen nicht.
 - **Exportieren ▾** am Ende der Werkzeugleiste: CSV für ManaBox (Komma, ManaBox-Spaltennamen), CSV
-  für Excel (Semikolon, Dezimalkomma, BOM), Deckliste .txt.
+  für Excel (Semikolon, Dezimalkomma, BOM), Deckliste .txt, PDF „nur Kartennamen“ und PDF „nur Zukauf“
+  (A4, zwei Spalten, eine Karte pro Zeile, „4 Forest“ bei mehreren – z. B. für Cardmarket).
 - **Drei Ansichten** (Umschalter in der Werkzeugleiste, pro Gerät gemerkt): *Liste* (dichte
   Deckliste, Standard), *Bilder* (Kartenbilder mit Namen und Preis darunter, Streichkandidaten rot
   umrandet), *Tabelle* (Anzahl, Name, vollständiger Kartentyp, Kosten, Preis, Status).

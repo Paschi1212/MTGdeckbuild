@@ -3,7 +3,9 @@ import { useEffect, useRef, useState } from 'react'
 const OPTIONS = [
   { id: 'manabox', label: 'CSV für ManaBox', hint: 'Zum Import in ManaBox – so wird der Entwurf ein echtes Deck' },
   { id: 'excel', label: 'CSV für Excel', hint: 'Mit Typ, Manakosten, Preis und Status, öffnet direkt in Excel' },
-  { id: 'text', label: 'Deckliste (.txt)', hint: 'Für Moxfield, Archidekt und andere Deckbuilder' }
+  { id: 'text', label: 'Deckliste (.txt)', hint: 'Für Moxfield, Archidekt und andere Deckbuilder' },
+  { id: 'pdf-names', label: 'PDF – nur Kartennamen', hint: 'Die ganze Deckliste, eine Karte pro Zeile – z. B. zum Abarbeiten auf Cardmarket' },
+  { id: 'pdf-buy', label: 'PDF – nur Zukauf', hint: 'Nur die Karten, die dir noch fehlen – deine Einkaufsliste für Cardmarket' }
 ]
 
 // "Exportieren" button with a small menu of formats (see lib/deckExport.js).

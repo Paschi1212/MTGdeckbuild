@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { loadCollection, getCardsForBinder, getAvailableQuantities, getAvailableCardNames, buildLocationIndex, locationsFromIndex, formatCardLocations } from '../lib/collection'
 import { saveDraftDeck, getDraftDeck } from '../lib/draftDecks'
-import { buildManaBoxCsv, buildExcelCsv, buildDecklistText, downloadTextFile, exportFileBase } from '../lib/deckExport'
+import { buildManaBoxCsv, buildExcelCsv, buildDecklistText, buildNamesPdf, downloadBytes, downloadTextFile, exportFileBase } from '../lib/deckExport'
 import { classifyType, BASIC_LAND_NAMES } from '../lib/cardType'
 import { getSecondaryAvailability } from '../lib/secondaryCollections'
 import { getDeckPreferences } from '../lib/deckPreferences'
@@ -525,10 +525,26 @@ export default function EditDeckPage(embeddedState) {
       : []
     const deckRows = displayGroups.flatMap(group => group.cards).map(card => ({
       name: card.name, count: card.count, board: 'Deck', scryfallId: card.scryfallId || '',
-      typeLine: card.typeLine, manaCost: card.manaCost, cmc: card.cmc, price: card.price, status: statusOf(card)
+      typeLine: card.typeLine, manaCost: card.manaCost, cmc: card.cmc, price: card.price, status: statusOf(card),
+      missing: card.missingCount || 0
     }))
     const rows = [...commanderRow, ...deckRows]
     const base = exportFileBase(title)
+    if (format === 'pdf-names' || format === 'pdf-buy') {
+      // Card names only, one per line ("4 Forest" when there are several).
+      const buyOnly = format === 'pdf-buy'
+      const list = buyOnly ? rows.filter(r => r.missing > 0).map(r => ({ ...r, count: r.missing })) : rows
+      const lines = list.map(r => (r.count > 1 ? `${r.count} ${r.name}` : r.name))
+      const cards = list.reduce((sum, r) => sum + r.count, 0)
+      const date = new Date().toLocaleDateString('de-DE')
+      const pdf = buildNamesPdf(
+        `${title || 'Deck'} – ${buyOnly ? 'Zukauf' : 'Deckliste'}`,
+        `Kartennamen für Cardmarket · ${date} · ${cards} ${cards === 1 ? 'Karte' : 'Karten'}`,
+        lines.length ? lines : ['(keine Karten)']
+      )
+      downloadBytes(`${base}-${buyOnly ? 'zukauf' : 'kartennamen'}.pdf`, pdf, 'application/pdf')
+      return
+    }
     if (format === 'manabox') downloadTextFile(`${base}.csv`, buildManaBoxCsv(rows), 'text/csv')
     else if (format === 'excel') downloadTextFile(`${base}-excel.csv`, buildExcelCsv(rows), 'text/csv')
     else downloadTextFile(`${base}.txt`, buildDecklistText(rows), 'text/plain')
