@@ -349,6 +349,13 @@ function GameView({ lobbyId, me }) {
       else act(turn.player, { type: 'draw', count: 1 })
     }
 
+    // Sagas: a lore counter each as the first main phase begins (rule 714.3b) — once per turn.
+    const loreKey = `${turn.key}:lore`
+    if (turn.step === 'main1' && !handled.current.has(loreKey)) {
+      remember(loreKey)
+      act(turn.player, { type: 'loreTick' })
+    }
+
     const next = AUTO_NEXT_STEP[turn.step]
     const nextKey = `${turn.key}:${turn.step}:next`
     if (!next || (manualSteps && turn.step !== 'untap') || handled.current.has(nextKey)) return undefined

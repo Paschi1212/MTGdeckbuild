@@ -148,6 +148,10 @@ farbiges Element in Listen; alles andere bleibt ruhig.
 - **Marken auf Karten:** als Plaketten unten auf der Karte – +N/+N grün, −N/−N rot, Loyalität ◆ lila,
   alles andere grau mit Namen. +1/+1 und −1/−1 heben sich auf; beim Verlassen des Spielfelds fallen
   Marken ab.
+- **Sagas (Regel 714):** erkannt am Kartentyp, Kapitelzahl aus dem Kartentext. Kommt mit Kapitelmarke ins
+  Spiel („spielt … – Kapitel I“), zu Beginn der ersten Hauptphase automatisch +1 (einmal pro Zug), Plakette
+  „Kap. II/III“, beim letzten Kapitel gold + Verlauf „letztes Kapitel – danach opfern“ (geopfert wird von Hand).
+  Menü einer Saga: „Kapitelmarke +1“ (z. B. für Read ahead).
 - **Volle Breite:** eine laufende Partie (`/spieltisch/:id`) nutzt die ganze Bildschirmbreite (`PageFrame`
   in App.jsx); alle anderen Seiten behalten die Lesebreite.
 - **Hand immer ganz sichtbar** (`HandRow`): nebeneinander, solange es passt, sonst überlappend

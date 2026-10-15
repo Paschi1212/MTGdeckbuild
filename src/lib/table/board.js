@@ -61,8 +61,9 @@ export function createBoard(deck, idPrefix) {
   }
 }
 
-const publicCard = ({ iid, name, image, tapped, x, y, commander, token, counters, pt }) => ({
+const publicCard = ({ iid, name, image, tapped, x, y, commander, token, counters, pt, saga }) => ({
   iid, name, image, tapped: Boolean(tapped), x, y, commander: Boolean(commander),
+  ...(saga ? { saga } : {}),
   ...(token ? { token: true } : {}),
   ...(pt ? { pt } : {}),
   ...(counters && Object.keys(counters).length ? { counters } : {})
@@ -80,6 +81,21 @@ export const CARD_COUNTERS = [
   { key: 'stun', label: 'Betäubung' }
 ]
 export const counterLabel = (key) => CARD_COUNTERS.find(c => c.key === key)?.label || key
+
+// Sagas (rule 714): they enter with a lore counter, get one more as their controller's first
+// main phase begins, and are sacrificed after the final chapter. `saga` on a card = its final
+// chapter number (read from the card's text), 0 = not a Saga.
+const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 }
+export const roman = (n) => Object.keys(ROMAN).find(key => ROMAN[key] === n) || String(n)
+export function sagaChapters(entry) {
+  if (!/\bSaga\b/.test(entry?.typeLine || '')) return 0
+  let final = 0
+  for (const line of String(entry.oracleText || '').split('\n')) {
+    const match = line.match(/^([IVX]+(?:\s*,\s*[IVX]+)*)\s*[—-]/)
+    if (match) for (const numeral of match[1].split(/\s*,\s*/)) final = Math.max(final, ROMAN[numeral] || 0)
+  }
+  return final || 3
+}
 
 let tokenSerial = 0
 const tokenId = () => `tok-${Date.now().toString(36)}-${(tokenSerial++).toString(36)}`
@@ -138,7 +154,9 @@ export function applyAction(board, action) {
       if (to === 'battlefield') {
         const tapped = from === 'battlefield' ? card.tapped : false
         const spot = at && typeof at === 'object' ? at : (from === 'battlefield' ? { x: card.x, y: card.y } : freeSpot(next.battlefield))
-        next.battlefield = [...next.battlefield, { ...card, tapped, ...clampPos(spot.x, spot.y, tapped) }] // last = on top
+        // A Saga enters with a lore counter (714.3a).
+        const entering = from !== 'battlefield' && card.saga ? { counters: { ...(card.counters || {}), lore: 1 } } : {}
+        next.battlefield = [...next.battlefield, { ...card, ...entering, tapped, ...clampPos(spot.x, spot.y, tapped) }] // last = on top
       } else {
         const { x, y, tapped, counters, ...rest } = card
         next[to] = to === 'library' ? (at === 'bottom' ? [...next[to], rest] : [rest, ...next[to]]) : [...next[to], rest]
@@ -146,13 +164,25 @@ export function applyAction(board, action) {
       const name = card.name
       let note = null
       if (from === to) note = null
-      else if (to === 'battlefield') note = from === 'command' ? `wirkt den Commander ${name}` : from === 'hand' ? `spielt ${name}` : `bringt ${name} aus ${ZONE_LABEL[from]} aufs Spielfeld`
+      else if (to === 'battlefield') note = (from === 'command' ? `wirkt den Commander ${name}` : from === 'hand' ? `spielt ${name}` : `bringt ${name} aus ${ZONE_LABEL[from]} aufs Spielfeld`) + (card.saga ? ' – Kapitel I' : '')
       else if (to === 'graveyard') note = `legt ${name} ${from === 'library' ? 'aus der Bibliothek ' : from === 'hand' ? 'von der Hand ' : ''}auf den Friedhof`
       else if (to === 'exile') note = `schickt ${name} ${from === 'library' ? 'aus der Bibliothek ' : from === 'hand' ? 'von der Hand ' : ''}ins Exil`
       else if (to === 'hand') note = from === 'library' ? 'nimmt eine Karte aus der Bibliothek auf die Hand' : `nimmt ${name} auf die Hand`
       else if (to === 'library') note = `legt ${from === 'hand' ? 'eine Karte' : name} ${at === 'bottom' ? 'unter' : 'oben auf'} die Bibliothek`
       else if (to === 'command') note = `bringt ${name} zurück in die Commandzone`
       return { board: next, note, castCommander: from === 'command' && to === 'battlefield' }
+    }
+    case 'loreTick': {
+      // As the first main phase begins: a lore counter on each own Saga (714.3b).
+      const notes = []
+      const battlefield = board.battlefield.map(card => {
+        if (!card.saga) return card
+        const lore = (card.counters?.lore || 0) + 1
+        notes.push(`${card.name} → Kapitel ${roman(lore)}${lore >= card.saga ? ' (letztes Kapitel – danach opfern)' : ''}`)
+        return { ...card, counters: { ...(card.counters || {}), lore } }
+      })
+      if (!notes.length) return { board, note: null }
+      return { board: { ...board, battlefield }, note: `Kapitelmarke: ${notes.join('; ')}` }
     }
     case 'discard': {
       // { iids, reason } → these hand cards onto the graveyard at once ('cleanup': discarding
@@ -314,7 +344,7 @@ export function useOwnBoards(gameId, controlled, { publish, onAction }) {
   useEffect(() => {
     // Tokens bring their picture along (or have none on purpose) — never looked up by name.
     const all = Object.values(boardsRef.current).flatMap(board => ZONES.flatMap(zone => board[zone])).filter(card => !card.token)
-    if (all.every(card => card.image)) return undefined
+    if (all.every(card => card.image && 'saga' in card)) return undefined
     let cancelled = false
     loadCardData({
       ids: all.map(card => card.scryfallId).filter(Boolean),
@@ -324,11 +354,11 @@ export function useOwnBoards(gameId, controlled, { publish, onAction }) {
         for (const [owner, board] of Object.entries(boardsRef.current)) {
           let changed = false
           const fill = (card) => {
-            if (card.image) return card
-            const image = (card.scryfallId && byId[card.scryfallId]?.image) || byName[card.name]?.image
-            if (!image) return card
+            if (card.token || (card.image && 'saga' in card)) return card
+            const entry = (card.scryfallId && byId[card.scryfallId]) || byName[card.name]
+            if (!entry?.image) return card
             changed = true
-            return { ...card, image }
+            return { ...card, image: card.image || entry.image, saga: sagaChapters(entry) }
           }
           const next = Object.fromEntries(ZONES.map(zone => [zone, board[zone].map(fill)]))
           if (changed) commit(owner, { ...board, ...next })

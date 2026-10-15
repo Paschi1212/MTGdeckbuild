@@ -34,6 +34,7 @@ export default function MyArea({ seat, seats, player, board, act, isActive, isMo
     const items = [{ label: 'Groß anzeigen', onClick: () => onShowCard?.(card) }]
     if (from === 'battlefield') {
       items.push({ label: card.tapped ? 'Enttappen' : 'Tappen', onClick: () => act({ type: 'tap', iid: card.iid }) })
+      if (card.saga) items.push({ label: 'Kapitelmarke +1', onClick: () => act({ type: 'counter', iid: card.iid, key: 'lore', delta: 1 }) })
       items.push({ label: 'Marken …', onClick: () => setCountersFor(card.iid) })
       items.push({ label: '+1/+1-Marke', onClick: () => act({ type: 'counter', iid: card.iid, key: '+1/+1', delta: 1 }) })
       items.push({ label: 'Kopie als Spielmarke', onClick: () => act({ type: 'copy', iid: card.iid }) })

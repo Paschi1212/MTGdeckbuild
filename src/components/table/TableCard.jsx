@@ -1,10 +1,12 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { BF_W, BF_H, CARD_W, counterLabel } from '../../lib/table/board'
+import { BF_W, BF_H, CARD_W, counterLabel, roman } from '../../lib/table/board'
 
 // What a card's counters read like on the table: "+3/+3", "Loyalität 4", "Ladung 2".
-function counterBadges(counters) {
+function counterBadges(counters, saga = 0) {
   if (!counters) return []
   return Object.entries(counters).filter(([, n]) => n > 0).map(([key, n]) => {
+    // Sagas: which chapter it is on, gold once the last one is reached (then it gets sacrificed).
+    if (key === 'lore') return { key, text: `Kap. ${roman(n)}${saga ? `/${roman(saga)}` : ''}`, color: saga && n >= saga ? '#9a6b00' : '#6b5a2e' }
     if (key === '+1/+1') return { key, text: `+${n}/+${n}`, color: '#2ea043' }
     if (key === '-1/-1') return { key, text: `−${n}/−${n}`, color: '#da3633' }
     if (key === 'loyalty') return { key, text: `◆ ${n}`, color: '#6e40c9' }
@@ -35,7 +37,7 @@ export function TableCard({ card, width, interactive = false, onPointerDown, onC
       onPointerEnter={(e) => { if (e.pointerType === 'mouse') onHover?.(card, e) }}
       onPointerMove={(e) => { if (e.pointerType === 'mouse') onHover?.(card, e) }}
       onPointerLeave={() => onHover?.(null)}
-      title={[card.name, card.token && 'Spielmarke', card.tapped && 'getappt', ...counterBadges(card.counters).map(b => b.text)].filter(Boolean).join(' · ')}
+      title={[card.name, card.token && 'Spielmarke', card.tapped && 'getappt', ...counterBadges(card.counters, card.saga).map(b => b.text)].filter(Boolean).join(' · ')}
     >
       <div
         className="absolute left-1/2 top-1/2"
@@ -61,9 +63,9 @@ export function TableCard({ card, width, interactive = false, onPointerDown, onC
           Spielmarke{card.image && card.pt ? ` ${card.pt}` : ''}
         </span>
       )}
-      {counterBadges(card.counters).length > 0 && (
+      {counterBadges(card.counters, card.saga).length > 0 && (
         <span className="absolute left-0 right-0 bottom-0 flex flex-wrap justify-center gap-0.5 p-0.5 pointer-events-none">
-          {counterBadges(card.counters).map(badge => (
+          {counterBadges(card.counters, card.saga).map(badge => (
             <span
               key={badge.key}
               className="font-bold tabular-nums whitespace-nowrap"
