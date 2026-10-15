@@ -9,7 +9,7 @@ import { getDeckPreferences } from '../lib/deckPreferences'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { CardZoomModal } from '../components/CardTile'
 import ChatWidget from '../components/ChatWidget'
-import PlaytestModal from '../components/PlaytestModal'
+import { openSoloTable } from '../lib/table/solo'
 import DeckList, { DECK_VIEWS } from '../components/editor/DeckList'
 import CardSearch from '../components/editor/CardSearch'
 import { SuggestionsPanel, ShoppingPanel, StatsPanel, StrategyPanel } from '../components/editor/EditorPanels'
@@ -135,7 +135,6 @@ export default function EditDeckPage(embeddedState) {
   const [priceMap, setPriceMap] = useState({})
   const [byIdMap, setByIdMap] = useState({})
   const [zoomedCard, setZoomedCard] = useState(null)
-  const [showPlaytest, setShowPlaytest] = useState(false)
 
   useEffect(() => {
     if (!commanderName) return
@@ -669,7 +668,11 @@ export default function EditDeckPage(embeddedState) {
 
   const actionButtons = [
     { label: 'Zurück', onClick: goBack, className: 'btn-secondary' },
-    { label: 'Live Tester', mobileLabel: 'Testen', onClick: () => setShowPlaytest(true), disabled: enrichedCards.length === 0, className: 'btn-secondary' },
+    { label: 'Live Tester', mobileLabel: 'Testen', onClick: () => openSoloTable({
+      label: deckName || commanderCard?.name || commanderName || 'Live Tester',
+      commander: commanderCard?.name || commanderName || '',
+      cards: enrichedCards.map(card => ({ name: card.name, count: card.count || 1, scryfallId: card.scryfallId || '' }))
+    }), disabled: enrichedCards.length === 0, className: 'btn-secondary' },
     ...(deckName ? [] : [{ label: 'Speichern & analysieren', mobileLabel: 'Analysieren', onClick: handleSaveAndAnalyze, disabled: cards.length === 0, className: 'btn-secondary' }]),
     { label: deckName ? 'Als Entwurf speichern' : 'Speichern', mobileLabel: 'Speichern', onClick: handleSave, disabled: cards.length === 0, className: 'btn-primary' }
   ]
@@ -786,14 +789,6 @@ export default function EditDeckPage(embeddedState) {
 
       {zoomedCard && (
         <CardZoomModal card={zoomedCard} onClose={() => setZoomedCard(null)} />
-      )}
-
-      {showPlaytest && (
-        <PlaytestModal
-          cards={enrichedCards}
-          commanderCard={commanderCard}
-          onClose={() => setShowPlaytest(false)}
-        />
       )}
 
       <ChatWidget

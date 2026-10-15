@@ -19,7 +19,9 @@ function Pile({ label, count, onClick }) {
 
 // Another player's side of the table — exactly as they laid it out, scaled to fit.
 // `onZoom`: opens this board big (button and click on the battlefield); `large`: that big view itself.
-export default function OpponentBoard({ seat, seats, player, snapshot, isActive, isMonarch, online, dispatch, onDetails, onHover, compact = false, onZoom, large = false }) {
+export default function OpponentBoard({ seat, seats, player, snapshot, isActive, isMonarch, online, dispatch, onDetails, onHover, onShowCard, compact = false, onZoom, large = false }) {
+  // Right-click on someone else's card: show it big (their cards have no menu here).
+  const showBig = onShowCard ? (event, card) => { event.preventDefault(); event.stopPropagation(); onShowCard(card) } : undefined
   const [viewing, setViewing] = useState(null) // 'graveyard' | 'exile'
   const board = snapshot || { battlefield: [], graveyard: [], exile: [], command: [], hand: 0, library: 0 }
   return (
@@ -32,13 +34,14 @@ export default function OpponentBoard({ seat, seats, player, snapshot, isActive,
         <Battlefield
           cards={board.battlefield}
           onHover={onHover}
+          onCardContextMenu={showBig}
           onOpen={onZoom}
           maxHeight={large ? 'calc(100vh - 17rem)' : compact ? '22vh' : '30vh'}
           emptyText={snapshot ? 'Noch nichts ausgespielt' : 'Board wird geladen …'}
         />
       </div>
       <div className="flex flex-wrap items-center gap-2 px-2 pb-2">
-        {board.command.map(card => <TableCard key={card.iid} card={card} width={large ? 60 : 30} onHover={onHover} />)}
+        {board.command.map(card => <TableCard key={card.iid} card={card} width={large ? 60 : 30} onHover={onHover} onContextMenu={showBig ? (event) => showBig(event, card) : undefined} />)}
         <Pile label="Hand" count={board.hand} />
         <Pile label="Bibliothek" count={board.library} />
         <Pile label="Friedhof" count={board.graveyard.length} onClick={() => setViewing('graveyard')} />

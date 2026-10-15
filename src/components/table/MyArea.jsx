@@ -19,7 +19,7 @@ const DRAG_THRESHOLD = 6
 // long-press or right-click any card for everything else.
 // `phase`: 'setup' shows the opening-hand strip (keep / mulligan); `turnControls`
 // ({ label, onAdvance, onPass }) is set while it is this seat's turn.
-export default function MyArea({ seat, seats, player, board, act, isActive, isMonarch, dispatch, onDetails, onHover, label, phase, turnControls }) {
+export default function MyArea({ seat, seats, player, board, act, isActive, isMonarch, dispatch, onDetails, onHover, onShowCard, label, phase, turnControls }) {
   const [drag, setDrag] = useState(null) // { card, from, w, h, offset, x, y }
   const [menu, setMenu] = useState(null)
   const [viewer, setViewer] = useState(null) // 'graveyard' | 'exile' | 'search' | { top: n }
@@ -31,7 +31,7 @@ export default function MyArea({ seat, seats, player, board, act, isActive, isMo
   const move = useCallback((card, to, at) => act({ type: 'move', iid: card.iid, to, at }), [act])
 
   const menuFor = useCallback((card, from, x, y) => {
-    const items = []
+    const items = [{ label: 'Groß anzeigen', onClick: () => onShowCard?.(card) }]
     if (from === 'battlefield') {
       items.push({ label: card.tapped ? 'Enttappen' : 'Tappen', onClick: () => act({ type: 'tap', iid: card.iid }) })
       items.push({ label: 'Marken …', onClick: () => setCountersFor(card.iid) })
@@ -54,7 +54,7 @@ export default function MyArea({ seat, seats, player, board, act, isActive, isMo
       items.push({ label: 'Unter die Bibliothek', onClick: () => move(card, 'library', 'bottom') })
     }
     setMenu({ title: `${card.name} · ${ZONE_LABEL[from]}`, x, y, items })
-  }, [act, move])
+  }, [act, move, onShowCard])
 
   // Drop: whatever own zone is under the pointer.
   const drop = useCallback((card, from, clientX, clientY, offset, width) => {

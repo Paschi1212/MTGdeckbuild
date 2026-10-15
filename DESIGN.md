@@ -123,6 +123,12 @@ farbiges Element in Listen; alles andere bleibt ruhig.
   Anzeige als Countdown „⏱ 1:42 Zug“; letzte 30 s (Zug) bzw. 5 min (Partie) gold, danach rot „Zeit um
   −0:10“ – nur Erinnerung, keine erzwungene Aktion.
 
+## Muster: Sammlung
+
+- **Kartenansicht** zeigt, wo jedes Exemplar liegt: „3 von 5 frei · 2 in Decks verbaut“, darunter die
+  Ordner (📍, frei) und Decks (verbaut) mit Anzahl; die angeklickte Zeile ist als „diese Karte“ markiert.
+- **Kartentext-Suche** neben der Namenssuche (englischer Oracle-Text, Wörter einzeln oder „in Anführungszeichen“).
+
 ## Muster: Deck-Übersicht
 
 - **Commander-Farben** unter dem Commander-Feld (`CommanderColors`): Manasymbole der Farbidentität
@@ -147,6 +153,11 @@ farbiges Element in Listen; alles andere bleibt ruhig.
 - **Hand immer ganz sichtbar** (`HandRow`): nebeneinander, solange es passt, sonst überlappend
   aufgefächert (mind. 26 px je Karte sichtbar, notfalls kleiner) – nie scrollen; die Karte unter der
   Maus kommt nach vorn.
+- **Live Tester = Spieltisch für einen** (lib/table/solo.js): „Live Tester“ im Editor öffnet einen Solo-Tisch
+  im neuen Tab (der Editor bleibt mit ungespeicherten Änderungen offen). Ohne Platzwahl und Zugreihenfolge;
+  „Live Tester schließen“ schließt den Tab. Wer allein spielt, zieht im ersten Zug (nur im Zweierspiel nicht).
+- **Karte groß:** Rechtsklick auf eigene Karte → „Groß anzeigen“ (erster Menüpunkt), auf Karten der
+  Mitspieler direkt per Rechtsklick. Großes Scryfall-Bild, darunter Name, Marken, getappt; Klick/Esc schließt.
 - **Probetisch:** eigene Decks (und die der Mitspieler) an einem Tisch, man sitzt immer an einem Platz
   („Du sitzt bei …“, folgt standardmäßig dem Zug) — die anderen Plätze sieht man wie Gegner.
 - **Decks der Mitspieler:** standardmäßig frei für alle, mit denen man schon an einem Tisch war; man

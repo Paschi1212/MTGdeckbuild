@@ -16,6 +16,7 @@ import PhaseRail from '../components/table/PhaseRail'
 import BoardZoom from '../components/table/BoardZoom'
 import CleanupDiscard, { MAX_HAND_SIZE } from '../components/table/CleanupDiscard'
 import TableTimer from '../components/table/TableTimer'
+import CardLightbox from '../components/table/CardLightbox'
 
 // Where a turn runs on by itself (see GameView): untap → upkeep → draw → main phase 1.
 const AUTO_NEXT_STEP = { untap: 'upkeep', upkeep: 'draw', draw: 'main1' }
@@ -294,6 +295,7 @@ function GameView({ lobbyId, me }) {
   const [detailsFor, setDetailsFor] = useState(null)
   const [zoomFor, setZoomFor] = useState(null) // another player's board, big
   const [cleanupFor, setCleanupFor] = useState(null) // the seat discarding down to seven before passing
+  const [shownCard, setShownCard] = useState(null) // one card big ("Groß anzeigen", right-click)
   const [showLog, setShowLog] = useState(() => window.innerWidth >= 1600)
   const [preview, setPreview] = useState(null)
   const seats = useMemo(() => record?.seats || [], [record])
@@ -343,7 +345,7 @@ function GameView({ lobbyId, me }) {
     if ((turn.step === 'untap' || turn.step === 'draw') && !handled.current.has(actionKey)) {
       remember(actionKey)
       if (turn.step === 'untap') act(turn.player, { type: 'untapAll', silent: true })
-      else if (turn.firstTurn && seats.length <= 2) dispatch('note', { text: 'überspringt das erste Ziehen (Startspieler im Zweierspiel)', by: turn.player })
+      else if (turn.firstTurn && seats.length === 2) dispatch('note', { text: 'überspringt das erste Ziehen (Startspieler im Zweierspiel)', by: turn.player })
       else act(turn.player, { type: 'draw', count: 1 })
     }
 
@@ -412,6 +414,13 @@ function GameView({ lobbyId, me }) {
   const detailsSeat = seats.find(seat => seat.playerId === detailsFor)
   // On the practice table you act as the seat you sit at (the log then names that seat).
   const seatDispatch = practice ? (type, fields) => dispatch(type, { by: mySeatId, ...fields }) : dispatch
+  // Live Tester: the table with only your deck (opened from the editor in its own tab).
+  const solo = Boolean(record?.solo)
+  const leaveTable = () => {
+    if (!solo) return navigate('/spieltisch')
+    window.close() // the tab the editor opened — back to the deck
+    navigate('/decks') // if the browser keeps the tab open
+  }
 
   // "Zug abgeben": the next one in the turn order (cards may have changed it) is up.
   const passTurn = () => {
@@ -452,7 +461,7 @@ function GameView({ lobbyId, me }) {
       >
         <div className="min-w-0">
           <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            {practice ? 'Probetisch · ' : ''}
+            {solo ? 'Live Tester · ' : practice ? 'Probetisch · ' : ''}
             {setup ? 'Vorbereitung' : <>Runde <span className="tabular-nums">{state.turn.round}</span><TurnOrderButton order={state.order} nameOf={nameOf} onSave={(order) => seatDispatch('order', { order })} /></>}
             {!practice && !mySeat && ' · du schaust zu'}
             {status !== 'SUBSCRIBED' && ' · Verbindung wird hergestellt …'}
@@ -466,7 +475,7 @@ function GameView({ lobbyId, me }) {
             <PhaseBar step={turn.step} canControl={myTurn} onJump={jumpTo} manual={manualSteps} onToggleManual={mySeat || practice ? toggleManualSteps : null} />
           </div>
         )}
-        {practice && (
+        {practice && !solo && (
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <label className="flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
               Du sitzt bei
@@ -500,11 +509,20 @@ function GameView({ lobbyId, me }) {
             onSet={(mode, minutes) => seatDispatch('timer', mode ? { mode, minutes } : { mode: null })}
           />
           <button type="button" onClick={() => setShowLog(v => !v)} className="btn-secondary text-sm px-4 min-h-[44px]" aria-pressed={showLog}>Verlauf</button>
-          <button type="button" onClick={() => navigate('/spieltisch')} className="btn-secondary text-sm px-4 min-h-[44px]">Tisch verlassen</button>
+          <button type="button" onClick={leaveTable} className="btn-secondary text-sm px-4 min-h-[44px]">{solo ? 'Live Tester schließen' : 'Tisch verlassen'}</button>
         </div>
       </div>
 
-      {setup && (
+      {setup && solo && (
+        <div className="mb-3 px-4 py-3" style={{ background: 'var(--color-surface)', border: '1px solid var(--gold)', borderRadius: 'var(--radius-md)' }}>
+          <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+            Prüfe unten deine Starthand: <strong>Behalten</strong> oder <strong>Mulligan</strong>, dann <strong>Spiel starten</strong>.
+            Danach läuft jeder Zug wie am Spieltisch – Enttappen, Versorgung und Ziehen von selbst, „Zug abgeben“ startet deinen nächsten Zug.
+          </p>
+        </div>
+      )}
+
+      {setup && !solo && (
         <div className="mb-3 px-4 py-3 grid md:grid-cols-[minmax(0,420px)_1fr] gap-4" style={{ background: 'var(--color-surface)', border: '1px solid var(--gold)', borderRadius: 'var(--radius-md)' }}>
           <div>
             <h2 className="text-sm font-bold mb-2 text-fg">Zugreihenfolge – wer oben steht, fängt an</h2>
@@ -553,6 +571,7 @@ function GameView({ lobbyId, me }) {
                     dispatch={seatDispatch}
                     onDetails={() => setDetailsFor(seat.playerId)}
                     onHover={onHover}
+                    onShowCard={setShownCard}
                     compact={others.length > 3}
                     onZoom={() => setZoomFor(seat.playerId)}
                   />
@@ -572,6 +591,7 @@ function GameView({ lobbyId, me }) {
                 dispatch={seatDispatch}
                 onDetails={() => setDetailsFor(mySeat.playerId)}
                 onHover={onHover}
+                onShowCard={setShownCard}
                 label={practice ? mySeat.name : null}
                 phase={state.phase}
                 turnControls={myTurn && mySeat.playerId === active?.playerId ? { label: advanceLabel, onAdvance: advance, onPass: upcoming ? endTurn : null } : null}
@@ -585,6 +605,8 @@ function GameView({ lobbyId, me }) {
           )}
         </div>
       </div>
+
+      {shownCard && <CardLightbox card={shownCard} onClose={() => setShownCard(null)} />}
 
       {cleanupFor && ownBoards[cleanupFor] && cleanupFor === turn.player && (
         <CleanupDiscard
@@ -618,7 +640,8 @@ function GameView({ lobbyId, me }) {
             online: onlineIds.has(seat.playerId),
             dispatch: seatDispatch,
             onDetails: () => setDetailsFor(seat.playerId),
-            onHover
+            onHover,
+            onShowCard: setShownCard
           })}
         />
       )}

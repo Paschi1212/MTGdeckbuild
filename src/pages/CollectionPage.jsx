@@ -25,7 +25,27 @@ const PRICE_SORTS = {
   nameAsc: { label: 'Name A-Z', fn: (a, b) => a.name.localeCompare(b.name) }
 }
 
-function CardModal({ card, resolved, onClose, onPrev, onNext }) {
+// Where every copy of a card lies — ordner by ordner, decks apart — and how many are still free
+// (not built into a deck). Matched by front-face name, like everywhere else in the app.
+function cardCopies(collection, name) {
+  const key = String(name || '').split('//')[0].trim().toLowerCase()
+  const places = new Map()
+  for (const card of collection?.cards || []) {
+    if (String(card.name || '').split('//')[0].trim().toLowerCase() !== key) continue
+    const inDeck = card.binderType === 'deck'
+    const label = card.binderName || 'ohne Ordner'
+    const id = `${inDeck ? 'deck' : 'binder'}:${label}`
+    const entry = places.get(id) || { label, inDeck, quantity: 0 }
+    entry.quantity += card.quantity || 0
+    places.set(id, entry)
+  }
+  const list = [...places.values()].sort((a, b) => (a.inDeck - b.inDeck) || b.quantity - a.quantity || a.label.localeCompare(b.label))
+  const total = list.reduce((sum, p) => sum + p.quantity, 0)
+  const inDecks = list.filter(p => p.inDeck).reduce((sum, p) => sum + p.quantity, 0)
+  return { list, total, inDecks, free: total - inDecks }
+}
+
+function CardModal({ card, resolved, copies, onClose, onPrev, onNext }) {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose()
@@ -70,6 +90,29 @@ function CardModal({ card, resolved, onClose, onPrev, onNext }) {
             <span className="text-sm text-cmd-muted">Anzahl: {card.quantity}</span>
             <span className="font-semibold" style={{ color: 'var(--g)' }}>€{card.purchasePrice.toFixed(2)}</span>
           </div>
+          {copies && (
+            <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
+              <div className="text-sm font-semibold text-fg">
+                {copies.free > 0
+                  ? <span style={{ color: 'var(--g)' }}>{copies.free} von {copies.total} frei</span>
+                  : <span style={{ color: 'var(--r)' }}>Kein Exemplar frei</span>}
+                {copies.inDecks > 0 && <span className="font-normal text-cmd-muted"> · {copies.inDecks} in Decks verbaut</span>}
+              </div>
+              <ul className="mt-1.5 space-y-1 text-sm">
+                {copies.list.map(place => (
+                  <li key={`${place.inDeck}:${place.label}`} className="flex justify-between gap-3">
+                    <span className="min-w-0 text-fg-2">
+                      {place.inDeck ? 'Deck ' : '📍 '}<span className="font-medium text-fg">{place.label}</span>
+                      {place.label === card.binderName && <span className="text-xs text-cmd-muted"> · diese Karte</span>}
+                    </span>
+                    <span className="tabular-nums flex-shrink-0" style={{ color: place.inDeck ? 'var(--color-text-muted)' : 'var(--color-text)' }}>
+                      {place.quantity}×{place.inDeck ? ' verbaut' : ''}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="flex gap-2 mt-4 sm:hidden">
             <button onClick={onPrev} className="btn-secondary flex-1 text-sm">‹ Zurück</button>
             <button onClick={onNext} className="btn-secondary flex-1 text-sm">Weiter ›</button>
@@ -546,6 +589,7 @@ export default function CollectionPage() {
         <CardModal
           card={visibleCards[modalIndex]}
           resolved={resolveCard(visibleCards[modalIndex])}
+          copies={cardCopies(collection, visibleCards[modalIndex].name)}
           onClose={() => setModalIndex(null)}
           onPrev={() => setModalIndex(i => (i - 1 + visibleCards.length) % visibleCards.length)}
           onNext={() => setModalIndex(i => (i + 1) % visibleCards.length)}
