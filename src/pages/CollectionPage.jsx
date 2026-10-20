@@ -86,6 +86,9 @@ function CardModal({ card, resolved, copies, onClose, onPrev, onNext }) {
         <div className="p-4">
           <div className="font-bold text-fg text-lg mb-1">{card.name}</div>
           <div className="text-sm text-cmd-muted mb-1">{resolved?.typeLine || card.rarity}</div>
+          {resolved?.reserved && (
+            <div className="text-xs font-semibold mb-1" style={{ color: 'var(--gold)' }}>Reserved List – wird nie nachgedruckt</div>
+          )}
           <div className="flex justify-between items-center mt-2">
             <span className="text-sm text-cmd-muted">Anzahl: {card.quantity}</span>
             <span className="font-semibold" style={{ color: 'var(--g)' }}>€{card.purchasePrice.toFixed(2)}</span>
@@ -155,6 +158,8 @@ export default function CollectionPage() {
   const [selectedColors, setSelectedColors] = useState([])
   const [selectedType, setSelectedType] = useState('')
   const [availability, setAvailability] = useState('all') // all | free | built
+  // Only cards on Wizards' Reserved List (never reprinted — usually the valuable ones).
+  const [reservedOnly, setReservedOnly] = useState(false)
   const [minQuantity, setMinQuantity] = useState('')
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
@@ -229,6 +234,12 @@ export default function CollectionPage() {
     )
   }
 
+  const reservedCount = useMemo(
+    () => new Set((collection?.cards || []).filter(c => resolveCard(c)?.reserved).map(c => c.name)).size,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [collection, imageMap]
+  )
+
   const visibleCards = useMemo(() => {
     if (!collection?.cards) return []
 
@@ -263,6 +274,8 @@ export default function CollectionPage() {
     if (selectedType) {
       result = result.filter(c => resolveCard(c)?.typeLine?.includes(selectedType))
     }
+
+    if (reservedOnly) result = result.filter(c => resolveCard(c)?.reserved)
 
     if (availability === 'free') {
       result = result.filter(c => c.binderType !== 'deck')
@@ -300,7 +313,7 @@ export default function CollectionPage() {
     }
 
     return result
-  }, [collection, search, textSearch, selectedColors, selectedType, availability, selectedBinder, minQuantity, minPrice, maxPrice, minCmc, maxCmc, sortBy, imageMap])
+  }, [collection, search, textSearch, selectedColors, selectedType, availability, reservedOnly, selectedBinder, minQuantity, minPrice, maxPrice, minCmc, maxCmc, sortBy, imageMap])
 
   if (!collection) {
     return (
@@ -419,6 +432,25 @@ export default function CollectionPage() {
           </div>
 
           <div>
+            <span className="text-xs text-cmd-muted block mb-2">Reserved List</span>
+            <button
+              type="button"
+              onClick={() => setReservedOnly(on => !on)}
+              aria-pressed={reservedOnly}
+              title="Nur Karten der Reserved List – Wizards druckt sie nie wieder nach"
+              className="text-sm px-3 min-h-[38px] whitespace-nowrap"
+              style={{
+                background: reservedOnly ? 'var(--color-accent)' : 'var(--color-surface)',
+                color: reservedOnly ? 'var(--color-bg)' : 'var(--color-text)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)'
+              }}
+            >
+              {reservedOnly ? '✓ ' : ''}Nur Reserved List{reservedCount ? <span className="tabular-nums" style={{ opacity: 0.7 }}> ({reservedCount})</span> : null}
+            </button>
+          </div>
+
+          <div>
             <label className="text-xs text-cmd-muted block mb-2">Verfügbarkeit</label>
             <select
               value={availability}
@@ -526,7 +558,7 @@ export default function CollectionPage() {
             </select>
           </div>
 
-          {(selectedColors.length > 0 || selectedType || availability !== 'all' || selectedBinder || minQuantity || minPrice || maxPrice || minCmc || maxCmc || sortBy !== 'none' || search || textSearch) && (
+          {(selectedColors.length > 0 || selectedType || availability !== 'all' || reservedOnly || selectedBinder || minQuantity || minPrice || maxPrice || minCmc || maxCmc || sortBy !== 'none' || search || textSearch) && (
             <button
               onClick={() => {
                 setSearch('')
@@ -534,6 +566,7 @@ export default function CollectionPage() {
                 setSelectedColors([])
                 setSelectedType('')
                 setAvailability('all')
+                setReservedOnly(false)
                 setSelectedBinder('')
                 setMinQuantity('')
                 setMinPrice('')

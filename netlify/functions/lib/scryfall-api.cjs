@@ -119,7 +119,8 @@ async function getCardPrice(cardName) {
     cmc: data.cmc ?? 0,
     colorIdentity: (data.color_identity ?? []).join(' '),
     oracleText: data.oracle_text ?? data.card_faces?.[0]?.oracle_text ?? '',
-    manaCost: data.mana_cost ?? data.card_faces?.[0]?.mana_cost ?? ''
+    manaCost: data.mana_cost ?? data.card_faces?.[0]?.mana_cost ?? '',
+    reserved: Boolean(data.reserved)
   }
 }
 
@@ -236,7 +237,8 @@ async function getBulkPrices(cardNames) {
             oracleText: card.oracle_text ?? card.card_faces?.[0]?.oracle_text ?? '',
             // The printed cost, not just CMC — CMC counts X as 0, so an {X}{X}{U}{U} card shows
             // up as "CMC 2" and the model concluded it "has no X in its mana cost".
-            manaCost: card.mana_cost ?? card.card_faces?.[0]?.mana_cost ?? ''
+            manaCost: card.mana_cost ?? card.card_faces?.[0]?.mana_cost ?? '',
+            reserved: Boolean(card.reserved)
           }
           result[name] = entry
           cache.set(`name:${name.toLowerCase()}`, { data: entry, timestamp: Date.now() })
@@ -305,7 +307,9 @@ async function getCardsByIds(scryfallIds) {
             // Shown as mana pips in the deck editor; a DFC/split card lists each face's cost.
             manaCost: card.mana_cost ?? (card.card_faces || []).map(f => f.mana_cost).filter(Boolean).join(' // '),
             // For searching the collection by rules text (both faces of a double-faced card).
-            oracleText: card.oracle_text ?? (card.card_faces || []).map(f => f.oracle_text).filter(Boolean).join(' // ')
+            oracleText: card.oracle_text ?? (card.card_faces || []).map(f => f.oracle_text).filter(Boolean).join(' // '),
+            // On Wizards' Reserved List (never reprinted) — a filter in the collection.
+            reserved: Boolean(card.reserved)
           }
           result[card.id] = entry
           cache.set(`id:${card.id}`, { data: entry, timestamp: Date.now() })

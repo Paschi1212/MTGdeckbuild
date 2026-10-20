@@ -43,9 +43,9 @@ async function readCache(keys) {
       const request = store.get(key)
       request.onsuccess = () => {
         const value = request.result
-        // Entries cached before the rules text was part of the data count as missing, so the
-        // text search finds every card (one refresh per collection).
-        if (value && now - value.t < TTL_MS && value.d && 'oracleText' in value.d) hits.set(key, value.d)
+        // Entries cached before the rules text / Reserved List flag were part of the data count as
+        // missing, so text search and the Reserved List filter see every card (one refresh).
+        if (value && now - value.t < TTL_MS && value.d && 'oracleText' in value.d && 'reserved' in value.d) hits.set(key, value.d)
       }
     }
     tx.oncomplete = () => resolve(hits)

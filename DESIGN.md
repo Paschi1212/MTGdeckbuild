@@ -127,6 +127,8 @@ farbiges Element in Listen; alles andere bleibt ruhig.
 
 - **Kartenansicht** zeigt, wo jedes Exemplar liegt: „3 von 5 frei · 2 in Decks verbaut“, darunter die
   Ordner (📍, frei) und Decks (verbaut) mit Anzahl; die angeklickte Zeile ist als „diese Karte“ markiert.
+- **Reserved List:** Umschalter „Nur Reserved List (N)“ bei den Filtern (Scryfall-Feld `reserved`); in der
+  Kartenansicht der goldene Hinweis „Reserved List – wird nie nachgedruckt“.
 - **Kartentext-Suche** neben der Namenssuche (englischer Oracle-Text, Wörter einzeln oder „in Anführungszeichen“).
 
 ## Muster: Deck-Übersicht
