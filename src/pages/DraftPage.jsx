@@ -69,6 +69,8 @@ function DraftLobby({ draftId, me, hosting, draft }) {
   useEffect(() => { update({ deck: { label: 'Draft' }, ready: true }) }, [update])
 
   const settings = hosting || lobby
+  // Bots fill the free seats up to settings.botsTo (they only draft).
+  const bots = Math.max(0, Math.min(8, settings?.botsTo || 0) - members.length)
   const info = MODES[settings?.mode] || MODES.normal
   const copyLink = async () => {
     try { await navigator.clipboard.writeText(window.location.href); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch {}
@@ -80,6 +82,7 @@ function DraftLobby({ draftId, me, hosting, draft }) {
       <p className="mb-6 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
         {info.label} · {settings?.setNames ? (new Set(settings.setNames).size === 1 ? settings.setNames[0] : settings.setNames.join(' · ')) : 'Editionen …'}
         {settings?.timer ? ' · mit Pick-Timer' : ''}
+        {settings?.botsTo ? ` · Bots füllen auf ${settings.botsTo} auf` : ''}
         {status !== 'SUBSCRIBED' && ' · verbinde …'}
       </p>
 
@@ -102,8 +105,12 @@ function DraftLobby({ draftId, me, hosting, draft }) {
         </p>
         {error && <p className="text-sm" style={{ color: 'var(--r)' }}>Booster konnten nicht geöffnet werden: {error}</p>}
         {hosting ? (
-          <button type="button" onClick={start} disabled={starting || members.length < 2} className="btn-primary w-full min-h-[44px]">
-            {starting ? 'Öffne die Booster …' : members.length < 2 ? 'Warte auf Mitspieler …' : `Draft mit ${members.length} Spielern starten`}
+          <button type="button" onClick={start} disabled={starting || members.length + bots < 2} className="btn-primary w-full min-h-[44px]">
+            {starting
+              ? 'Öffne die Booster …'
+              : members.length + bots < 2
+                ? 'Warte auf Mitspieler …'
+                : `Draft mit ${members.length} ${members.length === 1 ? 'Spieler' : 'Spielern'}${bots ? ` + ${bots} Bots` : ''} starten`}
           </button>
         ) : (
           <p className="text-sm font-semibold text-fg">{starting ? 'Die Booster werden geöffnet …' : 'Warte, bis der Gastgeber startet …'}</p>

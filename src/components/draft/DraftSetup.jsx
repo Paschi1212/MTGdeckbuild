@@ -17,6 +17,8 @@ export default function DraftSetup({ me, disabled }) {
   const [sameForAll, setSameForAll] = useState(true)
   const [maxPlayers, setMaxPlayers] = useState(8)
   const [timer, setTimer] = useState(true)
+  // Fill free seats with bots up to this many (0 = no bots).
+  const [botsTo, setBotsTo] = useState(0)
   const [isPrivate, setIsPrivate] = useState(false)
   const [name, setName] = useState(`Draft von ${me.name}`)
 
@@ -53,7 +55,8 @@ export default function DraftSetup({ me, disabled }) {
       mode,
       sets: rounds,
       setNames: rounds.map(setName_),
-      timer
+      timer,
+      botsTo
     })
     navigate(`/draft/${draftId}`)
   }
@@ -143,6 +146,31 @@ export default function DraftSetup({ me, disabled }) {
             </button>
           ))}
         </div>
+      </div>
+      <div>
+        <span className="text-sm block mb-1" style={{ color: 'var(--color-text-secondary)' }}>Freie Plätze mit Bots auffüllen</span>
+        <div className="flex gap-1.5">
+          {[[0, 'Keine'], [4, 'auf 4'], [6, 'auf 6'], [8, 'auf 8']].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setBotsTo(value)}
+              aria-pressed={botsTo === value}
+              className="flex-1 min-h-[40px] text-sm font-semibold"
+              style={{
+                background: botsTo === value ? 'var(--color-accent)' : 'var(--color-surface)',
+                color: botsTo === value ? 'var(--color-bg)' : 'var(--color-text)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-sm)'
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs mt-1 leading-snug" style={{ color: 'var(--color-text-muted)' }}>
+          {botsTo ? `Fehlen beim Start Spieler, picken Bots auf den freien Plätzen bis ${botsTo} – auch allein möglich. Bots draften nur, an den Spieltisch kommen sie nicht mit.` : 'Nur echte Spieler.'}
+        </p>
       </div>
       <label className="flex items-start gap-2 text-sm cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
         <input type="checkbox" checked={timer} onChange={(e) => setTimer(e.target.checked)} className="mt-1" />

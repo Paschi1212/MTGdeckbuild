@@ -133,7 +133,7 @@ export default function DraftDeckBuilder({ draftId, me, view, isHost, draft, onH
           </button>
           {isHost && (
             <button type="button" onClick={goToTable} disabled={readyPlayers.length === 0} className="btn-primary text-sm px-5 min-h-[44px]">
-              An den Spieltisch ({readyPlayers.length}/{view.table.length} bereit)
+              An den Spieltisch ({readyPlayers.length}/{view.table.filter(seat => !seat.bot).length} bereit)
             </button>
           )}
         </div>
@@ -144,8 +144,8 @@ export default function DraftDeckBuilder({ draftId, me, view, isHost, draft, onH
         {view.table.map(seat => {
           const member = draft.members.find(m => m.playerId === seat.playerId)
           return (
-            <span key={seat.playerId} className="px-2 py-1" style={{ border: `1px solid ${member?.ready ? 'var(--g)' : 'var(--color-border)'}`, borderRadius: 'var(--radius-sm)' }}>
-              {seat.name}{seat.playerId === me.playerId ? ' (du)' : ''} · {member?.ready ? 'bereit' : member ? 'baut' : 'offline'}
+            <span key={seat.playerId} className="px-2 py-1" style={{ border: `1px solid ${member?.ready ? 'var(--g)' : 'var(--color-border)'}`, borderRadius: 'var(--radius-sm)', opacity: seat.bot ? 0.6 : 1 }}>
+              {seat.name}{seat.playerId === me.playerId ? ' (du)' : ''} · {seat.bot ? 'spielt nicht mit' : member?.ready ? 'bereit' : member ? 'baut' : 'offline'}
             </span>
           )
         })}

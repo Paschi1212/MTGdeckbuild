@@ -1,4 +1,4 @@
-import { MODES, ROUNDS, autoPick } from './packs'
+import { MODES, ROUNDS, autoPick, botPick } from './packs'
 
 // The draft itself, run by the host's browser: who holds which booster, who picked what.
 // Plain functions on a plain object, so it can be stored, reloaded and tested.
@@ -10,7 +10,7 @@ import { MODES, ROUNDS, autoPick } from './packs'
 // Boosters go left in rounds 1 and 3, right in round 2. Each player holds a queue: the booster
 // in front is the one to pick from, the next ones wait (when a neighbour is faster).
 
-export function startDraft({ mode, seats, names, packs, timer }) {
+export function startDraft({ mode, seats, names, packs, timer, bots = [] }) {
   return openRound({
     mode,
     seats: [...seats],
@@ -22,6 +22,8 @@ export function startDraft({ mode, seats, names, packs, timer }) {
     picksInPack: {},
     deadlines: {},
     timer: Boolean(timer),
+    // Seats played by the host's browser (lib/draft/packs.js botPick) — no timer for them.
+    bots: [...bots],
     phase: 'drafting'
   })
 }
@@ -32,7 +34,7 @@ export function secondsForPick(mode, pickIndex) {
 }
 
 function withDeadline(state, pid, now) {
-  if (!state.timer || !state.queues[pid]?.length) {
+  if (!state.timer || !state.queues[pid]?.length || state.bots?.includes(pid)) {
     const { [pid]: _, ...rest } = state.deadlines
     return { ...state, deadlines: rest }
   }
@@ -117,6 +119,14 @@ export function viewFor(state, pid) {
     pool: state.pools[pid] || [],
     deadline: state.deadlines[pid] || null,
     pickNumber: (state.picksInPack[pid] || 0) + 1,
-    table: state.seats.map(seat => ({ playerId: seat, name: state.names[seat], holding: state.queues[seat]?.length || 0, picked: state.pools[seat]?.length || 0 }))
+    table: state.seats.map(seat => ({ playerId: seat, name: state.names[seat], bot: Boolean(state.bots?.includes(seat)), holding: state.queues[seat]?.length || 0, picked: state.pools[seat]?.length || 0 }))
   }
+}
+
+/** A bot with a booster in front of it takes its cards. Returns the new state or null. */
+export function botMove(state, botId, now = Date.now()) {
+  const pack = state.queues[botId]?.[0]
+  if (!pack || state.phase !== 'drafting') return null
+  const count = Math.min(MODES[state.mode].picksPerTurn, pack.cards.length)
+  return pick(state, botId, pack.id, botPick(pack, state.pools[botId] || [], count, state.mode), now)
 }

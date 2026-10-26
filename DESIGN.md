@@ -131,6 +131,10 @@ farbiges Element in Listen; alles andere bleibt ruhig.
   10 Commons, 1 Standardland; 1 Pick) oder *Commander-Draft* (wie Commander Legends: 20er-Booster mit
   2 Legenden, 2 Picks, Deck ≥ 60 mit Commander, 40 Leben). Edition frei wählbar (jede Runde eine eigene
   möglich), 2–8 Spieler, Pick-Timer optional, privat. In der Lobbyliste mit goldenem Modus-Etikett.
+- **Bots (wählbar):** „Freie Plätze mit Bots auffüllen“ – Keine / auf 4 / 6 / 8. Start dann auch allein
+  („Draft mit 1 Spieler + 3 Bots starten“). Bots heißen „Urza (Bot)“ usw., picken nach 0,7–2 s (Seltenheit,
+  ab Pick 5 zwei Hauptfarben, im Commander-Draft früh eine Legende und deren Farben), draften nur –
+  beim Deckbau „spielt nicht mit“, an den Spieltisch kommen nur echte Spieler.
 - **Draften:** mitlaufende Leiste (Runde/Pick, Richtung, Timer, wer wie viele Booster hält, Pick-Knopf);
   Booster als Kartenbilder (Auswahl mit Goldrahmen, Doppelklick pickt bei 1 Pick), rechts der eigene Pool.
 - **Deckbau:** Commander-Wahl (gedraftete Legenden oder The Prismatic Piper), Standardländer ±, Karten

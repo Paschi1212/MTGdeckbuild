@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { joinChannel } from '../table/realtime'
-import { startDraft, pick as applyPick, expire, viewFor } from './engine'
-import { makeAllPacks, MODES } from './packs'
+import { startDraft, pick as applyPick, expire, viewFor, botMove } from './engine'
+import { makeAllPacks, MODES, BOT_NAMES } from './packs'
 
 // A draft lives on the live channel "draft:<id>". The host's browser runs it (lib/draft/engine.js)
 // and keeps it in localStorage, so a reload continues where it was. Everyone else sends picks and
@@ -105,23 +105,44 @@ export function useDraft(draftId, me, { isHost }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftId, me.playerId, isHost])
 
-  // Host: the pick timer.
+  // Host: the pick timer, and the bots — each takes a moment per booster, like a person would.
+  const botReadyAt = useRef({})
   useEffect(() => {
     if (!isHost) return undefined
     const timer = setInterval(() => {
       const state = stateRef.current
-      if (!state?.timer || state.phase !== 'drafting') return
-      const next = expire(state)
+      if (!state || state.phase !== 'drafting') return
+      let next = state.timer ? expire(state) : state
+      const now = Date.now()
+      for (const bot of next.bots || []) {
+        const pack = next.queues[bot]?.[0]
+        if (!pack) continue
+        const ready = botReadyAt.current[bot]
+        if (!ready || ready.packId !== pack.id) {
+          botReadyAt.current[bot] = { packId: pack.id, at: now + 700 + Math.random() * 1300 }
+          continue
+        }
+        if (now < ready.at) continue
+        next = botMove(next, bot, now) || next
+      }
       if (next !== state) publish(next)
-    }, 1000)
+    }, 400)
     return () => clearInterval(timer)
   }, [isHost, publish])
 
   /** Host: opens the boosters for these players and starts. */
+  // Free seats up to settings.botsTo are filled with bots, seated at random between the players.
   const begin = useCallback(async ({ seats, names, settings }) => {
     const { cardsBySet, legends } = await loadDraftCards(settings.sets, settings.mode)
-    const packs = makeAllPacks(seats, settings.sets, cardsBySet, settings.mode, legends)
-    publish(startDraft({ mode: settings.mode, seats, names, packs, timer: settings.timer }), { force: true })
+    const botCount = Math.max(0, Math.min(8, settings.botsTo || 0) - seats.length)
+    const bots = BOT_NAMES.slice(0, botCount).map((name, index) => ({ id: `bot${index + 1}-${Math.random().toString(36).slice(2, 7)}`, name: `${name} (Bot)` }))
+    const allSeats = [...seats, ...bots.map(bot => bot.id)]
+      .map(id => ({ id, sort: Math.random() }))
+      .sort((a, b) => a.sort - b.sort)
+      .map(entry => entry.id)
+    const allNames = { ...names, ...Object.fromEntries(bots.map(bot => [bot.id, bot.name])) }
+    const packs = makeAllPacks(allSeats, settings.sets, cardsBySet, settings.mode, legends)
+    publish(startDraft({ mode: settings.mode, seats: allSeats, names: allNames, packs, timer: settings.timer, bots: bots.map(bot => bot.id) }), { force: true })
   }, [publish])
 
   const pickCards = useCallback((packId, uids) => {

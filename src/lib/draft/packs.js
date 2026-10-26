@@ -84,6 +84,46 @@ export function autoPick(pack, count, mode) {
     .map(card => card.uid)
 }
 
+// ── Bots (fill empty draft seats; they draft only and don't come to the game table) ──────
+export const BOT_NAMES = ['Urza', 'Mishra', 'Jaya', 'Teferi', 'Nissa', 'Chandra', 'Liliana', 'Karn']
+const RARITY_SCORE = { m: 4, r: 3.5, u: 2, c: 1 }
+const colorsOf = (card) => [...String(card.ci || '')]
+
+/**
+ * A bot's pick, like a sensible human: rare cards first; from the 5th pick on it stays in its
+ * two strongest colors. In a commander draft it takes a legend early and then keeps to that
+ * legend's colors.
+ */
+export function botPick(pack, pool, count, mode) {
+  const weights = {}
+  for (const card of pool) {
+    if (/Land/.test(card.t)) continue
+    for (const color of colorsOf(card)) weights[color] = (weights[color] || 0) + (RARITY_SCORE[card.r] || 1)
+  }
+  const top = Object.entries(weights).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([color]) => color)
+  const legend = mode === 'commander' ? pool.find(card => card.leg) : null
+  const identity = legend ? colorsOf(legend) : null
+
+  const score = (card) => {
+    let value = (RARITY_SCORE[card.r] || 1) + Math.random() * 0.5
+    if (card.basic) return 0
+    const colors = colorsOf(card)
+    if (mode === 'commander') {
+      if (!legend && card.leg) value += 3
+      if (identity) value += colors.every(c => identity.includes(c)) ? 2.5 : -3
+    } else if (pool.length >= 4 && top.length) {
+      if (!colors.length) value += 0.5
+      else value += colors.every(c => top.includes(c)) ? 2 : -1.5
+    }
+    return value
+  }
+  return [...pack.cards]
+    .map(card => ({ uid: card.uid, value: score(card) }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, count)
+    .map(entry => entry.uid)
+}
+
 // Pool order: colors W U B R G, then multicolored, colorless, lands — by mana value inside.
 const COLOR_ORDER = ['W', 'U', 'B', 'R', 'G']
 export function sortPool(cards) {
