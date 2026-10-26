@@ -63,9 +63,9 @@ const byTime = (a, b) => a.ts - b.ts || (a.id < b.id ? -1 : 1)
  *   turn   – { player, round, startedAt }: whose turn it is, since when
  *   timer  – optional clock: { mode: 'turn' | 'game', minutes } or null; startedAt – game start
  */
-export function foldGame(seats, events) {
+export function foldGame(seats, events, startingLife = STARTING_LIFE) {
   const players = Object.fromEntries((seats || []).map(seat => [seat.playerId, {
-    life: STARTING_LIFE, counters: {}, commanderDamage: {}, tax: 0, out: false, kept: false
+    life: startingLife, counters: {}, commanderDamage: {}, tax: 0, out: false, kept: false
   }]))
   const ids = (seats || []).map(seat => seat.playerId)
   let monarch = null
@@ -279,7 +279,8 @@ export function useGame(gameId, me) {
     channelRef.current?.send('board', message)
   }, [me.playerId])
 
-  const state = useMemo(() => foldGame(record?.seats, record?.events || []), [record])
+  // A draft game starts at 20 life (40 in a commander draft) — set by the draft (record.startingLife).
+  const state = useMemo(() => foldGame(record?.seats, record?.events || [], record?.startingLife || STARTING_LIFE), [record])
 
   return { record, state, online: practice ? (record?.seats || []) : online, status, dispatch, boards, publishBoard, practice }
 }

@@ -95,6 +95,8 @@ export function useLobby(lobbyId, me, { hosting, onStart }) {
         hostName: me.name,
         maxPlayers: hosting.maxPlayers,
         createdAt: hosting.createdAt,
+        // A draft lobby (lib/draft) is listed with the game lobbies, but opens /draft/<id>.
+        ...(hosting.kind === 'draft' ? { kind: 'draft', mode: hosting.mode, setNames: hosting.setNames } : {}),
         phase: 'open',
         players: members.map(member => ({ name: member.name, commander: member.deck?.commander || null }))
       }

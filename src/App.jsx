@@ -19,6 +19,7 @@ import SyncBanner from './components/SyncBanner'
 const TablePage = lazy(() => import('./pages/TablePage'))
 const TableRoomPage = lazy(() => import('./pages/TableRoomPage'))
 const CardFitPage = lazy(() => import('./pages/CardFitPage'))
+const DraftPage = lazy(() => import('./pages/DraftPage'))
 import { pullFromCloud, scheduleCloudPush, checkForRemoteChanges } from './lib/cloudSync'
 import { checkBridge } from './lib/aiMode'
 import { flushBrainOutbox } from './lib/brain'
@@ -135,6 +136,7 @@ function App() {
             <Route path="/chat-builder" element={user ? <ChatBuilderPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/claude-modus" element={user ? <ClaudeModePage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/drafts/:id/analyse" element={user ? <DraftAnalysisPage /> : <HomePage user={user} onLogin={handleLogin} />} />
+            <Route path="/draft/:draftId" element={user ? <Suspense fallback={<p className="text-fg-muted">Lade Draft …</p>}><DraftPage user={user} /></Suspense> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/spieltisch" element={user ? <Suspense fallback={<p className="text-fg-muted">Lade Spieltisch …</p>}><TablePage user={user} /></Suspense> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/spieltisch/:lobbyId" element={user ? <Suspense fallback={<p className="text-fg-muted">Lade Spieltisch …</p>}><TableRoomPage key={window.location.pathname} user={user} /></Suspense> : <HomePage user={user} onLogin={handleLogin} />} />
           </Routes>

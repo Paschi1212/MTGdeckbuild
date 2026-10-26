@@ -123,6 +123,20 @@ farbiges Element in Listen; alles andere bleibt ruhig.
   Anzeige als Countdown „⏱ 1:42 Zug“; letzte 30 s (Zug) bzw. 5 min (Partie) gold, danach rot „Zeit um
   −0:10“ – nur Erinnerung, keine erzwungene Aktion.
 
+## Muster: Draft (src/pages/DraftPage.jsx, lib/draft/)
+
+- **Anlegen** auf /spieltisch („Draft öffnen“): Modus *Draft* (15er-Booster: 1 Rare/Mythic, 3 Uncommons,
+  10 Commons, 1 Standardland; 1 Pick) oder *Commander-Draft* (wie Commander Legends: 20er-Booster mit
+  2 Legenden, 2 Picks, Deck ≥ 60 mit Commander, 40 Leben). Edition frei wählbar (jede Runde eine eigene
+  möglich), 2–8 Spieler, Pick-Timer optional, privat. In der Lobbyliste mit goldenem Modus-Etikett.
+- **Draften:** mitlaufende Leiste (Runde/Pick, Richtung, Timer, wer wie viele Booster hält, Pick-Knopf);
+  Booster als Kartenbilder (Auswahl mit Goldrahmen, Doppelklick pickt bei 1 Pick), rechts der eigene Pool.
+- **Deckbau:** Commander-Wahl (gedraftete Legenden oder The Prismatic Piper), Standardländer ±, Karten
+  zwischen „Im Deck“ und „Pool“ per Klick; Farbfremdes rot umrandet; „Als Entwurf speichern“ (ganzer
+  Pool), „Bereit“; der Gastgeber schickt alle Bereiten an den Spieltisch (20 bzw. 40 Leben).
+- Technik: Der Browser des Gastgebers führt den Draft (Zustand in localStorage, Reload setzt fort), Karten
+  von Scryfall über draft-data (Netlify Blobs zwischengespeichert, 30 Tage).
+
 ## Muster: Sammlung
 
 - **Kartenansicht** zeigt, wo jedes Exemplar liegt: „3 von 5 frei · 2 in Decks verbaut“, darunter die
