@@ -55,6 +55,7 @@ export default function DraftSetup({ me, disabled }) {
       mode,
       sets: rounds,
       setNames: rounds.map(setName_),
+      setIcons: rounds.map(code => sets?.find(set => set.code === code)?.icon || null),
       timer,
       botsTo
     })

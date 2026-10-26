@@ -135,11 +135,21 @@ farbiges Element in Listen; alles andere bleibt ruhig.
   („Draft mit 1 Spieler + 3 Bots starten“). Bots heißen „Urza (Bot)“ usw., picken nach 0,7–2 s (Seltenheit,
   ab Pick 5 zwei Hauptfarben, im Commander-Draft früh eine Legende und deren Farben), draften nur –
   beim Deckbau „spielt nicht mit“, an den Spieltisch kommen nur echte Spieler.
-- **Draften:** mitlaufende Leiste (Runde/Pick, Richtung, Timer, wer wie viele Booster hält, Pick-Knopf);
-  Booster als Kartenbilder (Auswahl mit Goldrahmen, Doppelklick pickt bei 1 Pick), rechts der eigene Pool.
-- **Deckbau:** Commander-Wahl (gedraftete Legenden oder The Prismatic Piper), Standardländer ±, Karten
-  zwischen „Im Deck“ und „Pool“ per Klick; Farbfremdes rot umrandet; „Als Entwurf speichern“ (ganzer
-  Pool), „Bereit“; der Gastgeber schickt alle Bereiten an den Spieltisch (20 bzw. 40 Leben).
+- **Signatur „Drafttisch“ (DraftPod):** Sitzkreis von oben, du unten (Akzentfarbe). Jeder Platz zeigt die
+  wartenden Booster als Zahl; ab 2 Gold-Rand – da staut es sich. In der Mitte der Pfeil ↻/↺ mit
+  „Runde X / nach links|rechts“. Bots mit ⚙ und gedimmt, freie Plätze gestrichelt. In der Lobby groß mit
+  Booster-Kacheln (Set-Symbol per CSS-Mask, Scryfall-SVG), beim Draften in der Seitenleiste.
+- **Draften:** mitlaufende Leiste: Modus + Booster-Fortschritt (3 kleine Booster: offen/aktiv gold/zu),
+  „Booster X · Pick Y von Z“, Timer als ablaufender Goldbalken (letzte 10 s rot), Pick-Knopf mit
+  konkretem Text („Karte wählen“, „Noch 1 wählen“, „2 Karten picken“). Auswahl mit Goldrahmen und
+  Plakette „Pick“ bzw. „Pick 1/2“, die übrigen Karten werden blass. Warten: „Teferi pickt noch.“
+- **Pool-Auswertung (PoolStats):** Farbbalken nach Karten je Farbe (Pip-Farben), Kurve 0–1 … 6+,
+  Kreaturen/andere Zauber/Länder. Gleiche Komponente im Deckbau als „Dein Deck – Farben & Kurve“.
+- **Deckbau:** Commander-Wahl (gedraftete Legenden oder The Prismatic Piper), Standardländer ±,
+  **„Länder verteilen“** (füllt bis zur Mindestgröße, verteilt nach Manasymbolen, im Commander-Draft nur
+  innerhalb der Farbidentität), Karten zwischen „Im Deck“ und „Pool“ per Klick; Farbfremdes rot umrandet;
+  „Als Entwurf speichern“ (ganzer Pool), „Bereit“; der Gastgeber schickt alle Bereiten an den Spieltisch
+  (20 bzw. 40 Leben).
 - Technik: Der Browser des Gastgebers führt den Draft (Zustand in localStorage, Reload setzt fort), Karten
   von Scryfall über draft-data (Netlify Blobs zwischengespeichert, 30 Tage).
 

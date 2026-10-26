@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { MODES, sortPool } from '../../lib/draft/packs'
 import { saveDraftDeck } from '../../lib/draftDecks'
 import ManaCost from '../ManaCost'
+import PoolStats, { pipCounts } from './PoolStats'
 
 const BASICS = [
   { name: 'Plains', color: 'W', label: 'Ebene' },
@@ -41,6 +42,23 @@ export default function DraftDeckBuilder({ draftId, me, view, isHost, draft, onH
 
   const toggle = (uid) => setDeck(prev => ({ ...prev, main: prev.main.includes(uid) ? prev.main.filter(id => id !== uid) : [...prev.main, uid] }))
   const setBasic = (name, delta) => setDeck(prev => ({ ...prev, basics: { ...prev.basics, [name]: Math.max(0, (prev.basics[name] || 0) + delta) } }))
+
+  // Basics up to the minimum deck size, split by the mana symbols of the cards in the deck
+  // (in a commander draft only in the commander's colors).
+  const distributeLands = () => {
+    const needed = Math.max(0, info.minDeck - (main.length + (commander ? 1 : 0)))
+    const pips = pipCounts(commander ? [...main, commander] : main)
+    let colors = BASICS.map(b => b.color).filter(color => pips[color] > 0 && (identity === null || identity.includes(color)))
+    if (!colors.length) colors = identity ? [...identity] : []
+    if (!colors.length || !needed) { setDeck(prev => ({ ...prev, basics: {} })); return }
+    const weight = (color) => pips[color] || 1
+    const sum = colors.reduce((total, color) => total + weight(color), 0)
+    const shares = colors.map(color => ({ color, exact: (needed * weight(color)) / sum }))
+    const basics = Object.fromEntries(shares.map(s => [s.color, Math.floor(s.exact)]))
+    let left = needed - Object.values(basics).reduce((a, b) => a + b, 0)
+    for (const s of [...shares].sort((a, b) => (b.exact % 1) - (a.exact % 1))) { if (left-- <= 0) break; basics[s.color] += 1 }
+    setDeck(prev => ({ ...prev, basics: Object.fromEntries(BASICS.filter(b => basics[b.color]).map(b => [b.name, basics[b.color]])) }))
+  }
 
   const built = () => {
     const counts = new Map()
@@ -172,7 +190,18 @@ export default function DraftDeckBuilder({ draftId, me, view, isHost, draft, onH
       )}
 
       <section className="card mb-4">
-        <h2 className="text-sm font-bold mb-2">Standardländer <span className="font-normal tabular-nums" style={{ color: 'var(--color-text-muted)' }}>({basicCount})</span></h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+          <h2 className="text-sm font-bold">Standardländer <span className="font-normal tabular-nums" style={{ color: 'var(--color-text-muted)' }}>({basicCount})</span></h2>
+          <button
+            type="button"
+            onClick={distributeLands}
+            disabled={!main.length}
+            className="btn-secondary text-xs px-3 min-h-[36px]"
+            title="Füllt das Deck auf die Mindestgröße mit Standardländern auf – verteilt nach den Manasymbolen deiner Karten"
+          >
+            Länder verteilen
+          </button>
+        </div>
         <div className="flex flex-wrap gap-3">
           {BASICS.map(b => (
             <div key={b.name} className="flex items-center gap-1.5 text-sm" style={{ color: outside(b.color) && deck.basics[b.name] ? 'var(--r)' : 'var(--color-text)' }}>
@@ -188,6 +217,7 @@ export default function DraftDeckBuilder({ draftId, me, view, isHost, draft, onH
 
       <div className="grid lg:grid-cols-2 gap-4 items-start">
         <section className="card">
+          {main.length > 0 && <div className="mb-3 pb-3" style={{ borderBottom: '1px solid var(--color-border)' }}><PoolStats cards={main} title="Dein Deck – Farben & Kurve" /></div>}
           <h2 className="text-sm font-bold mb-2">Im Deck <span className="font-normal tabular-nums" style={{ color: 'var(--color-text-muted)' }}>({main.length} + {basicCount} Länder{commander ? ' + Commander' : ''})</span></h2>
           {main.length === 0
             ? <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Klicke rechts auf Karten aus deinem Pool, um sie ins Deck zu legen.</p>
