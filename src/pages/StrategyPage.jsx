@@ -299,6 +299,13 @@ export default function StrategyPage() {
           ← Zurück
         </button>
         <button
+          onClick={() => navigate('/edit-deck', { state: { commander, cards: [] } })}
+          className="btn-secondary flex-1"
+          title="Leeres Deck mit diesem Commander im Editor – ohne KI-Aufbau"
+        >
+          Selbst bauen
+        </button>
+        <button
           onClick={handleNext}
           className="btn-primary flex-1"
         >

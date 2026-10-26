@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import CardTile from '../components/CardTile'
+import FriendCardSearch from '../components/FriendCardSearch'
 import { readApiError } from '../lib/apiError'
 import ChatWidget from '../components/ChatWidget'
 import { getDeckPreferences, setDeckPreferences } from '../lib/deckPreferences'
@@ -296,6 +297,16 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
         <button onClick={() => runAudit(playerStrategy || undefined)} className="btn-primary">
           🔍 Jetzt analysieren
         </button>
+        <div className="text-left mt-10">
+          <FriendCardSearch
+            commander={commander}
+            deckName={deckName}
+            storageKey={storageKey}
+            deckCards={deckCards}
+            strategy={playerStrategy || rememberedStrategy}
+            onOpenEditor={onOpenEditor}
+          />
+        </div>
       </div>
     )
   }
@@ -563,6 +574,15 @@ export default function DeckAuditPage({ commander, deckName, storageKey = deckNa
           </div>
         </div>
       )}
+
+      <FriendCardSearch
+        commander={commander}
+        deckName={deckName}
+        storageKey={storageKey}
+        deckCards={deckCards}
+        strategy={playerStrategy || (audit?.strategy ? formatStrategy(audit.strategy) : rememberedStrategy)}
+        onOpenEditor={onOpenEditor}
+      />
 
       <div className="flex gap-3">
         <button

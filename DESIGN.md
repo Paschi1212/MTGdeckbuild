@@ -65,6 +65,26 @@ farbiges Element in Listen; alles andere bleibt ruhig.
 - **Drei Ansichten** (Umschalter in der Werkzeugleiste, pro Gerät gemerkt): *Liste* (dichte
   Deckliste, Standard), *Bilder* (Kartenbilder mit Namen und Preis darunter, Streichkandidaten rot
   umrandet), *Tabelle* (Anzahl, Name, vollständiger Kartentyp, Kosten, Preis, Status).
+- **Selbst bauen** (ohne KI): Einstieg über „Deck bauen → Selbst bauen“, „Meine Decks → Neues Deck selbst
+  bauen“ oder „Selbst bauen“ auf der Strategieseite. Der Editor startet leer; ohne Commander fragt er
+  zuerst danach („ändern“ neben dem Namen, Farbsymbole daneben).
+- **Reiter „Karten finden“** (Standard, solange ein Entwurf unter 99 Karten hat): *Beliebt bei EDHREC*
+  (Synergie, Top-Karten, je Kartentyp, mit Synergie-Wert) und *Scryfall-Suche* (Scryfall-Syntax,
+  automatisch `id<=` Farbidentität + `legal:commander`, nach EDHREC-Rang). „Nur Karten, die ich frei habe“
+  filtert auf die Sammlung; „+“ legt die Karte ins Deck, Klick auf den Namen zeigt sie groß.
+- **Standardländer ±** für die Farben des Commanders (Ödnis bei farblos) über der Werkzeugleiste.
+- **Farbprüfung:** Karten, deren Farben der Commander nicht hat, stehen in einem rot umrandeten Hinweis
+  mit „entfernen“.
+
+## Muster: Analyse – Bei Freunden suchen (src/components/FriendCardSearch.jsx)
+
+- Karte unter den Vorschlägen (auch ohne gelaufene Analyse): Freundes-Sammlungen als Häkchen mit
+  Kartenzahl, „Sammlung durchsuchen“ / „Alle Freunde durchsuchen“.
+- Vorfilter im Browser: Standardländer, Karten im Deck und Karten, die man selbst frei hat, fallen weg;
+  Karten mit fremden Farben ebenfalls. Dann check-cards (wie „Neue Karten prüfen“) mit nur diesem Deck,
+  in Teilen à 400 Karten (höchstens 3 Teile, wertvollste zuerst).
+- Ergebnis: Kartenbild, Preis, **„bei Max (2×)“ in Gold**, Begründung, „statt X“ in Rot; „Im Editor
+  ausprobieren“ übergibt Rein/Raus an die Vorschläge des Editors. Letztes Ergebnis je Deck gemerkt.
 
 ## Tablet & Handy
 

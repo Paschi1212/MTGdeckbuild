@@ -99,6 +99,13 @@ export default function DecksPage() {
         <TabButton active={tab === 'drafts'} onClick={() => setTab('drafts')}>
           Entwürfe{drafts.length > 0 ? ` (${drafts.length})` : ''}
         </TabButton>
+        <button
+          type="button"
+          onClick={() => navigate('/select-commander', { state: { step: 'manual' } })}
+          className="btn-secondary ml-auto text-sm px-4 min-h-[40px]"
+        >
+          Neues Deck selbst bauen
+        </button>
       </div>
 
       {tab === 'decks' && (

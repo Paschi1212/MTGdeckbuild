@@ -35,7 +35,7 @@ export default function CommanderSelectPage() {
   const chatHandoff = location.state?.activeTab === 'chat'
     ? { commander: location.state?.chatCommander, autoMessage: location.state?.chatAutoMessage }
     : null
-  const [step, setStep] = useState('method') // method | questionnaire | search | results | theme | themeResults
+  const [step, setStep] = useState(location.state?.step || 'method') // method | questionnaire | search | manual | results | theme | themeResults
   const [preferences, setPreferences] = useState({
     colors: [],
     playStyle: '',
@@ -47,6 +47,7 @@ export default function CommanderSelectPage() {
   const [selectedCommander, setSelectedCommander] = useState(null)
   const [searchCommanderInput, setSearchCommanderInput] = useState('')
   const [directCommanderInput, setDirectCommanderInput] = useState('')
+  const [manualCommanderInput, setManualCommanderInput] = useState('')
 
   // EDHREC's full site-wide theme list (Tokens, Aristocrats, Voltron, ...) — loaded once,
   // lazily, the first time the user actually opens the theme browser rather than on every
@@ -184,6 +185,12 @@ export default function CommanderSelectPage() {
     }
   }
 
+  // Building by hand: straight into the empty editor with this commander — no AI involved.
+  const startManualBuild = (commander) => {
+    const name = String(commander || '').trim()
+    navigate('/edit-deck', { state: { commander: name, cards: [] } })
+  }
+
   const handleSelectCommander = (commander) => {
     setSelectedCommander(commander)
     // Save to session/context and navigate to strategy
@@ -214,6 +221,16 @@ export default function CommanderSelectPage() {
               <h3 className="text-xl font-bold mb-2 text-mtg-green">🔍 Direkte Suche</h3>
               <p className="text-fg-muted">
                 Du kennst bereits einen Commander, den du spielen möchtest?
+              </p>
+            </button>
+
+            <button
+              onClick={() => setStep('manual')}
+              className="card-hover md:col-span-2"
+            >
+              <h3 className="text-xl font-bold mb-2 text-fg">✍️ Selbst bauen</h3>
+              <p className="text-fg-muted">
+                Leeres Deck mit deinem Commander: Karten selbst suchen und hinzufügen – mit EDHREC-Vorschlägen, Scryfall-Suche und deiner Sammlung, ganz ohne KI-Aufbau.
               </p>
             </button>
 
@@ -444,6 +461,37 @@ export default function CommanderSelectPage() {
           </button>
 
           <ChatWidget contextNote={contextNote} />
+        </div>
+      )
+    }
+
+    // Build by hand: pick the commander, then the empty editor
+    if (step === 'manual') {
+      return (
+        <div className="max-w-2xl mx-auto">
+          <div className="card mb-6">
+            <h2 className="text-xl font-bold mb-1">✍️ Selbst bauen</h2>
+            <p className="text-sm text-fg-muted mb-4">
+              Wähle den Commander – danach öffnet sich der Editor mit einem leeren Deck. Den Commander kannst du dort jederzeit ändern.
+            </p>
+            <CommanderSearchInput
+              value={manualCommanderInput}
+              onChange={setManualCommanderInput}
+              onSubmit={startManualBuild}
+              placeholder="z.B. Magus Lucea Kane"
+              className="w-full text-fg rounded-xl p-3 text-lg mb-4"
+            />
+            <button onClick={() => startManualBuild(manualCommanderInput)} disabled={!manualCommanderInput.trim()} className="btn-primary w-full">
+              Editor öffnen
+            </button>
+            <button onClick={() => startManualBuild('')} className="text-sm underline underline-offset-2 mt-3 block mx-auto text-fg-muted">
+              Ohne Commander anfangen
+            </button>
+          </div>
+
+          <button onClick={() => setStep('method')} className="btn-secondary w-full">
+            ← Zurück
+          </button>
         </div>
       )
     }

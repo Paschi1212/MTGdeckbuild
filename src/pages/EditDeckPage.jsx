@@ -14,9 +14,17 @@ import DeckList, { DECK_VIEWS } from '../components/editor/DeckList'
 import CardSearch from '../components/editor/CardSearch'
 import { SuggestionsPanel, ShoppingPanel, StatsPanel, StrategyPanel } from '../components/editor/EditorPanels'
 import ExportMenu from '../components/editor/ExportMenu'
+import CardFinder from '../components/editor/CardFinder'
+import ManaCost from '../components/ManaCost'
+import CommanderSearchInput from '../components/CommanderSearchInput'
+import { useCommanderColors, ColorPips } from '../components/CommanderColors'
 
 const CMC_BUCKETS = ['0', '1', '2', '3', '4', '5', '6', '7+']
 const DECK_TARGET = 99
+// Standard land per color of the commander's identity (Wastes for a colorless commander).
+const BASIC_FOR_COLOR = { W: 'Plains', U: 'Island', B: 'Swamp', R: 'Mountain', G: 'Forest' }
+const BASIC_LABELS = { Plains: 'Ebene', Island: 'Insel', Swamp: 'Sumpf', Mountain: 'Gebirge', Forest: 'Wald', Wastes: 'Ödnis' }
+const PIP_FOR_BASIC = { Plains: 'W', Island: 'U', Swamp: 'B', Mountain: 'R', Forest: 'G', Wastes: 'C' }
 
 const COLOR_NAMES = { W: 'Weiß', U: 'Blau', B: 'Schwarz', R: 'Rot', G: 'Grün', Multicolor: 'Mehrfarbig', Colorless: 'Farblos' }
 
@@ -88,9 +96,13 @@ export default function EditDeckPage(embeddedState) {
   // For a real ManaBox deck (deckName set), the commander is a fact about that binder —
   // don't let chat's set_commander action rewrite it, only the free-form proposal flow.
   const [commanderName, setCommanderName] = useState(state.commander || '')
+  // Building by hand starts without a commander: ask for one first (a ManaBox deck has its own).
+  const [pickingCommander, setPickingCommander] = useState(!deckName && !state.commander)
+  const [commanderInput, setCommanderInput] = useState('')
   const [cards, setCards] = useState(() => loadInitialCards(deckName, commanderName, proposedCards))
   const [collection] = useState(loadCollection)
   const [commanderCard, setCommanderCard] = useState(null)
+  const { colors: identity } = useCommanderColors(commanderCard?.name || commanderName)
 
   // Mana value then name — the order decklists are read in; price stays one click away.
   const [sortBy, setSortBy] = useState('cmc')
@@ -323,6 +335,14 @@ export default function EditDeckPage(embeddedState) {
 
   const existingNames = useMemo(() => new Set(cards.map(c => c.name)), [cards])
 
+  // Cards whose colors the commander doesn't have — not allowed in the deck (CR 903.4). Owned
+  // cards only know their own colors until a by-name lookup, so this catches the sure cases.
+  const offIdentity = identity
+    ? enrichedCards.filter(card => (card.colors || '').split(/\s+/).some(c => c && 'WUBRG'.includes(c) && !identity.includes(c)))
+    : []
+  const basicNames = identity ? (identity.length ? identity.map(c => BASIC_FOR_COLOR[c]) : ['Wastes']) : []
+  const basicCount = (name) => cards.find(c => c.name === name)?.count || 0
+
   const cutReasonMap = useMemo(() => {
     const map = new Map()
     for (const c of suggestedCardsToCut) map.set(c.name, c.reason)
@@ -348,6 +368,25 @@ export default function EditDeckPage(embeddedState) {
   // arrive with the by-name Scryfall lookup.
   const handleAddByName = (name) => {
     setCards(prev => (prev.some(c => c.name === name) ? prev : [...prev, { name, count: 1, price: 0 }]))
+  }
+
+  const chooseCommander = (name) => {
+    const trimmed = String(name || '').trim()
+    if (!trimmed) return
+    setCommanderCard(null)
+    setCommanderName(trimmed)
+    setCommanderInput('')
+    setPickingCommander(false)
+  }
+
+  // Standard lands are counted, not added one by one.
+  const changeBasic = (name, delta) => {
+    setCards(prev => {
+      const index = prev.findIndex(c => c.name === name)
+      if (index === -1) return delta > 0 ? [...prev, { name, count: delta, price: 0, isLand: true }] : prev
+      const count = prev[index].count + delta
+      return count < 1 ? prev.filter((_, i) => i !== index) : prev.map((c, i) => (i === index ? { ...c, count } : c))
+    })
   }
 
   const handleAddSuggestion = (card) => {
@@ -548,14 +587,28 @@ export default function EditDeckPage(embeddedState) {
     : deckSize > DECK_TARGET ? `${deckSize - DECK_TARGET} zu viel` : `${DECK_TARGET - deckSize} fehlen noch`
 
   const panels = [
+    { id: 'finder', label: 'Karten finden' },
     { id: 'suggestions', label: 'Vorschläge', count: suggestionCount },
     ...(deckName ? [] : [{ id: 'shopping', label: 'Einkauf', count: shoppingCount }]),
     { id: 'stats', label: 'Statistik' }
   ]
-  const defaultPanel = suggestionCount > 0 ? 'suggestions' : shoppingCount > 0 ? 'shopping' : 'stats'
+  // A deck still being filled (built by hand) opens on the card finder.
+  const defaultPanel = suggestionCount > 0 ? 'suggestions' : !deckName && deckSize < DECK_TARGET ? 'finder' : shoppingCount > 0 ? 'shopping' : 'stats'
   const activePanel = panels.some(p => p.id === panel) ? panel : defaultPanel
 
   const renderPanel = (id) => {
+    if (id === 'finder') {
+      return (
+        <CardFinder
+          commanderName={commanderCard?.name || commanderName}
+          identity={identity}
+          existingNames={existingNames}
+          isOwned={isOwned}
+          onAdd={handleAddByName}
+          onZoom={setZoomedCard}
+        />
+      )
+    }
     if (id === 'suggestions') {
       return (
         <SuggestionsPanel
@@ -593,6 +646,61 @@ export default function EditDeckPage(embeddedState) {
 
   const deckArea = (
     <>
+      {pickingCommander && (
+        <div className="mb-5 p-4" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)' }}>
+          <label htmlFor="editor-commander" className="block font-semibold mb-1" style={{ color: 'var(--color-text)' }}>
+            {commanderName ? 'Commander ändern' : 'Mit welchem Commander baust du?'}
+          </label>
+          <p className="text-xs mb-3" style={{ color: 'var(--color-text-muted)' }}>
+            Der Commander legt die Farben fest – Suche, EDHREC-Vorschläge und Standardländer richten sich danach.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <div className="flex-1 min-w-[220px]">
+              <CommanderSearchInput
+                value={commanderInput}
+                onChange={setCommanderInput}
+                onSubmit={chooseCommander}
+                placeholder="z. B. Magus Lucea Kane"
+                className="w-full text-fg rounded-xl p-2.5 text-sm"
+              />
+            </div>
+            <button type="button" onClick={() => chooseCommander(commanderInput)} disabled={!commanderInput.trim()} className="btn-primary text-sm px-4 min-h-[44px]">Übernehmen</button>
+            {commanderName && <button type="button" onClick={() => setPickingCommander(false)} className="btn-secondary text-sm px-4 min-h-[44px]">Abbrechen</button>}
+          </div>
+        </div>
+      )}
+
+      {!deckName && basicNames.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4 text-sm">
+          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Standardländer</span>
+          {basicNames.map(name => (
+            <span key={name} className="inline-flex items-center gap-1.5">
+              <ManaCost cost={`{${PIP_FOR_BASIC[name]}}`} size={14} />
+              <span style={{ color: 'var(--color-text-secondary)' }}>{BASIC_LABELS[name]}</span>
+              <button type="button" onClick={() => changeBasic(name, -1)} disabled={!basicCount(name)} aria-label={`${BASIC_LABELS[name]} −1`} className="w-7 h-7 text-sm" style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text)' }}>−</button>
+              <span className="w-5 text-center tabular-nums" style={{ color: 'var(--color-text)' }}>{basicCount(name)}</span>
+              <button type="button" onClick={() => changeBasic(name, 1)} aria-label={`${BASIC_LABELS[name]} +1`} className="w-7 h-7 text-sm" style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text)' }}>+</button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {offIdentity.length > 0 && (
+        <div className="mb-4 p-3 text-sm" style={{ border: '1px solid var(--r)', borderRadius: 'var(--radius-md)' }}>
+          <p className="font-semibold mb-1" style={{ color: 'var(--r)' }}>
+            {offIdentity.length === 1 ? '1 Karte passt' : `${offIdentity.length} Karten passen`} nicht zu den Farben des Commanders
+          </p>
+          <ul className="flex flex-wrap gap-x-4 gap-y-1">
+            {offIdentity.map(card => (
+              <li key={card.name} className="inline-flex items-center gap-2">
+                <span style={{ color: 'var(--color-text)' }}>{card.name}</span>
+                <button type="button" onClick={() => handleRemoveCard(card.index)} className="text-xs underline underline-offset-2" style={{ color: 'var(--color-text-secondary)' }}>entfernen</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <CardSearch
           collection={collection}
@@ -643,7 +751,7 @@ export default function EditDeckPage(embeddedState) {
         <div className="py-16 text-center">
           <p className="font-semibold mb-1" style={{ color: 'var(--color-text)' }}>Noch keine Karten im Deck</p>
           <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-            Füge oben über die Suche Karten hinzu – oder lass dir im Chat unten rechts ein komplettes Deck bauen.
+            Füge oben über die Suche Karten hinzu, nimm sie aus „Karten finden“ – oder lass dir im Chat unten rechts ein komplettes Deck bauen.
           </p>
         </div>
       ) : (
@@ -705,9 +813,17 @@ export default function EditDeckPage(embeddedState) {
                 </button>
               )}
             </div>
-            <h1 className="m-0 font-semibold truncate" style={{ fontSize: isDesktop ? '1.25rem' : '1.05rem', letterSpacing: 0, lineHeight: 1.25 }}>
-              {commanderCard?.name || commanderName || 'Ohne Commander'}
-            </h1>
+            <div className="flex items-center gap-2 min-w-0">
+              <h1 className="m-0 font-semibold truncate" style={{ fontSize: isDesktop ? '1.25rem' : '1.05rem', letterSpacing: 0, lineHeight: 1.25 }}>
+                {commanderCard?.name || commanderName || 'Ohne Commander'}
+              </h1>
+              {identity && <span className="flex-shrink-0"><ColorPips colors={identity} size={14} /></span>}
+              {!deckName && !pickingCommander && (
+                <button type="button" onClick={() => setPickingCommander(true)} className="text-xs underline underline-offset-2 flex-shrink-0" style={{ color: 'var(--color-text-secondary)' }}>
+                  {commanderName ? 'ändern' : 'wählen'}
+                </button>
+              )}
+            </div>
           </div>
           <dl className="flex items-baseline gap-4 lg:gap-6 flex-shrink-0">
             <div title={countHint}>
