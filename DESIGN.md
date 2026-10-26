@@ -72,6 +72,12 @@ farbiges Element in Listen; alles andere bleibt ruhig.
   (Synergie, Top-Karten, je Kartentyp, mit Synergie-Wert) und *Scryfall-Suche* (Scryfall-Syntax,
   automatisch `id<=` Farbidentität + `legal:commander`, nach EDHREC-Rang). „Nur Karten, die ich frei habe“
   filtert auf die Sammlung; „+“ legt die Karte ins Deck, Klick auf den Namen zeigt sie groß.
+- **„Sammlung durchsuchen“** (Knopf neben der Kartensuche und oben in „Karten finden“): großer Dialog,
+  links Filter (Kartentext mit Wörtern/„Phrase“, Kartentyp-Chips + „Typzeile enthält“, Farben,
+  „Nur Farben des Commanders“, Manawert 0–7+, Seltenheit, Ordner, „Nur freie Exemplare“, „Karten im
+  Deck ausblenden“), rechts Kartenbilder je Name mit „2 frei · Ordner“ und rundem grünen „+“
+  (✓ wenn schon im Deck). Sortieren nach Name/Manawert/Preis, 60 Karten pro Seite, Esc schließt.
+  Handy: Filter hinter einem Knopf „Filter (n)“.
 - **Standardländer ±** für die Farben des Commanders (Ödnis bei farblos) über der Werkzeugleiste.
 - **Farbprüfung:** Karten, deren Farben der Commander nicht hat, stehen in einem rot umrandeten Hinweis
   mit „entfernen“.

@@ -15,6 +15,7 @@ import CardSearch from '../components/editor/CardSearch'
 import { SuggestionsPanel, ShoppingPanel, StatsPanel, StrategyPanel } from '../components/editor/EditorPanels'
 import ExportMenu from '../components/editor/ExportMenu'
 import CardFinder from '../components/editor/CardFinder'
+import CollectionBrowser from '../components/editor/CollectionBrowser'
 import ManaCost from '../components/ManaCost'
 import CommanderSearchInput from '../components/CommanderSearchInput'
 import { useCommanderColors, ColorPips } from '../components/CommanderColors'
@@ -147,6 +148,7 @@ export default function EditDeckPage(embeddedState) {
   const [priceMap, setPriceMap] = useState({})
   const [byIdMap, setByIdMap] = useState({})
   const [zoomedCard, setZoomedCard] = useState(null)
+  const [browsingCollection, setBrowsingCollection] = useState(false)
 
   useEffect(() => {
     if (!commanderName) return
@@ -361,7 +363,7 @@ export default function EditDeckPage(embeddedState) {
   const isOwned = (name) => (availableQuantities.get(name)?.available || 0) > 0
 
   const handleAddFromSearch = (row) => {
-    setCards(prev => [...prev, { name: row.name, count: 1, price: row.purchasePrice, scryfallId: row.scryfallId }])
+    setCards(prev => (prev.some(c => c.name === row.name) ? prev : [...prev, { name: row.name, count: 1, price: row.purchasePrice, scryfallId: row.scryfallId }]))
   }
 
   // Any card by name (not owned, or owned but committed elsewhere) — price, image and type
@@ -606,6 +608,7 @@ export default function EditDeckPage(embeddedState) {
           isOwned={isOwned}
           onAdd={handleAddByName}
           onZoom={setZoomedCard}
+          onOpenCollection={collection ? () => setBrowsingCollection(true) : null}
         />
       )
     }
@@ -710,6 +713,11 @@ export default function EditDeckPage(embeddedState) {
           onAddOwned={handleAddFromSearch}
           onAddByName={handleAddByName}
         />
+        {collection && (
+          <button type="button" onClick={() => setBrowsingCollection(true)} className="btn-secondary text-sm px-3 py-1.5 whitespace-nowrap">
+            Sammlung durchsuchen
+          </button>
+        )}
         <div role="group" aria-label="Ansicht" className="flex" style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
           {DECK_VIEWS.map(view => (
             <button
@@ -901,6 +909,20 @@ export default function EditDeckPage(embeddedState) {
             </button>
           ))}
         </nav>
+      )}
+
+      {browsingCollection && (
+        <CollectionBrowser
+          collection={collection}
+          availableQuantities={availableQuantities}
+          locationIndex={locationIndex}
+          identity={identity}
+          commanderName={commanderCard?.name || commanderName}
+          existingNames={existingNames}
+          onAdd={handleAddFromSearch}
+          onZoom={setZoomedCard}
+          onClose={() => setBrowsingCollection(false)}
+        />
       )}
 
       {zoomedCard && (

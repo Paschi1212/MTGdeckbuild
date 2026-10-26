@@ -47,7 +47,7 @@ function AddRow({ name, detail, owned, onAdd, onZoom }) {
  * commander play, and a Scryfall search (type, rules text, anything Scryfall understands)
  * limited to the commander's color identity.
  */
-export default function CardFinder({ commanderName, identity, existingNames, isOwned, onAdd, onZoom }) {
+export default function CardFinder({ commanderName, identity, existingNames, isOwned, onAdd, onZoom, onOpenCollection }) {
   const [mode, setMode] = useState('edhrec')
   const [edhrec, setEdhrec] = useState(null) // null = loading, false = failed
   const [group, setGroup] = useState('highSynergyCards')
@@ -115,6 +115,11 @@ export default function CardFinder({ commanderName, identity, existingNames, isO
 
   return (
     <div className="space-y-3">
+      {onOpenCollection && (
+        <button type="button" onClick={onOpenCollection} className="btn-secondary w-full text-sm py-2">
+          Eigene Sammlung mit Filtern durchsuchen
+        </button>
+      )}
       <div className="flex gap-1.5">
         {[['edhrec', 'Beliebt bei EDHREC'], ['search', 'Scryfall-Suche']].map(([id, label]) => (
           <button key={id} type="button" onClick={() => setMode(id)} aria-pressed={mode === id} className="flex-1 text-xs font-semibold px-2 py-1.5" style={chipStyle(mode === id)}>
