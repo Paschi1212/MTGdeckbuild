@@ -6,7 +6,7 @@
 
 const { GoogleGenAI } = require('@google/genai')
 const { getBulkPrices, getBudgetAlternatives, searchCardNames } = require('./scryfall-api.cjs')
-const { getCommanderData, extractRecommendations, extractSynergyCommanders } = require('./edhrec-api.cjs')
+const { getCommanderData, getCommanderThemeData, extractRecommendations, extractSynergyCommanders } = require('./edhrec-api.cjs')
 const { isClaudeProvider, generateWithClaude } = require('./claude-cli.cjs')
 
 const GEMINI_MODEL = 'gemini-3.5-flash-lite'
@@ -985,12 +985,16 @@ function clampDeckCards(cards, target) {
   return result
 }
 
-async function generateDeckRound({ commander, strategyHint, collectionSampleNames, existingLandNames, existingSpellNames, landsNeeded, spellsNeeded, isFirstRound, edhecData }) {
+async function generateDeckRound({ commander, strategyHint, collectionSampleNames, existingLandNames, existingSpellNames, landsNeeded, spellsNeeded, isFirstRound, edhecData, fixedLands = 0, fixedSpells = 0, excludedNames = [] }) {
   const collectionContext = collectionSampleNames?.length
     ? `\nKARTEN IN DER SAMMLUNG DES SPIELERS (bevorzugt verwenden, wenn strategisch passend, muss nicht gekauft werden): ${collectionSampleNames.slice(0, CHAT_COLLECTION_LIMIT).join(', ')}\n`
     : ''
 
-  const exclusionContext = (existingLandNames?.length || existingSpellNames?.length)
+  // The player's must-have cards sit in the deck before the first round already.
+  const fixedFirst = isFirstRound && (fixedLands || fixedSpells)
+  const exclusionContext = fixedFirst
+    ? `\nPFLICHTKARTEN DES SPIELERS (stehen bereits fest im Deck — baue das Deck UM SIE HERUM, nutze ihre Synergien, NICHT wiederholen):\nLänder: ${existingLandNames?.length ? existingLandNames.join(', ') : '(keine)'}\nSprüche: ${existingSpellNames?.length ? existingSpellNames.join(', ') : '(keine)'}\n`
+    : (existingLandNames?.length || existingSpellNames?.length)
     ? `\nBEREITS IM DECK (NICHT wiederholen, außer du erhöhst bewusst eine Basisland-Anzahl):\nLänder: ${existingLandNames?.length ? existingLandNames.join(', ') : '(keine)'}\nSprüche: ${existingSpellNames?.length ? existingSpellNames.join(', ') : '(keine)'}\n`
     : ''
 
@@ -998,22 +1002,26 @@ async function generateDeckRound({ commander, strategyHint, collectionSampleName
   // and disproportionately so ("High Synergy" = over-represented here vs the general meta —
   // the closest public signal to "these cards combo/synergize specifically with this
   // commander", short of a dedicated combo database).
+  const excludedContext = excludedNames.length
+    ? `\nVOM SPIELER AUSGESCHLOSSEN (NIEMALS verwenden, auch nicht als Ersatz): ${excludedNames.join(', ')}\n`
+    : ''
+
   const edhecContext = edhecData?.allCards?.length
-    ? `\nEDHREC-DATEN (echte Decks mit ${commander}):\n- High Synergy Cards (überdurchschnittlich oft speziell mit diesem Commander gespielt — starkes Synergie-/Combo-Signal): ${(edhecData.highSynergyCards || []).slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n- Meistgespielte Karten insgesamt: ${edhecData.topCards?.slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n- Synergie-Commander (oft als Partner/ähnliche Strategie genannt): ${edhecData.synergyCommanders?.slice(0, 5).map(c => c.name).join(', ') || '(keine Daten)'}\n`
+    ? `\nEDHREC-DATEN (echte Decks mit ${commander}${edhecData.themeLabel ? `, nur Decks mit dem Thema ${edhecData.themeLabel}` : ''}):\n- High Synergy Cards (überdurchschnittlich oft speziell mit diesem Commander gespielt — starkes Synergie-/Combo-Signal): ${(edhecData.highSynergyCards || []).slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n- Meistgespielte Karten insgesamt: ${edhecData.topCards?.slice(0, 15).map(c => c.name).join(', ') || '(keine Daten)'}\n- Synergie-Commander (oft als Partner/ähnliche Strategie genannt): ${edhecData.synergyCommanders?.slice(0, 5).map(c => c.name).join(', ') || '(keine Daten)'}\n`
     : ''
 
   const landsInstruction = isFirstRound
-    ? `Entscheide zuerst selbst die für DIESES Deck passende Gesamt-Länderzahl und setze sie als "landCount". Für die allermeisten Commander-Decks sind 36-38 der sinnvolle Standard — weiche davon nur ab, wenn Commander oder gewünschte Strategie es wirklich verlangen (z.B. eine echte Lands-Matter-/Landfall-Payoff-Strategie, extremes Ramp, ein Commander wie Lord Windgrace, Titania oder Tatyova, der gezielt sehr viele Länder will). "lands": Summe aller "quantity"-Werte MUSS GENAU deinem gewählten "landCount" entsprechen — das ist danach eine harte Zahl, keine Richtlinie. Nutze Basisländer (exakt "Plains"/"Island"/"Swamp"/"Mountain"/"Forest", quantity passend zum Farbanteil der Sprüche verteilt) plus sinnvolle Nichtbasisländer/Fixer (je quantity 1).`
+    ? `Entscheide zuerst selbst die für DIESES Deck passende Gesamt-Länderzahl und setze sie als "landCount". Für die allermeisten Commander-Decks sind 36-38 der sinnvolle Standard — weiche davon nur ab, wenn Commander oder gewünschte Strategie es wirklich verlangen (z.B. eine echte Lands-Matter-/Landfall-Payoff-Strategie, extremes Ramp, ein Commander wie Lord Windgrace, Titania oder Tatyova, der gezielt sehr viele Länder will). "lands": Summe aller "quantity"-Werte MUSS GENAU deinem gewählten "landCount"${fixedLands ? ` MINUS ${fixedLands} (so viele Pflicht-Länder stehen schon fest im Deck und zählen zu "landCount")` : ''} entsprechen — das ist danach eine harte Zahl, keine Richtlinie. Nutze Basisländer (exakt "Plains"/"Island"/"Swamp"/"Mountain"/"Forest", quantity passend zum Farbanteil der Sprüche verteilt) plus sinnvolle Nichtbasisländer/Fixer (je quantity 1).`
     : `"lands": Summe aller "quantity"-Werte MUSS GENAU ${landsNeeded} ergeben — das ist eine harte Zahl aus dem bisherigen Deckaufbau, zähle aktiv mit.${landsNeeded === 0 ? ' Die Manabasis ist bereits vollständig, gib ein leeres Array zurück.' : ''}`
 
   const spellsInstruction = isFirstRound
-    ? `"spells": Summe aller "quantity"-Werte MUSS GENAU (99 - dein gewähltes "landCount") ergeben.`
+    ? `"spells": Summe aller "quantity"-Werte MUSS GENAU (99 - dein gewähltes "landCount"${fixedSpells ? ` - ${fixedSpells}` : ''}) ergeben.${fixedSpells ? ` (${fixedSpells} Pflicht-Sprüche stehen schon fest im Deck.)` : ''}`
     : `"spells": Summe aller "quantity"-Werte MUSS GENAU ${spellsNeeded} ergeben.${spellsNeeded === 0 ? ' Gib ein leeres Array zurück.' : ''}`
 
   const prompt = `Du bist ein Magic: The Gathering Commander Deck Experte.
 
 COMMANDER: ${commander}
-${strategyHint ? `GEWÜNSCHTE STRATEGIE/SPIELSTIL (aus dem Gespräch mit dem Nutzer): ${strategyHint}\n` : ''}${collectionContext}${exclusionContext}${edhecContext}
+${strategyHint ? `GEWÜNSCHTE STRATEGIE/SPIELSTIL (aus dem Gespräch mit dem Nutzer): ${strategyHint}\n` : ''}${collectionContext}${exclusionContext}${excludedContext}${edhecContext}
 AUFGABE:
 ${isFirstRound ? 'Baue die Manabasis und den Rest eines vollständigen Commander-Decks.' : 'Ergänze das Deck um die fehlenden Karten (siehe unten, was schon drin ist).'} Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
 - "summary": ${isFirstRound ? `deutscher Fließtext, 4-6 Sätze — Früh-/Mittel-/Spätspiel-Plan, Kern-Synergien mit ${commander} (mit echten Kartennamen), primäre Win Condition. Keine generischen Floskeln.` : 'ein kurzer deutscher Satz, was diese Ergänzung bringt.'}
@@ -1132,9 +1140,15 @@ async function enforceColorIdentity(commander, lands, spells, edhecData) {
   return { lands: fixedLands, spells: fixedSpells, illegal }
 }
 
-async function buildFullDeckFromChat({ commander, strategyHint, collectionSampleNames, edhecData }) {
-  let lands = []
-  let spells = []
+async function buildFullDeckFromChat({ commander, strategyHint, collectionSampleNames, edhecData, mustInclude = [], exclude = [] }) {
+  // The player's must-have cards go in first (and stay: trimming cuts from the end); the
+  // excluded ones are filtered out of every AI round and every padding source.
+  const excluded = new Set(exclude.map(normalizeCardName))
+  const allowed = (card) => !excluded.has(normalizeCardName(card.name))
+  let lands = mustInclude.filter(c => c.isLand).map(c => ({ name: c.name, quantity: 1 }))
+  let spells = mustInclude.filter(c => !c.isLand).map(c => ({ name: c.name, quantity: 1 }))
+  const fixedLands = lands.length
+  const fixedSpells = spells.length
   let summary = ''
   let landTarget = null
   let totalUsage = { prompt_tokens: 0, completion_tokens: 0 }
@@ -1165,7 +1179,10 @@ async function buildFullDeckFromChat({ commander, strategyHint, collectionSample
       landsNeeded,
       spellsNeeded,
       isFirstRound,
-      edhecData
+      edhecData,
+      fixedLands,
+      fixedSpells,
+      excludedNames: exclude
     })
     if (!batch) {
       console.warn(`[Gemini] buildFullDeckFromChat: round ${round} returned unparseable JSON, stopping`)
@@ -1185,8 +1202,8 @@ async function buildFullDeckFromChat({ commander, strategyHint, collectionSample
       console.log(`[Gemini] buildFullDeckFromChat: Gemini proposed landCount=${batch.landCount} -> using target ${landTarget}`)
     }
     const totalBefore = [...lands, ...spells].reduce((s, c) => s + c.quantity, 0)
-    lands = mergeDeckCards(lands, batch.lands)
-    spells = mergeDeckCards(spells, batch.spells)
+    lands = mergeDeckCards(lands, batch.lands.filter(allowed))
+    spells = mergeDeckCards(spells, batch.spells.filter(allowed))
     totalUsage = {
       prompt_tokens: totalUsage.prompt_tokens + batch.usage.prompt_tokens,
       completion_tokens: totalUsage.completion_tokens + batch.usage.completion_tokens
@@ -1232,7 +1249,7 @@ async function buildFullDeckFromChat({ commander, strategyHint, collectionSample
     for (const card of pool) {
       if (additions.length >= spellShortfall) break
       const key = normalizeCardName(card.name)
-      if (!card.name || inDeck.has(key)) continue
+      if (!card.name || inDeck.has(key) || excluded.has(key)) continue
       inDeck.add(key)
       additions.push({ name: card.name, quantity: 1 })
     }
@@ -1283,7 +1300,9 @@ const BUDGET_CORRECTION_DEADLINE_MS = 25000
 // deterministically correct against ground truth instead of hoping it got it right.
 // `requestStartedAt` lets it bail out (reporting the real total but skipping swaps) if the
 // full-deck generation above already ate most of the 30s budget.
-async function enforcePurchaseBudget(cards, collectionSampleNames, maxPurchaseBudgetEur, requestStartedAt) {
+async function enforcePurchaseBudget(cards, collectionSampleNames, maxPurchaseBudgetEur, requestStartedAt, { keep = [], avoid = [] } = {}) {
+  const kept = new Set(keep.map(normalizeCardName))
+  const avoided = new Set(avoid.map(normalizeCardName))
   if (!maxPurchaseBudgetEur || maxPurchaseBudgetEur <= 0) {
     return { cards, budgetNote: '' }
   }
@@ -1314,7 +1333,7 @@ async function enforcePurchaseBudget(cards, collectionSampleNames, maxPurchaseBu
   // swapping one risks breaking the manabase, and budget overruns are almost always
   // expensive nonland staples/tutors anyway.
   const offenders = result
-    .filter(c => !isOwned(c) && !c.isLand && c.eur > 0)
+    .filter(c => !isOwned(c) && !c.isLand && c.eur > 0 && !kept.has(normalizeCardName(c.name)))
     .sort((a, b) => b.eur - a.eur)
     .slice(0, MAX_BUDGET_CORRECTION_CANDIDATES)
 
@@ -1342,7 +1361,7 @@ async function enforcePurchaseBudget(cards, collectionSampleNames, maxPurchaseBu
   for (const { offender, alternatives } of alternativesByOffender) {
     if (purchaseTotal <= maxPurchaseBudgetEur) break
 
-    const pick = alternatives.find(a => a.eur > 0 && !existingNamesLower.has(a.name.toLowerCase()))
+    const pick = alternatives.find(a => a.eur > 0 && !existingNamesLower.has(a.name.toLowerCase()) && !avoided.has(normalizeCardName(a.name)))
     if (!pick) continue
 
     const idx = result.findIndex(c => c.name === offender.name)
@@ -1374,7 +1393,64 @@ async function enforcePurchaseBudget(cards, collectionSampleNames, maxPurchaseBu
  * optimization suggestions about the deck currently open in the builder.
  * With enableActions, it can also directly add/remove/adjust cards via function calling.
  */
-async function chatAssistant({ commander, cards, message, history, enableActions, contextNote, collectionSampleNames, bulkBuild }) {
+// How strong the deck should be — said in words the build prompt can act on.
+const POWER_LEVEL_HINTS = {
+  Casual: 'Spaß und Thema vor Effizienz: keine Tutoren-Ketten, keine Infinite-Combos, kaum Game Changer, ruhig auch thematische schwächere Karten.',
+  'Semi-Casual': 'fokussiert, aber fair: solide Ramp, Kartenvorteil und Removal, wenige Tutoren, keine schnellen Zwei-Karten-Infinite-Combos.',
+  'Semi-Competitive': 'stark und effizient: gute Tutoren, effiziente Interaktion, Combos als Wincon erlaubt, schlanke Manakurve.',
+  Competitive: 'cEDH-nah: maximale Effizienz, Fast Mana, schnelle Combos, viel billige Interaktion.'
+}
+
+/** The questionnaire as the build prompt reads it — the player's words, unshortened. */
+function describeBuildSpec(spec) {
+  const parts = []
+  if (spec.idea) parts.push(`IDEE DES SPIELERS (wörtlich, verbindlich — das Deck soll genau das tun): ${spec.idea}`)
+  if (spec.powerLevel) parts.push(`SPIELSTÄRKE ${spec.powerLevel}: ${POWER_LEVEL_HINTS[spec.powerLevel] || ''}`)
+  if (spec.themes?.length) parts.push(`EDHREC-THEMA: ${spec.themes.map(t => t.name).join(' + ')} — die EDHREC-Daten unten stammen aus genau diesen Decks.`)
+  return parts.join('\n') || 'Keine besonderen Vorgaben – baue ein rundes, synergetisches Deck um den Commander.'
+}
+
+/** EDHREC lists of the chosen themes first, the commander's general lists after them. */
+async function withThemeData(commander, themes, general) {
+  const themed = []
+  for (const theme of themes.slice(0, 2)) {
+    try {
+      themed.push(extractRecommendations(await getCommanderThemeData(commander, theme.slug)))
+    } catch (error) {
+      console.warn(`[Gemini] EDHREC theme ${theme.slug} for ${commander} failed, using the general lists:`, error.message)
+    }
+  }
+  if (!themed.length) return general
+  const merged = { ...general, themeLabel: themes.slice(0, 2).map(t => t.name).join(' + ') }
+  for (const key of Object.keys(general)) {
+    if (!Array.isArray(general[key]) || key === 'synergyCommanders') continue
+    const seen = new Set()
+    merged[key] = [...themed.flatMap(t => t[key] || []), ...general[key]].filter(card => {
+      if (!card?.name || seen.has(card.name)) return false
+      seen.add(card.name)
+      return true
+    })
+  }
+  return merged
+}
+
+/** Must-have cards by their real Scryfall names, lands told apart from spells. */
+async function resolveMustInclude(names, commander) {
+  if (!names?.length) return { cards: [], unknown: [] }
+  const info = await getBulkPrices(names)
+  const cards = []
+  const unknown = []
+  const commanderNames = new Set(splitCommanderNames(commander).map(normalizeCardName))
+  for (const name of names) {
+    const entry = info[name] || Object.values(info).find(e => normalizeCardName(e.name) === normalizeCardName(name))
+    if (!entry) { unknown.push(name); continue }
+    if (commanderNames.has(normalizeCardName(entry.name)) || cards.some(c => c.name === entry.name)) continue
+    cards.push({ name: entry.name, isLand: /Land/.test(String(entry.typeLine || '').split('//')[0]) })
+  }
+  return { cards, unknown }
+}
+
+async function chatAssistant({ commander, cards, message, history, enableActions, contextNote, collectionSampleNames, bulkBuild, buildSpec }) {
   const requestStartedAt = Date.now()
   const totalCount = (cards || []).reduce((sum, c) => sum + (c.count || 1), 0)
 
@@ -1419,7 +1495,13 @@ Antworte auf Deutsch, knapp und konkret (max. ca. 150 Wörter, außer der Nutzer
   ]
 
   try {
-    const result = await generateContentWithRetry({
+    // From the deck questionnaire: build straight away with the player's own words — no chat
+    // turn in between that would boil the plan down to one sentence.
+    const spec = buildSpec && commander && enableActions ? buildSpec : null
+    const result = spec ? {
+      text: '',
+      functionCalls: [{ name: 'build_full_deck', args: { strategyHint: describeBuildSpec(spec), maxPurchaseBudgetEur: spec.budget || undefined } }]
+    } : await generateContentWithRetry({
       model: GEMINI_MODEL,
       contents,
       config: {
@@ -1451,6 +1533,7 @@ Antworte auf Deutsch, knapp und konkret (max. ca. 150 Wörter, außer der Nutzer
         const rawEdhecData = await getCommanderData(effectiveCommander)
         edhecData = extractRecommendations(rawEdhecData)
         edhecData.synergyCommanders = extractSynergyCommanders(rawEdhecData)
+        if (spec?.themes?.length) edhecData = await withThemeData(effectiveCommander, spec.themes, edhecData)
         console.log(`[Gemini] chatAssistant: EDHREC data loaded for ${effectiveCommander} — ${edhecData.allCards.length} cards, ${edhecData.highSynergyCards.length} high-synergy`)
       } catch (error) {
         console.warn('[Gemini] chatAssistant: EDHREC fetch failed, continuing without it:', error.message)
@@ -1459,20 +1542,25 @@ Antworte auf Deutsch, knapp und konkret (max. ca. 150 Wörter, außer der Nutzer
       const maxPurchaseBudgetEur = buildFullDeckCall.args?.maxPurchaseBudgetEur
       const strategyHint = buildFullDeckCall.args?.strategyHint || message
 
+      const fixed = spec ? await resolveMustInclude(spec.mustInclude, effectiveCommander) : { cards: [], unknown: [] }
+      const exclude = spec?.exclude || []
+
       const built = await buildFullDeckFromChat({
         commander: effectiveCommander,
         strategyHint: maxPurchaseBudgetEur
           ? `${strategyHint} (Zukaufsbudget für Karten außerhalb der Sammlung: max. €${maxPurchaseBudgetEur} — bevorzuge besessene oder günstige Karten.)`
           : strategyHint,
         collectionSampleNames,
-        edhecData
+        edhecData,
+        mustInclude: fixed.cards,
+        exclude
       })
 
       if (built) {
         let finalCards = built.cards
         let budgetNote = ''
         if (maxPurchaseBudgetEur) {
-          const budgetResult = await enforcePurchaseBudget(built.cards, collectionSampleNames, maxPurchaseBudgetEur, requestStartedAt)
+          const budgetResult = await enforcePurchaseBudget(built.cards, collectionSampleNames, maxPurchaseBudgetEur, requestStartedAt, { keep: fixed.cards.map(c => c.name), avoid: exclude })
           finalCards = budgetResult.cards
           budgetNote = budgetResult.budgetNote
         }
@@ -1499,11 +1587,27 @@ Antworte auf Deutsch, knapp und konkret (max. ca. 150 Wörter, außer der Nutzer
             .map(c => ({ name: c.name, quantity: c.quantity, isLand: c.isLand }))
         })
 
+        // What became of the player's must-have cards (one outside the commander's colors is
+        // replaced by the legality check) — said plainly instead of silently.
+        const finalNames = new Set(finalCards.map(c => normalizeCardName(c.name)))
+        const lost = fixed.cards.filter(c => !finalNames.has(normalizeCardName(c.name))).map(c => c.name)
+        const specNote = spec
+          ? [
+              fixed.cards.length ? `\n\n📌 Pflichtkarten: ${fixed.cards.length - lost.length} von ${fixed.cards.length} im Deck${lost.length ? ` – nicht möglich: ${lost.join(', ')} (außerhalb der Farben von ${effectiveCommander})` : ''}.` : '',
+              fixed.unknown.length ? `\n❓ Nicht gefunden: ${fixed.unknown.join(', ')} – Schreibweise prüfen.` : '',
+              exclude.length ? `\n🚫 Ausgeschlossen: ${exclude.length} ${exclude.length === 1 ? 'Karte' : 'Karten'}.` : '',
+              edhecData?.themeLabel ? `\n🏷️ EDHREC-Thema: ${edhecData.themeLabel}.` : ''
+            ].join('')
+          : ''
+
         return {
-          reply: (built.summary || synthesizeFallbackReply(fullDeckActions)) + budgetNote,
+          reply: (built.summary || synthesizeFallbackReply(fullDeckActions)) + budgetNote + specNote,
           actions: fullDeckActions,
           usage: built.usage
         }
+      }
+      if (spec) {
+        return { reply: 'Der Deckbau ist diesmal nicht fertig geworden. Schick die Nachricht einfach noch einmal.', actions: [], usage: null }
       }
       // If the internal build call failed to parse, fall through and handle whatever
       // else the model returned (e.g. plain text) instead of returning nothing.

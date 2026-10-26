@@ -1,5 +1,6 @@
 import { scheduleCloudPush } from './cloudSync'
 import { deleteSavedAudit } from './deckAudit'
+import { getDeckPreferences, setDeckPreferences } from './deckPreferences'
 
 const STORAGE_KEY = 'mtg_draft_decks'
 
@@ -34,7 +35,16 @@ export function getDraftDeck(id) {
  * saved — re-saving a draft you're already editing overwrites it instead of piling up
  * duplicates.
  */
-export function saveDraftDeck({ id, name, commander, cards, strategyNote }) {
+// The plan the player wrote in the deck questionnaire becomes the draft's binding game plan
+// (like a correction made by hand) — later analyses build on it instead of guessing anew.
+function rememberPlayerPlan(draft, playerPlan, powerLevel) {
+  if (!playerPlan) return
+  const key = draftStorageKey(draft.id)
+  if (getDeckPreferences(key).strategyByPlayer) return
+  setDeckPreferences(key, { strategyOverride: playerPlan, strategyCommander: draft.commander, strategyByPlayer: true, ...(powerLevel ? { powerLevel } : {}) })
+}
+
+export function saveDraftDeck({ id, name, commander, cards, strategyNote, playerPlan, powerLevel }) {
   const drafts = loadDraftDecks()
   const now = new Date().toISOString()
   const existingIndex = id ? drafts.findIndex(d => d.id === id) : -1
@@ -43,6 +53,7 @@ export function saveDraftDeck({ id, name, commander, cards, strategyNote }) {
     const updated = { ...drafts[existingIndex], name, commander, cards, strategyNote, updatedAt: now }
     drafts[existingIndex] = updated
     persist(drafts)
+    rememberPlayerPlan(updated, playerPlan, powerLevel)
     return updated
   }
 
@@ -57,6 +68,7 @@ export function saveDraftDeck({ id, name, commander, cards, strategyNote }) {
   }
   drafts.push(created)
   persist(drafts)
+  rememberPlayerPlan(created, playerPlan, powerLevel)
   return created
 }
 

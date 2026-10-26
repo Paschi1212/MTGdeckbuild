@@ -93,6 +93,8 @@ export default function EditDeckPage(embeddedState) {
   // Re-saving a draft you opened from "Meine Entwürfe" overwrites it in place instead of
   // piling up duplicates — only set when this session actually started from a saved draft.
   const [draftId, setDraftId] = useState(state.draftId || null)
+  // From the deck questionnaire: becomes the draft's binding game plan on the first save.
+  const playerPlan = state.playerPlan || ''
 
   // For a real ManaBox deck (deckName set), the commander is a fact about that binder —
   // don't let chat's set_commander action rewrite it, only the free-form proposal flow.
@@ -511,7 +513,9 @@ export default function EditDeckPage(embeddedState) {
       name: existingName || (deckName ? `${deckName} (bearbeitet)` : commanderCard?.name || commanderName || 'Unbenannter Entwurf'),
       commander: commanderCard?.name || commanderName,
       cards: cards.map(c => ({ name: c.name, count: c.count, price: c.price || 0, isLand: c.isLand })),
-      strategyNote
+      strategyNote,
+      playerPlan,
+      powerLevel: state.powerLevel
     })
     setDraftId(saved.id)
     setSavedSnapshot(currentSnapshot)

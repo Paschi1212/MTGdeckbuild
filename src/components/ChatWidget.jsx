@@ -5,7 +5,7 @@ import { aiFetch, isClaudeActive, getClaudeModelLabel, getBridgeTarget } from '.
 const HISTORY_LIMIT = 10
 
 // `floatingBottom` (px) lifts the floating button/panel above a page's own bottom bar.
-export default function ChatWidget({ commander, cards, onAction, contextNote, embedded = false, collectionSampleNames, bulkBuild = false, onReply, autoSendMessage, floatingBottom = 24 }) {
+export default function ChatWidget({ commander, cards, onAction, contextNote, embedded = false, collectionSampleNames, bulkBuild = false, onReply, autoSendMessage, autoSendBuildSpec, floatingBottom = 24 }) {
   const [open, setOpen] = useState(embedded)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -34,11 +34,12 @@ export default function ChatWidget({ commander, cards, onAction, contextNote, em
   // Lets a caller (e.g. the questionnaire handoff) start the conversation with a ready-made
   // first message instead of requiring the user to type it themselves.
   useEffect(() => {
-    if (autoSendMessage) handleSend(autoSendMessage)
+    // With the questionnaire's structured answers the server builds directly from them.
+    if (autoSendMessage) handleSend(autoSendMessage, autoSendBuildSpec)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const handleSend = async (textOverride) => {
+  const handleSend = async (textOverride, buildSpec) => {
     const trimmed = (textOverride ?? input).trim()
     if (!trimmed) return
     if (loading) {
@@ -58,7 +59,7 @@ export default function ChatWidget({ commander, cards, onAction, contextNote, em
     try {
       const response = await aiFetch('/.netlify/functions/chat-assistant', {
         method: 'POST',
-        body: JSON.stringify({ commander, cards, message: trimmed, history, enableActions: !!onAction, contextNote, collectionSampleNames, bulkBuild })
+        body: JSON.stringify({ commander, cards, message: trimmed, history, enableActions: !!onAction, contextNote, collectionSampleNames, bulkBuild, ...(buildSpec ? { buildSpec } : {}) })
       })
 
       if (response.ok) {

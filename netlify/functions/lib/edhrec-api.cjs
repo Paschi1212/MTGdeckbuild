@@ -75,6 +75,26 @@ async function getCommanderData(commanderName) {
 // current /pages/*.json structure — fix these properly before wiring them up to anything.
 
 /**
+ * One theme of a commander (e.g. Olivia + Reanimator): the same page layout as the commander
+ * page, built only from decks tagged with that theme — the cards that theme really plays.
+ * Verified live: json.edhrec.com/pages/commanders/olivia-crimson-bride/reanimator.json
+ */
+async function getCommanderThemeData(commanderName, themeSlug) {
+  const theme = String(themeSlug || '').toLowerCase().replace(/[^a-z0-9-]/g, '')
+  if (!theme) return null
+  const key = `${commanderToSlug(commanderName)}/${theme}`
+  const cached = cache.get(key)
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) return cached.data
+
+  console.log(`[EDHREC] Fetching theme ${theme} for ${commanderName}`)
+  const response = await fetch(`${EDHREC_BASE}/commanders/${key}.json`, { headers: EDHREC_HEADERS })
+  if (!response.ok) throw new Error(`EDHREC API error: ${response.status}`)
+  const data = await response.json()
+  cache.set(key, { data, timestamp: Date.now() })
+  return data
+}
+
+/**
  * Get card synergy data from EDHREC
  */
 async function getCardSynergies(cardName) {
@@ -278,6 +298,7 @@ async function getTagCommanders(tagSlug) {
 
 module.exports = {
   getCommanderData,
+  getCommanderThemeData,
   getCardSynergies,
   getTopCommandersByMeta,
   extractRecommendations,

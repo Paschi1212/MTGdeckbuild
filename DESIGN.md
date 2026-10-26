@@ -85,6 +85,22 @@ farbiges Element in Listen; alles andere bleibt ruhig.
 - **Farbprüfung:** Karten, deren Farben der Commander nicht hat, stehen in einem rot umrandeten Hinweis
   mit „entfernen“.
 
+## Muster: Deck-Fragebogen (src/pages/StrategyPage.jsx)
+
+- Keine festen Kategorien mehr (Win Condition, Mechaniken, Spielstil) – Deckbau ist zu individuell.
+  Kopf: Commander-Bild, Name, Farbsymbole + Kombinationsname. Vier nummerierte Abschnitte:
+  1. **Was soll das Deck tun?** – freier Text, geht wörtlich an den Bau.
+  2. **Diese Karten müssen rein** – Kartensuche (Sammlung + Scryfall) als grüne Chips; darunter
+     EDHREC-High-Synergy-Karten zum Antippen. Werden vom Server fest gesetzt.
+  3. **Diese Karten nicht** – rote Chips; aus jeder KI-Runde, dem Auffüllen und dem Budget-Tausch gefiltert.
+  4. **Rahmen** – Spielstärke (4 Stufen mit Kurzbeschreibung), Zukaufsbudget (Kein Limit/50/100/250/500
+     oder eigener Betrag), EDHREC-Thema (bis 2, mit Deckzahl) → Kartenlisten genau dieser Decks.
+- „Deck bauen lassen“ schickt `buildSpec` mit: der Server baut direkt (ohne Chat-Zwischenschritt),
+  meldet „📌 Pflichtkarten x von y“, „🚫 Ausgeschlossen“, „🏷️ EDHREC-Thema“. „Selbst bauen“ öffnet den
+  Editor mit den Pflichtkarten.
+- Der Plan wird beim ersten Speichern als **verbindlicher Spielplan** (vom Spieler gesetzt) am Entwurf
+  hinterlegt; spätere Analysen bauen darauf auf.
+
 ## Muster: Analyse – Bei Freunden suchen (src/components/FriendCardSearch.jsx)
 
 - Karte unter den Vorschlägen (auch ohne gelaufene Analyse): Freundes-Sammlungen als Häkchen mit

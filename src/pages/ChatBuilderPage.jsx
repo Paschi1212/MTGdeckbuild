@@ -16,14 +16,16 @@ function buildContextNote(preferCollection) {
   return base + collectionClause
 }
 
-export default function ChatBuilderPage({ initialCommander, initialMessage } = {}) {
+export default function ChatBuilderPage({ initialCommander, initialMessage, initialBuildSpec, playerPlan } = {}) {
   const navigate = useNavigate()
   const [commander, setCommander] = useState(initialCommander || '')
   const [commanderCard, setCommanderCard] = useState(null)
   const [cards, setCards] = useState([])
   const [priceMap, setPriceMap] = useState({})
   const [collection] = useState(loadCollection)
-  const [strategyNote, setStrategyNote] = useState('')
+  // The player's own plan (questionnaire) stays on top; the build's summary comes below it.
+  const [strategyNote, setStrategyNote] = useState(playerPlan || '')
+  const handleReply = (reply) => setStrategyNote(playerPlan ? `${playerPlan}\n\n— Zusammenfassung des Deckbaus —\n${reply}` : reply)
   const [resetKey, setResetKey] = useState(0)
   const [preferCollection, setPreferCollection] = useState(true)
   const [draftId, setDraftId] = useState(null)
@@ -165,7 +167,9 @@ export default function ChatBuilderPage({ initialCommander, initialMessage } = {
       state: {
         commander,
         cards: cards.map(c => ({ name: c.name, count: c.count, price: priceMap[c.name]?.eur || 0, isLand: c.isLand })),
-        strategyNote
+        strategyNote,
+        playerPlan,
+        powerLevel: initialBuildSpec?.powerLevel
       }
     })
   }
@@ -176,7 +180,9 @@ export default function ChatBuilderPage({ initialCommander, initialMessage } = {
       name: commanderCard?.name || commander || 'Unbenannter Entwurf',
       commander,
       cards: cards.map(c => ({ name: c.name, count: c.count, price: priceMap[c.name]?.eur || 0, isLand: c.isLand })),
-      strategyNote
+      strategyNote,
+      playerPlan,
+      powerLevel: initialBuildSpec?.powerLevel
     })
     setDraftId(saved.id)
     setSavedNote(`Gespeichert ${new Date(saved.updatedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} — in "Meine Entwürfe" zu finden.`)
@@ -221,8 +227,9 @@ export default function ChatBuilderPage({ initialCommander, initialMessage } = {
             contextNote={buildContextNote(preferCollection)}
             collectionSampleNames={preferCollection ? availableCardNames : undefined}
             bulkBuild
-            onReply={setStrategyNote}
+            onReply={handleReply}
             autoSendMessage={resetKey === 0 ? initialMessage : undefined}
+            autoSendBuildSpec={resetKey === 0 ? initialBuildSpec : undefined}
           />
         </div>
 

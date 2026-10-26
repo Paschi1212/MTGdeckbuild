@@ -1,132 +1,138 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import CardSearch from '../components/editor/CardSearch'
+import { useCommanderColors, ColorPips, colorIdentityLabel } from '../components/CommanderColors'
+import { loadCommanderCard } from '../lib/table/decks'
+import { loadCollection, getAvailableQuantities } from '../lib/collection'
 
+const POWER_LEVELS = [
+  ['Casual', 'Thema und Spaß vor Effizienz'],
+  ['Semi-Casual', 'fokussiert, aber fair'],
+  ['Semi-Competitive', 'stark, Tutoren und Combos erlaubt'],
+  ['Competitive', 'cEDH-nah, maximale Effizienz']
+]
+const BUDGETS = [[null, 'Kein Limit'], [50, '50 €'], [100, '100 €'], [250, '250 €'], [500, '500 €']]
+const MAX_THEMES = 2
+
+const chipStyle = (on) => ({
+  background: on ? 'var(--color-accent)' : 'var(--color-surface)',
+  color: on ? 'var(--color-bg)' : 'var(--color-text)',
+  border: '1px solid var(--color-border)',
+  borderRadius: 'var(--radius-sm)'
+})
+
+function Section({ number, title, hint, children }) {
+  return (
+    <section className="card mb-5">
+      <h2 className="text-lg font-bold mb-1">
+        <span className="tabular-nums mr-2" style={{ color: 'var(--color-text-muted)' }}>{number}</span>{title}
+      </h2>
+      {hint && <p className="text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>{hint}</p>}
+      {children}
+    </section>
+  )
+}
+
+function CardChips({ names, tone, onRemove }) {
+  if (!names.length) return null
+  return (
+    <ul className="flex flex-wrap gap-1.5 mt-3">
+      {names.map(name => (
+        <li key={name} className="inline-flex items-center gap-1.5 text-sm pl-2.5 pr-1 py-1" style={{ border: `1px solid ${tone}`, borderRadius: 'var(--radius-sm)' }}>
+          <span style={{ color: 'var(--color-text)' }}>{name}</span>
+          <button type="button" onClick={() => onRemove(name)} aria-label={`${name} entfernen`} className="px-1.5 text-xs" style={{ color: 'var(--color-text-muted)' }}>✕</button>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// The deck questionnaire: the player's idea in their own words, the cards that must (not) be
+// in it, and the frame. Must-have and excluded cards are enforced by the build itself; the
+// idea goes to it word for word and becomes the deck's binding game plan.
 export default function StrategyPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const commander = location.state?.commander || sessionStorage.getItem('selectedCommander')
 
-  const [strategy, setStrategy] = useState({
-    primaryWinCon: '',
-    keyMechanics: [],
-    playStyle: '',
-    themes: [],
-    budget: 500,
-    combos: [],
-    synergies: [],
-    notes: ''
-  })
+  const [idea, setIdea] = useState('')
+  const [mustInclude, setMustInclude] = useState([])
+  const [exclude, setExclude] = useState([])
+  const [themes, setThemes] = useState([])
+  const [powerLevel, setPowerLevel] = useState('Semi-Casual')
+  const [budget, setBudget] = useState(null)
+  const [customBudget, setCustomBudget] = useState('')
 
-  // Real, commander-specific archetype tags from EDHREC (e.g. for Korvold: Treasure,
-  // Sacrifice, Aristocrats, Voltron...) instead of one fixed generic playstyle list for every
-  // commander — best-effort, the form still works fine if this fetch fails or comes back thin.
-  const [edhrecThemes, setEdhrecThemes] = useState([])
-  const [themesLoading, setThemesLoading] = useState(true)
+  const [commanderCard, setCommanderCard] = useState(null)
+  const { colors } = useCommanderColors(commander)
+  const [collection] = useState(loadCollection)
+  const availableQuantities = useMemo(() => getAvailableQuantities(collection), [collection])
 
+  // The commander's real EDHREC data: its themes (with deck counts) and high-synergy cards.
+  const [edhrec, setEdhrec] = useState(null) // null = loading, false = none
   useEffect(() => {
-    if (!commander) {
-      setThemesLoading(false)
-      return
-    }
+    if (!commander) return
+    loadCommanderCard(commander).then(setCommanderCard)
     fetch(`/.netlify/functions/get-commander-data?commander=${encodeURIComponent(commander)}`)
       .then(res => (res.ok ? res.json() : null))
-      .then(data => setEdhrecThemes(data?.themes || []))
-      .catch(() => setEdhrecThemes([]))
-      .finally(() => setThemesLoading(false))
+      .then(data => setEdhrec(data || false))
+      .catch(() => setEdhrec(false))
   }, [commander])
 
-  const winConditions = [
-    'Combat Damage',
-    'Infinite Combo',
-    'Deck Mill',
-    'Life Drain',
-    'Card Draw to Victory',
-    'Token Swarm',
-    'Creature Beatdown'
-  ]
+  const chosen = useMemo(() => new Set([...mustInclude, ...exclude]), [mustInclude, exclude])
+  const synergyCards = (edhrec?.recommendations?.highSynergyCards || []).filter(card => !chosen.has(card.name) && card.name !== commander).slice(0, 12)
 
-  const mechanics = [
-    'Card Draw',
-    'Token Generation',
-    'Creature Synergies',
-    'Mana Ramp',
-    'Tutors',
-    'Reanimation',
-    'Sacrifice Effects',
-    'Board Wipes',
-    'Infinite Loops',
-    'Enchantment Synergies'
-  ]
-
-  const playStyles = [
-    'Aggressive',
-    'Balanced',
-    'Control',
-    'Combo',
-    'Tempo'
-  ]
-
-  const toggleMechanic = (mechanic) => {
-    setStrategy(prev => ({
-      ...prev,
-      keyMechanics: prev.keyMechanics.includes(mechanic)
-        ? prev.keyMechanics.filter(m => m !== mechanic)
-        : [...prev.keyMechanics, mechanic]
-    }))
+  const addTo = (setter, other) => (name) => {
+    other(prev => prev.filter(n => n !== name))
+    setter(prev => (prev.includes(name) ? prev : [...prev, name]))
   }
+  const addMust = addTo(setMustInclude, setExclude)
+  const addExclude = addTo(setExclude, setMustInclude)
+  const toggleTheme = (theme) => setThemes(prev => (prev.some(t => t.slug === theme.slug)
+    ? prev.filter(t => t.slug !== theme.slug)
+    : prev.length >= MAX_THEMES ? prev : [...prev, { slug: theme.slug, name: theme.name }]))
 
-  const toggleTheme = (theme) => {
-    setStrategy(prev => ({
-      ...prev,
-      themes: prev.themes.includes(theme)
-        ? prev.themes.filter(t => t !== theme)
-        : [...prev.themes, theme]
-    }))
-  }
+  const effectiveBudget = customBudget ? Math.max(0, Number(customBudget)) || null : budget
 
-  const handleAddCombo = (e) => {
-    const input = document.getElementById('combo-input')
-    if (input.value.trim()) {
-      setStrategy(prev => ({
-        ...prev,
-        combos: [...prev.combos, input.value]
-      }))
-      input.value = ''
-    }
-  }
+  // The plan as it is kept with the deck (binding for later analyses).
+  const playerPlan = [
+    idea.trim() && `Idee: ${idea.trim()}`,
+    `Spielstärke: ${powerLevel}`,
+    themes.length && `EDHREC-Thema: ${themes.map(t => t.name).join(' + ')}`,
+    mustInclude.length && `Pflichtkarten: ${mustInclude.join(', ')}`,
+    exclude.length && `Nicht ins Deck: ${exclude.join(', ')}`
+  ].filter(Boolean).join('\n')
 
-  const handleRemoveCombo = (index) => {
-    setStrategy(prev => ({
-      ...prev,
-      combos: prev.combos.filter((_, i) => i !== index)
-    }))
-  }
-
-  // Funnels the questionnaire into the chat-driven builder instead of a separate results
-  // page — same underlying build pipeline either way, but now everyone lands in one place
-  // (chat + editor) rather than the form leading somewhere the chat flow doesn't.
-  const buildAutoMessage = () => {
-    const parts = [`Baue mir ein komplettes Deck für ${commander}.`]
-    parts.push(`Primäre Win Condition: ${strategy.primaryWinCon}.`)
-    if (strategy.keyMechanics.length) parts.push(`Wichtige Mechaniken: ${strategy.keyMechanics.join(', ')}.`)
-    if (strategy.themes.length) parts.push(`Gewünschte Themen (EDHREC): ${strategy.themes.join(', ')}.`)
-    if (strategy.playStyle) parts.push(`Spielstil: ${strategy.playStyle}.`)
-    if (strategy.combos.length) parts.push(`Gewünschte Combos: ${strategy.combos.join('; ')}.`)
-    if (strategy.notes.trim()) parts.push(`Weitere Notizen: ${strategy.notes.trim()}.`)
-    parts.push(`Zukaufsbudget: max. ca. €${strategy.budget} für alle Karten ZUSAMMEN, die ich noch nicht besitze (Basisländer ausgenommen) — kein Limit pro Einzelkarte.`)
-    return parts.join(' ')
-  }
-
-  const handleNext = () => {
-    if (!strategy.primaryWinCon || strategy.keyMechanics.length === 0) {
-      alert('Bitte fülle alle Pflichtfelder aus')
-      return
-    }
-
+  const buildWithAi = () => {
+    const message = [
+      `Baue mir ein komplettes Deck für ${commander}.`,
+      idea.trim() && `Meine Idee: ${idea.trim()}`,
+      mustInclude.length && `Diese Karten müssen rein: ${mustInclude.join(', ')}.`,
+      exclude.length && `Diese Karten nicht verwenden: ${exclude.join(', ')}.`,
+      themes.length && `EDHREC-Thema: ${themes.map(t => t.name).join(' + ')}.`,
+      `Spielstärke: ${powerLevel}.`,
+      effectiveBudget && `Zukaufsbudget: max. ca. €${effectiveBudget} für alle Karten zusammen, die ich noch nicht besitze (Basisländer ausgenommen).`
+    ].filter(Boolean).join('\n')
     navigate('/select-commander', {
-      state: { activeTab: 'chat', chatCommander: commander, chatAutoMessage: buildAutoMessage() }
+      state: {
+        activeTab: 'chat',
+        chatCommander: commander,
+        chatAutoMessage: message,
+        chatBuildSpec: { idea: idea.trim(), mustInclude, exclude, themes, powerLevel, budget: effectiveBudget },
+        playerPlan
+      }
     })
   }
+
+  const buildByHand = () => navigate('/edit-deck', {
+    state: {
+      commander,
+      cards: mustInclude.map(name => ({ name, count: 1, price: 0 })),
+      strategyNote: playerPlan,
+      playerPlan,
+      powerLevel
+    }
+  })
 
   if (!commander) {
     return (
@@ -139,177 +145,120 @@ export default function StrategyPage() {
     )
   }
 
+  const searchProps = {
+    collection,
+    availableQuantities,
+    existingNames: chosen,
+    commanderName: commanderCard?.name || commander
+  }
+
   return (
     <div className="max-w-3xl mx-auto">
-      <h1>⚡ Strategie für {commander}</h1>
-
-      <div className="card mb-6">
-        <h2 className="text-xl font-bold mb-4">🎯 Primary Win Condition</h2>
-        <select
-          value={strategy.primaryWinCon}
-          onChange={(e) => setStrategy(prev => ({ ...prev, primaryWinCon: e.target.value }))}
-          className="w-full text-fg rounded-xl p-3"
-            style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
-        >
-          <option value="">Wähle eine Win Condition</option>
-          {winConditions.map(wc => (
-            <option key={wc} value={wc}>{wc}</option>
-          ))}
-        </select>
-      </div>
-
-      <div className="card mb-6">
-        <h2 className="text-xl font-bold mb-1">🏷️ Themen für {commander}</h2>
-        <p className="text-sm text-fg-muted mb-4">
-          Echte Archetypen aus EDHREC, abgeleitet aus tausenden Decks mit genau diesem Commander — nicht nur eine generische Liste.
-        </p>
-        {themesLoading ? (
-          <p className="text-sm text-cmd-muted">Lade Themen…</p>
-        ) : edhrecThemes.length === 0 ? (
-          <p className="text-sm text-cmd-muted">Keine EDHREC-Themen gefunden — nutze stattdessen Mechaniken/Spielstil unten.</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {edhrecThemes.map(theme => (
-              <button
-                key={theme.slug}
-                onClick={() => toggleTheme(theme.name)}
-                className={`px-3 py-2 rounded-xl transition text-sm font-semibold ${
-                  strategy.themes.includes(theme.name)
-                    ? ''
-                    : 'text-cmd-muted hover:text-fg bg-[color:var(--surface)] border border-[color:var(--border)]'
-                }`}
-                style={strategy.themes.includes(theme.name) ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' } : undefined}
-                title={`${theme.count} Decks auf EDHREC mit diesem Tag`}
-              >
-                {theme.name}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="card mb-6">
-        <h2 className="text-xl font-bold mb-4">⚙️ Wichtigste Mechaniken (wähle min. 2)</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {mechanics.map(mechanic => (
-            <button
-              key={mechanic}
-              onClick={() => toggleMechanic(mechanic)}
-              className={`p-3 rounded-xl transition text-sm font-semibold ${
-                strategy.keyMechanics.includes(mechanic)
-                  ? ''
-                  : 'text-cmd-muted hover:text-fg bg-[color:var(--surface)] border border-[color:var(--border)]'
-              }`}
-              style={strategy.keyMechanics.includes(mechanic) ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' } : undefined}
-            >
-              {mechanic}
-            </button>
-          ))}
+      <header className="flex items-center gap-4 mb-6">
+        {commanderCard?.image && <img src={commanderCard.image} alt="" className="w-16 rounded-md flex-shrink-0" />}
+        <div className="min-w-0">
+          <p className="text-sm m-0" style={{ color: 'var(--color-text-muted)' }}>Neues Deck</p>
+          <h1 className="m-0 truncate">{commanderCard?.name || commander}</h1>
+          {colors && (
+            <p className="text-sm m-0 mt-1 flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
+              <ColorPips colors={colors} size={16} /> {colorIdentityLabel(colors)}
+            </p>
+          )}
         </div>
-        <p className="text-sm text-fg-muted mt-3">
-          {strategy.keyMechanics.length} Mechaniken gewählt
-        </p>
-      </div>
+      </header>
 
-      <div className="card mb-6">
-        <h2 className="text-xl font-bold mb-4">🎮 Spielstil</h2>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {playStyles.map(style => (
-            <button
-              key={style}
-              onClick={() => setStrategy(prev => ({ ...prev, playStyle: style }))}
-              className={`p-3 rounded-xl transition ${
-                strategy.playStyle === style
-                  ? ''
-                  : 'text-cmd-muted hover:text-fg bg-[color:var(--surface)] border border-[color:var(--border)]'
-              }`}
-              style={strategy.playStyle === style ? { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' } : undefined}
-            >
-              {style}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="card mb-6">
-        <h2 className="text-xl font-bold mb-4">💰 Zukaufsbudget (max.)</h2>
-        <div className="flex items-center gap-4">
-          <input
-            type="range"
-            min="50"
-            max="2000"
-            value={strategy.budget}
-            onChange={(e) => setStrategy(prev => ({ ...prev, budget: parseInt(e.target.value) }))}
-            className="flex-1"
-          />
-          <span className="text-lg font-bold">€{strategy.budget}</span>
-        </div>
-        <p className="text-sm text-fg-muted mt-2">
-          Gilt für ALLE Karten zusammen, die du noch nicht besitzt (Basisländer ausgenommen) — nicht pro Einzelkarte. Ergänzt das "Deck-Budget insgesamt" vom vorherigen Schritt, das nur für die Commander-Auswahl zählt.
-        </p>
-      </div>
-
-      <div className="card mb-6">
-        <h2 className="text-xl font-bold mb-4">🔄 Bekannte Combos</h2>
-        <div className="mb-3">
-          <input
-            id="combo-input"
-            type="text"
-            placeholder="z.B. Card A + Card B = Effect"
-            className="w-full text-fg rounded-xl p-3"
-            style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
-          />
-          <button onClick={handleAddCombo} className="btn-secondary w-full mt-2">
-            + Hinzufügen
-          </button>
-        </div>
-        {strategy.combos.length > 0 && (
-          <div className="space-y-2">
-            {strategy.combos.map((combo, index) => (
-              <div key={index} className="flex justify-between items-center p-2 rounded-lg" style={{ backgroundColor: 'var(--surface)' }}>
-                <span className="text-cmd-muted">{combo}</span>
-                <button
-                  onClick={() => handleRemoveCombo(index)}
-                  className="text-[color:var(--r)] hover:text-[color:var(--r)]"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="card mb-6">
-        <h2 className="text-xl font-bold mb-4">📝 Anmerkungen</h2>
+      <Section number="1" title="Was soll das Deck tun?" hint="In deinen Worten – Plan, Lieblingskarten, was dich reizt, was du nicht willst. Das geht wörtlich an den Deckbau und wird als dein Spielplan beim Deck gespeichert.">
         <textarea
-          value={strategy.notes}
-          onChange={(e) => setStrategy(prev => ({ ...prev, notes: e.target.value }))}
-          placeholder="Zusätzliche Infos zur Strategie (optional)"
-          className="w-full text-fg rounded-xl p-3 h-20 resize-none"
-          style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
+          value={idea}
+          onChange={(e) => setIdea(e.target.value)}
+          placeholder="z. B. Olivia soll jede Runde einen großen Vampir aus dem Friedhof zurückholen. Selbst-Mill und Discard als Motor, keine Infinite-Combos, gern viele Vampire mit Flugfähigkeit."
+          rows={5}
+          maxLength={3000}
+          className="w-full text-fg rounded-xl p-3 text-sm leading-relaxed"
+          style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
         />
-      </div>
+      </Section>
 
-      <div className="flex gap-3">
-        <button
-          onClick={() => navigate('/select-commander')}
-          className="btn-secondary flex-1"
-        >
-          ← Zurück
-        </button>
-        <button
-          onClick={() => navigate('/edit-deck', { state: { commander, cards: [] } })}
-          className="btn-secondary flex-1"
-          title="Leeres Deck mit diesem Commander im Editor – ohne KI-Aufbau"
-        >
+      <Section number="2" title="Diese Karten müssen rein" hint="Kommen fest ins Deck – die KI baut den Rest um sie herum. Karten außerhalb der Farben des Commanders gehen nicht.">
+        <div className="flex"><CardSearch {...searchProps} onAddOwned={(row) => addMust(row.name)} onAddByName={addMust} /></div>
+        <CardChips names={mustInclude} tone="var(--g)" onRemove={(name) => setMustInclude(prev => prev.filter(n => n !== name))} />
+        {synergyCards.length > 0 && (
+          <div className="mt-4">
+            <p className="text-xs mb-1.5" style={{ color: 'var(--color-text-muted)' }}>Hohe Synergie mit {commanderCard?.name || commander} laut EDHREC – antippen zum Übernehmen:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {synergyCards.map(card => (
+                <button key={card.name} type="button" onClick={() => addMust(card.name)} className="text-xs px-2 py-1" style={chipStyle(false)}>
+                  + {card.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </Section>
+
+      <Section number="3" title="Diese Karten nicht" hint="Werden nie vorgeschlagen – auch nicht als günstiger Ersatz fürs Budget.">
+        <div className="flex"><CardSearch {...searchProps} onAddOwned={(row) => addExclude(row.name)} onAddByName={addExclude} /></div>
+        <CardChips names={exclude} tone="var(--r)" onRemove={(name) => setExclude(prev => prev.filter(n => n !== name))} />
+      </Section>
+
+      <Section number="4" title="Rahmen">
+        <div className="space-y-5">
+          <div>
+            <span className="text-sm block mb-2" style={{ color: 'var(--color-text-secondary)' }}>Spielstärke</span>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {POWER_LEVELS.map(([level, hint]) => (
+                <button key={level} type="button" onClick={() => setPowerLevel(level)} aria-pressed={powerLevel === level} className="text-left px-3 py-2 min-h-[44px]" style={chipStyle(powerLevel === level)}>
+                  <span className="block text-sm font-semibold">{level}</span>
+                  <span className="block text-[11px]" style={{ opacity: 0.75 }}>{hint}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <span className="text-sm block mb-2" style={{ color: 'var(--color-text-secondary)' }}>Zukaufsbudget – für alle Karten zusammen, die du noch nicht hast</span>
+            <div className="flex flex-wrap items-center gap-2">
+              {BUDGETS.map(([value, label]) => (
+                <button key={label} type="button" onClick={() => { setBudget(value); setCustomBudget('') }} aria-pressed={!customBudget && budget === value} className="text-sm px-3 min-h-[40px]" style={chipStyle(!customBudget && budget === value)}>
+                  {label}
+                </button>
+              ))}
+              <label className="inline-flex items-center gap-1.5 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                oder
+                <input type="number" min="1" value={customBudget} onChange={(e) => setCustomBudget(e.target.value)} placeholder="€" aria-label="Eigenes Budget in Euro" className="w-20 text-fg rounded-lg px-2 py-1.5 text-sm" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }} />
+              </label>
+            </div>
+          </div>
+          <div>
+            <span className="text-sm block mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+              EDHREC-Thema <span style={{ color: 'var(--color-text-muted)' }}>(optional, bis zu {MAX_THEMES}) – dann kommen die Karten aus genau diesen Decks</span>
+            </span>
+            {edhrec === null ? (
+              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Lade Themen …</p>
+            ) : !edhrec?.themes?.length ? (
+              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Für diesen Commander hat EDHREC keine Themen.</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {edhrec.themes.map(theme => {
+                  const on = themes.some(t => t.slug === theme.slug)
+                  return (
+                    <button key={theme.slug} type="button" onClick={() => toggleTheme(theme)} aria-pressed={on} disabled={!on && themes.length >= MAX_THEMES} className="text-sm px-3 py-1.5" style={{ ...chipStyle(on), opacity: !on && themes.length >= MAX_THEMES ? 0.5 : 1 }}>
+                      {theme.name} <span className="text-xs tabular-nums" style={{ opacity: 0.7 }}>{theme.count}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </Section>
+
+      <div className="flex flex-wrap gap-3">
+        <button onClick={() => navigate('/select-commander')} className="btn-secondary px-5 min-h-[44px]">← Zurück</button>
+        <button onClick={buildByHand} className="btn-secondary flex-1 min-h-[44px]" title="Leerer Editor mit deinen Pflichtkarten – ohne KI-Aufbau">
           Selbst bauen
         </button>
-        <button
-          onClick={handleNext}
-          className="btn-primary flex-1"
-        >
-          Weiter zum Chat-Aufbau →
+        <button onClick={buildWithAi} className="btn-primary flex-1 min-h-[44px]">
+          Deck bauen lassen
         </button>
       </div>
     </div>

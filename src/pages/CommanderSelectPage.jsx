@@ -33,7 +33,7 @@ export default function CommanderSelectPage() {
   // chat tab with the commander and a ready-to-send first message, not back on "Finden".
   const [activeTab, setActiveTab] = useState(location.state?.activeTab || 'find')
   const chatHandoff = location.state?.activeTab === 'chat'
-    ? { commander: location.state?.chatCommander, autoMessage: location.state?.chatAutoMessage }
+    ? { commander: location.state?.chatCommander, autoMessage: location.state?.chatAutoMessage, buildSpec: location.state?.chatBuildSpec, playerPlan: location.state?.playerPlan }
     : null
   const [step, setStep] = useState(location.state?.step || 'method') // method | questionnaire | search | manual | results | theme | themeResults
   const [preferences, setPreferences] = useState({
@@ -639,7 +639,7 @@ export default function CommanderSelectPage() {
 
       {activeTab === 'find' && renderFindTab()}
       {activeTab === 'chat' && (
-        <ChatBuilderPage initialCommander={chatHandoff?.commander} initialMessage={chatHandoff?.autoMessage} />
+        <ChatBuilderPage initialCommander={chatHandoff?.commander} initialMessage={chatHandoff?.autoMessage} initialBuildSpec={chatHandoff?.buildSpec} playerPlan={chatHandoff?.playerPlan} />
       )}
       {activeTab === 'analyze' && <AnalyzePage />}
     </div>
