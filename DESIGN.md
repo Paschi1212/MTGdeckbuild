@@ -125,7 +125,9 @@ farbiges Element in Listen; alles andere bleibt ruhig.
 
 ## Muster: Draft (src/pages/DraftPage.jsx, lib/draft/)
 
-- **Anlegen** auf /spieltisch („Draft öffnen“): Modus *Draft* (15er-Booster: 1 Rare/Mythic, 3 Uncommons,
+- **Eigener Reiter „Draft“** (/draft, DraftHubPage): offene Drafts live + „Draft öffnen“. Der Spieltisch zeigt
+  nur noch Partie-Lobbys. Navigation zwischen 1024 und 1280 px enger (Abstände, Logo ohne Schriftzug).
+- **Anlegen** („Draft öffnen“): Modus *Draft* (15er-Booster: 1 Rare/Mythic, 3 Uncommons,
   10 Commons, 1 Standardland; 1 Pick) oder *Commander-Draft* (wie Commander Legends: 20er-Booster mit
   2 Legenden, 2 Picks, Deck ≥ 60 mit Commander, 40 Leben). Edition frei wählbar (jede Runde eine eigene
   möglich), 2–8 Spieler, Pick-Timer optional, privat. In der Lobbyliste mit goldenem Modus-Etikett.

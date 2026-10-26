@@ -12,7 +12,8 @@ const NAV_LINKS = [
   { to: '/collection', label: 'Meine Sammlung' },
   { to: '/decks', label: 'Meine Decks' },
   { to: '/select-commander', label: 'Deck bauen' },
-  { to: '/spieltisch', label: 'Spieltisch' }
+  { to: '/spieltisch', label: 'Spieltisch' },
+  { to: '/draft', label: 'Draft' }
 ]
 
 function LogoIcon({ size = 44 }) {
@@ -32,7 +33,7 @@ function NavTextLink({ to, label, onClick }) {
     <NavLink
       to={to}
       onClick={onClick}
-      className={({ isActive }) => `nav-link text-sm font-medium ${isActive ? 'nav-link-active' : ''}`}
+      className={({ isActive }) => `nav-link text-sm font-medium whitespace-nowrap ${isActive ? 'nav-link-active' : ''}`}
       style={{ color: 'var(--color-text-secondary)', letterSpacing: '0.3px' }}
     >
       {label}
@@ -115,12 +116,12 @@ export default function Navigation({ user, onLogout }) {
 
   return (
     <header
-      className="sticky top-0 z-50 flex items-center justify-between gap-4 px-4 md:px-12 py-4 md:py-6"
+      className="sticky top-0 z-50 flex items-center justify-between gap-4 px-4 md:px-12 lg:px-6 xl:px-12 py-4 md:py-6"
       style={{ background: 'var(--color-bg)', borderBottom: '3px solid var(--color-accent)' }}
     >
-      <Link to="/" className="flex items-center gap-3 flex-1 min-w-0" style={{ color: 'var(--color-text)' }}>
+      <Link to="/" className="flex items-center gap-3 flex-1 min-w-[36px]" style={{ color: 'var(--color-text)' }}>
         <LogoIcon size={36} />
-        {/* Between 1024 and 1280px the five links need the room — the logo alone says it then. */}
+        {/* Between 1024 and 1280px the six links need the room — the logo alone says it then. */}
         <span className="font-bold text-base tracking-wide hidden sm:inline lg:hidden xl:inline truncate" style={{ letterSpacing: '0.5px' }}>
           MTG DECK BUILDER
         </span>
@@ -129,14 +130,14 @@ export default function Navigation({ user, onLogout }) {
       {/* Full link row from 1024px (iPad landscape, desktop); below that — iPad portrait,
           phones — the menu button, so the row never wraps over the logo. */}
       {user && (
-        <nav className="hidden lg:flex items-center gap-8">
+        <nav className="hidden lg:flex items-center gap-4 xl:gap-8">
           {NAV_LINKS.map(link => (
             <NavTextLink key={link.to} {...link} />
           ))}
         </nav>
       )}
 
-      <div className="flex items-center gap-3 flex-shrink-0">
+      <div className="flex items-center gap-3 lg:gap-2 xl:gap-3 flex-shrink-0">
         {user && (
           <>
             <AiModeSwitch />

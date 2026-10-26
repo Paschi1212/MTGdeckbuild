@@ -6,14 +6,15 @@ import { firstName } from '../lib/table/players'
 import { loadOwnDecks, fetchBorrowedDecks } from '../lib/table/decks'
 import PracticeSetup from '../components/table/PracticeSetup'
 import DeckLocksPanel from '../components/table/DeckLocksPanel'
-import DraftSetup from '../components/draft/DraftSetup'
-import { MODES } from '../lib/draft/packs'
+
 
 // "Spieltisch": open lobbies of everyone on the site, live — join one or open your own.
 export default function TablePage({ user }) {
   const navigate = useNavigate()
   const me = useMemo(() => ({ playerId: user.playerId, name: firstName(user.name) }), [user])
-  const { lobbies, status } = useOpenLobbies(me)
+  // Drafts have their own page (/draft) — here only game lobbies.
+  const { lobbies: allLobbies, status } = useOpenLobbies(me)
+  const lobbies = allLobbies.filter(lobby => lobby.kind !== 'draft')
   const [name, setName] = useState(`Runde von ${me.name}`)
   const [maxPlayers, setMaxPlayers] = useState(4)
   const [isPrivate, setIsPrivate] = useState(false)
@@ -76,13 +77,7 @@ export default function TablePage({ user }) {
                 return (
                   <li key={lobby.id} className="card flex flex-col sm:flex-row sm:items-center gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-fg">
-                        {lobby.name}
-                        {lobby.kind === 'draft' && <span className="ml-2 text-xs font-semibold px-1.5 py-0.5 align-middle" style={{ border: '1px solid var(--gold)', color: 'var(--gold)', borderRadius: 'var(--radius-sm)' }}>{MODES[lobby.mode]?.label || 'Draft'}</span>}
-                      </div>
-                      {lobby.kind === 'draft' && lobby.setNames?.length > 0 && (
-                        <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>{[...new Set(lobby.setNames)].join(' · ')}</div>
-                      )}
+                      <div className="font-semibold text-fg">{lobby.name}</div>
                       <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
                         Gastgeber {lobby.hostName} · <span className="tabular-nums">{players.length}/{lobby.maxPlayers}</span> Spieler
                       </div>
@@ -94,7 +89,7 @@ export default function TablePage({ user }) {
                     </div>
                     <button
                       type="button"
-                      onClick={() => navigate(lobby.kind === 'draft' ? `/draft/${lobby.id}` : `/spieltisch/${lobby.id}`)}
+                      onClick={() => navigate(`/spieltisch/${lobby.id}`)}
                       disabled={full}
                       className="btn-primary text-sm px-5 min-h-[44px] flex-shrink-0"
                     >
@@ -142,7 +137,6 @@ export default function TablePage({ user }) {
           </label>
           <button type="submit" className="btn-primary w-full min-h-[44px]" disabled={!user.playerId}>Lobby öffnen</button>
         </form>
-        <DraftSetup me={me} disabled={!user.playerId} />
         <PracticeSetup decks={[...own.decks, ...friendsDecks]} />
         <DeckLocksPanel decks={own.decks} />
         </div>
