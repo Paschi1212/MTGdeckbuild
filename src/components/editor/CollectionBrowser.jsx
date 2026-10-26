@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { loadCardData } from '../../lib/cardData'
 import { locationsFromIndex, formatCardLocations } from '../../lib/collection'
+import { canBeCommander } from '../../lib/cardType'
 import ManaCost from '../ManaCost'
 
 const TYPES = [
@@ -42,6 +43,7 @@ export default function CollectionBrowser({ collection, availableQuantities, loc
   const [text, setText] = useState('')
   const [typeLine, setTypeLine] = useState('')
   const [types, setTypes] = useState([])
+  const [commandersOnly, setCommandersOnly] = useState(false)
   const [colors, setColors] = useState([])
   const [fitsCommander, setFitsCommander] = useState(true)
   const [cmc, setCmc] = useState([])
@@ -105,7 +107,7 @@ export default function CollectionBrowser({ collection, availableQuantities, loc
       if (q && !row.name.toLowerCase().includes(q)) return false
       if (binder && !inBinders.has(binder)) return false
       if (rarities.length && !rarities.includes(rarity)) return false
-      const needsInfo = terms.length || line || types.length || colors.length || cmc.length || (fitsCommander && identity)
+      const needsInfo = commandersOnly || terms.length || line || types.length || colors.length || cmc.length || (fitsCommander && identity)
       if (needsInfo && !info) return false
       if (terms.length) {
         const oracle = String(info.oracleText || '').toLowerCase()
@@ -113,6 +115,7 @@ export default function CollectionBrowser({ collection, availableQuantities, loc
       }
       if (line && !String(info.typeLine || '').toLowerCase().includes(line)) return false
       if (types.length && !types.some(type => String(info.typeLine || '').includes(type))) return false
+      if (commandersOnly && !canBeCommander(info)) return false
       const own = String(info?.colors ?? info?.colorIdentity ?? '').split(/\s+/).filter(Boolean)
       if (fitsCommander && identity && !own.every(c => identity.includes(c))) return false
       // A card with every chosen color in it ("C" = colorless).
@@ -129,13 +132,13 @@ export default function CollectionBrowser({ collection, availableQuantities, loc
       price: (a, b) => (b.info?.eur || b.price) - (a.info?.eur || a.price) || a.row.name.localeCompare(b.row.name)
     }
     return list.sort(sorters[sortBy])
-  }, [entries, name, text, typeLine, types, colors, fitsCommander, identity, cmc, rarities, binder, freeOnly, hideInDeck, existingNames, availableQuantities, commanderName, sortBy])
+  }, [entries, name, text, typeLine, types, commandersOnly, colors, fitsCommander, identity, cmc, rarities, binder, freeOnly, hideInDeck, existingNames, availableQuantities, commanderName, sortBy])
 
   useEffect(() => { setShown(PAGE) }, [results])
 
   const toggle = (setter) => (value) => setter(prev => (prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]))
-  const activeFilters = [text, typeLine, binder].filter(Boolean).length + types.length + colors.length + cmc.length + rarities.length
-  const reset = () => { setName(''); setText(''); setTypeLine(''); setTypes([]); setColors([]); setCmc([]); setRarities([]); setBinder('') }
+  const activeFilters = [text, typeLine, binder, commandersOnly].filter(Boolean).length + types.length + colors.length + cmc.length + rarities.length
+  const reset = () => { setName(''); setText(''); setTypeLine(''); setTypes([]); setCommandersOnly(false); setColors([]); setCmc([]); setRarities([]); setBinder('') }
 
   const filters = (
     <div className="space-y-4">
@@ -147,6 +150,7 @@ export default function CollectionBrowser({ collection, availableQuantities, loc
           {TYPES.map(([value, label]) => (
             <button key={value} type="button" onClick={() => toggle(setTypes)(value)} aria-pressed={types.includes(value)} className="text-xs px-2 py-1" style={chipStyle(types.includes(value))}>{label}</button>
           ))}
+          <button type="button" onClick={() => setCommandersOnly(on => !on)} aria-pressed={commandersOnly} title="Legendäre Kreaturen, legendäre Vehicles/Spacecraft, „can be your commander“, Backgrounds" className="text-xs px-2 py-1" style={chipStyle(commandersOnly)}>Mögliche Commander</button>
         </div>
         <input type="search" value={typeLine} onChange={(e) => setTypeLine(e.target.value)} placeholder="Typzeile enthält, z. B. Vampire, Equipment" className="w-full mt-1.5 px-2.5 py-1.5 text-sm" style={fieldStyle} />
       </Group>

@@ -4,6 +4,7 @@ import CardTile from '../components/CardTile'
 import { loadCollection } from '../lib/collection'
 import { loadSecondaryCollections } from '../lib/secondaryCollections'
 import { loadCardData } from '../lib/cardData'
+import { canBeCommander } from '../lib/cardType'
 
 const COLOR_OPTIONS = [
   { id: 'W', hex: '#F8F6D8' },
@@ -160,6 +161,8 @@ export default function CollectionPage() {
   const [availability, setAvailability] = useState('all') // all | free | built
   // Only cards on Wizards' Reserved List (never reprinted — usually the valuable ones).
   const [reservedOnly, setReservedOnly] = useState(false)
+  // Legendary creatures & co. — looking for the next deck's commander.
+  const [commandersOnly, setCommandersOnly] = useState(false)
   const [minQuantity, setMinQuantity] = useState('')
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
@@ -240,6 +243,12 @@ export default function CollectionPage() {
     [collection, imageMap]
   )
 
+  const commanderCount = useMemo(
+    () => new Set((collection?.cards || []).filter(c => canBeCommander(resolveCard(c))).map(c => c.name)).size,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [collection, imageMap]
+  )
+
   const visibleCards = useMemo(() => {
     if (!collection?.cards) return []
 
@@ -276,6 +285,7 @@ export default function CollectionPage() {
     }
 
     if (reservedOnly) result = result.filter(c => resolveCard(c)?.reserved)
+    if (commandersOnly) result = result.filter(c => canBeCommander(resolveCard(c)))
 
     if (availability === 'free') {
       result = result.filter(c => c.binderType !== 'deck')
@@ -313,7 +323,7 @@ export default function CollectionPage() {
     }
 
     return result
-  }, [collection, search, textSearch, selectedColors, selectedType, availability, reservedOnly, selectedBinder, minQuantity, minPrice, maxPrice, minCmc, maxCmc, sortBy, imageMap])
+  }, [collection, search, textSearch, selectedColors, selectedType, availability, reservedOnly, commandersOnly, selectedBinder, minQuantity, minPrice, maxPrice, minCmc, maxCmc, sortBy, imageMap])
 
   if (!collection) {
     return (
@@ -429,6 +439,25 @@ export default function CollectionPage() {
                 <option key={type} value={type}>{type}</option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <span className="text-xs text-cmd-muted block mb-2">Commander</span>
+            <button
+              type="button"
+              onClick={() => setCommandersOnly(on => !on)}
+              aria-pressed={commandersOnly}
+              title="Legendäre Kreaturen, legendäre Vehicles/Spacecraft, Karten mit „can be your commander“ und Backgrounds"
+              className="text-sm px-3 min-h-[38px] whitespace-nowrap"
+              style={{
+                background: commandersOnly ? 'var(--color-accent)' : 'var(--color-surface)',
+                color: commandersOnly ? 'var(--color-bg)' : 'var(--color-text)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)'
+              }}
+            >
+              {commandersOnly ? '✓ ' : ''}Mögliche Commander{commanderCount ? <span className="tabular-nums" style={{ opacity: 0.7 }}> ({commanderCount})</span> : null}
+            </button>
           </div>
 
           <div>

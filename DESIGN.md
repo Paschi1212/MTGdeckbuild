@@ -78,6 +78,9 @@ farbiges Element in Listen; alles andere bleibt ruhig.
   Deck ausblenden“), rechts Kartenbilder je Name mit „2 frei · Ordner“ und rundem grünen „+“
   (✓ wenn schon im Deck). Sortieren nach Name/Manawert/Preis, 60 Karten pro Seite, Esc schließt.
   Handy: Filter hinter einem Knopf „Filter (n)“.
+- **„Mögliche Commander“** (Chip im Dialog, Umschalter mit Anzahl in „Meine Sammlung“): legendäre Kreaturen,
+  legendäre Vehicles/Spacecraft (seit Edge of Eternities 2025), „can be your commander“, Backgrounds –
+  `canBeCommander()` in lib/cardType.js, nach Vorderseite der Typzeile.
 - **Standardländer ±** für die Farben des Commanders (Ödnis bei farblos) über der Werkzeugleiste.
 - **Farbprüfung:** Karten, deren Farben der Commander nicht hat, stehen in einem rot umrandeten Hinweis
   mit „entfernen“.
