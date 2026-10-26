@@ -38,6 +38,30 @@ Commander-Spieler – die Karten und ihre Daten sind der Inhalt, die Oberfläche
 Radien in zwei Stufen: `--radius-sm` (2 px, Bedienelemente), `--radius-md` (4 px, Flächen).
 Zahlen in Tabellen und Leisten mit `tabular-nums`.
 
+## Stile und Spieltisch (Einstellungen, src/themes.css, src/lib/appearance.js)
+
+**Standard bleibt der Auslieferungszustand** – alles Folgende greift nur, wenn es unter
+**Einstellungen** (`/einstellungen`, Zahnrad in der Navigation, am Handy im Menü) gewählt wurde,
+pro Gerät gespeichert (`mtg_style`, `mtg_table_look`). Die Stile definieren nur die Tokens neu
+(hell + dunkel je Stil), Seiten brauchen dafür keine eigenen Änderungen – deshalb weiter **nur
+Tokens** verwenden.
+
+| Stil | Farbe (hell / dunkel) | Schrift | Form |
+|---|---|---|---|
+| **Kartenstube** (`data-style="tavern"`) | Pergament #efe4cb, Leder #5b3a1d, Gold #85601c / Nachtholz #1b130c, Gold #d8b166 | Cinzel (Überschriften, Navigation) + Crimson Pro (Text, Plantin-artig wie Regeltext) | Papierkorn im Hintergrund, Karten mit innerer Rahmenlinie, Lederknöpfe, Goldlinie mit ◆ unter Seitentiteln, Kartenspiel-Symbole an den Navigationspunkten (`.style-icon`) |
+| **Modern** (`data-style="modern"`) | Schiefer #f3f5f8, Akzent Blau-Mana #2a5ccc / #0e1116, #7aa2ff | Manrope, Tabellenziffern | Radien 8/14 px, weiche zweistufige Schatten, dünne Kopflinie |
+
+Webfonts werden nur für den gewählten Stil geladen. Mit Stil verschwindet der Schriftzug neben dem
+Logo unter 1536 px (breitere Schrift + Symbole), in der Kartenstube zwischen 1024 und 1279 px auch die
+Symbole.
+
+**Spieltisch** (`data-table` direkt an `.game-table` in TableRoomPage, gilt auch im Live Tester):
+- *Holztisch:* Nussbaumplatte (Maserung aus gestrecktem SVG-Rauschen), jeder Spielbereich eine
+  dunkelgrüne Filzmatte (`.play-mat`) mit Steppnaht und Schatten.
+- *Grüner Filz:* ein bespannter Kartentisch mit Holzbande; Spielbereiche als markierte Zonen.
+- In `.play-mat` schalten die Tokens auf hell-auf-dunkel um – Beschriftungen, Stapel und Menüs
+  in der Matte folgen automatisch. Die Vorschauen auf der Einstellungsseite nutzen dieselben Klassen.
+
 ## Signaturelement
 
 **Manakosten als Pips** (`src/components/ManaCost.jsx`): jede Karte zeigt ihre Kosten wie gedruckt –

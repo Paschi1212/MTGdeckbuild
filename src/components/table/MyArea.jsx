@@ -161,7 +161,7 @@ export default function MyArea({ seat, seats, player, board, act, isActive, isMo
 
   return (
     <section
-      className="flex flex-col overflow-hidden"
+      className="play-mat flex flex-col overflow-hidden"
       style={{ background: 'var(--color-surface)', border: `${isActive ? 2 : 1}px solid ${isActive ? 'var(--gold)' : 'var(--color-border)'}`, borderRadius: 'var(--radius-md)' }}
       aria-label={label}
     >

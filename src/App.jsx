@@ -13,6 +13,7 @@ import EditDeckPage from './pages/EditDeckPage'
 import ChatBuilderPage from './pages/ChatBuilderPage'
 import PrivacyPage from './pages/PrivacyPage'
 import ClaudeModePage from './pages/ClaudeModePage'
+import SettingsPage from './pages/SettingsPage'
 import DraftAnalysisPage from './pages/DraftAnalysisPage'
 import SyncBanner from './components/SyncBanner'
 // The game table pulls in the live-connection library — loaded only when someone goes there.
@@ -135,6 +136,7 @@ function App() {
             <Route path="/analyze" element={user ? <AnalyzePage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/edit-deck" element={user ? <EditDeckPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/chat-builder" element={user ? <ChatBuilderPage /> : <HomePage user={user} onLogin={handleLogin} />} />
+            <Route path="/einstellungen" element={<SettingsPage />} />
             <Route path="/claude-modus" element={user ? <ClaudeModePage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/drafts/:id/analyse" element={user ? <DraftAnalysisPage /> : <HomePage user={user} onLogin={handleLogin} />} />
             <Route path="/draft" element={user ? <Suspense fallback={<p className="text-fg-muted">Lade Draft …</p>}><DraftHubPage user={user} /></Suspense> : <HomePage user={user} onLogin={handleLogin} />} />

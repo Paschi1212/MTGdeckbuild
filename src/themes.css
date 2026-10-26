@@ -1,0 +1,240 @@
+/* Optional looks, chosen under Einstellungen (src/lib/appearance.js). Standard is index.css
+   untouched; everything here only applies with data-style / data-table on <html>. Each style
+   redefines the same tokens as index.css, so every page follows without its own changes. */
+
+/* ───────────── Kartenstube: parchment, leather, gold foil ─────────────
+   Colors from a well-used card table: aged paper, saddle leather, the gold of a set symbol.
+   Type: Cinzel (inscriptional capitals, like legend titles) + Crimson Pro (a Plantin-like
+   book face, close to the rules text on cards). */
+[data-style="tavern"]:not([data-theme="dark"]) {
+  --color-bg: #efe4cb;
+  --color-surface: #f8efda;
+  --color-border: #ccb487;
+  --color-text: #2d2015;
+  --color-text-secondary: #574330;
+  --color-text-muted: #6c573e;
+  --gold: #85601c;
+  --color-accent: #5b3a1d;
+  --color-accent-light: #e7d6b1;
+  --u: #1f5d94;
+  --r: #a8322b;
+  --shadow-sm: 0 1px 2px rgba(60, 38, 16, 0.12);
+  --shadow-md: 0 4px 10px rgba(60, 38, 16, 0.14);
+  --shadow-lg: 0 12px 24px rgba(60, 38, 16, 0.18);
+  --paper-grain: 0.07;
+}
+
+[data-style="tavern"][data-theme="dark"] {
+  --color-bg: #1b130c;
+  --color-surface: #281c12;
+  --color-border: #4b3725;
+  --color-text: #f1e4c7;
+  --color-text-secondary: #d0bb96;
+  --color-text-muted: #ab946f;
+  --gold: #d8b166;
+  --color-accent: #d8b166;
+  --color-accent-light: #3a2a1b;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.55);
+  --paper-grain: 0.05;
+}
+
+[data-style="tavern"] {
+  --radius-sm: 3px;
+  --radius-md: 6px;
+}
+
+[data-style="tavern"] body {
+  font-family: 'Crimson Pro', Georgia, 'Times New Roman', serif;
+  font-size: 1.0625rem;
+  /* Paper fibres: fine noise over the page color, a little darker towards the edges. */
+  background:
+    radial-gradient(ellipse at 50% 0%, transparent 55%, rgba(60, 38, 16, var(--paper-grain)) 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.22 0 0 0 0 0.1 0 0 0 0.09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23p)'/%3E%3C/svg%3E"),
+    var(--color-bg);
+  background-attachment: fixed;
+}
+
+[data-style="tavern"] h1,
+[data-style="tavern"] h2,
+[data-style="tavern"] .nav-link,
+[data-style="tavern"] .site-wordmark {
+  font-family: 'Cinzel', 'Trajan Pro', Georgia, serif;
+  letter-spacing: 0.02em;
+}
+[data-style="tavern"] h1 { font-weight: 600; }
+[data-style="tavern"] h2 { font-weight: 700; }
+[data-style="tavern"] .nav-link { font-weight: 600; font-size: 0.82rem; }
+
+/* A gilt rule with a diamond under page titles — only the big ones, not compact bars. */
+[data-style="tavern"] h1:not(.m-0):not(.truncate)::after {
+  content: '◆';
+  display: block;
+  width: 9rem;
+  margin-top: 0.4em;
+  font: 9px/12px Georgia, serif;
+  letter-spacing: 0;
+  text-align: center;
+  color: var(--gold);
+  background:
+    linear-gradient(var(--gold), var(--gold)) left center / calc(50% - 10px) 1px no-repeat,
+    linear-gradient(var(--gold), var(--gold)) right center / calc(50% - 10px) 1px no-repeat;
+}
+
+/* Cards and panels framed like a card: a thin inner rule inside the edge. */
+[data-style="tavern"] .card,
+[data-style="tavern"] .card-hover {
+  box-shadow: inset 0 0 0 3px var(--color-surface), inset 0 0 0 4px var(--color-border), var(--shadow-sm);
+}
+[data-style="tavern"] .card-hover:hover {
+  box-shadow: inset 0 0 0 3px var(--color-surface), inset 0 0 0 4px var(--gold), var(--shadow-md);
+}
+
+/* Leather buttons with a stitched edge; gold ones at night. */
+[data-style="tavern"] .btn-primary {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 82%, #fff) 0%, var(--color-accent) 100%);
+  border-color: color-mix(in srgb, var(--color-accent) 70%, #000);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-accent) 85%, #000), inset 0 0 0 3px rgba(255, 236, 200, 0.22), var(--shadow-sm);
+}
+[data-style="tavern"] .btn-primary:hover {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  filter: brightness(1.08);
+}
+
+[data-style="tavern"] .site-header { border-bottom-color: var(--gold) !important; }
+/* Inscriptional capitals and icons make the links wider — the logo alone until there's room. */
+@media (max-width: 1535px) {
+  [data-style] .site-wordmark { display: none !important; }
+}
+@media (min-width: 1024px) and (max-width: 1279px) {
+  [data-style="tavern"] .style-icon { display: none; }
+}
+
+/* Little card-table icons next to the navigation entries (only in this style). */
+.style-icon { display: none; }
+[data-style="tavern"] .style-icon {
+  display: inline-block;
+  width: 1.05em;
+  height: 1.05em;
+  margin-right: 0.4em;
+  vertical-align: -0.16em;
+  color: var(--gold);
+}
+
+/* ───────────── Modern: clear, airy, rounded ─────────────
+   Cool slate neutrals with one accent taken from blue mana; Manrope for its open forms and
+   tabular figures (prices, counts). */
+[data-style="modern"]:not([data-theme="dark"]) {
+  --color-bg: #f3f5f8;
+  --color-surface: #ffffff;
+  --color-border: #e1e5ec;
+  --color-text: #151a21;
+  --color-text-secondary: #4a5463;
+  --color-text-muted: #66707f;
+  --gold: #926400;
+  --color-accent: #2a5ccc;
+  --color-accent-light: #e7edfb;
+  --u: #2a5ccc;
+  --shadow-sm: 0 1px 2px rgba(20, 30, 50, 0.06), 0 1px 3px rgba(20, 30, 50, 0.05);
+  --shadow-md: 0 2px 4px rgba(20, 30, 50, 0.05), 0 8px 20px rgba(20, 30, 50, 0.08);
+  --shadow-lg: 0 4px 8px rgba(20, 30, 50, 0.06), 0 18px 40px rgba(20, 30, 50, 0.12);
+}
+
+[data-style="modern"][data-theme="dark"] {
+  --color-bg: #0e1116;
+  --color-surface: #161b23;
+  --color-border: #272e3a;
+  --color-text: #edf0f5;
+  --color-text-secondary: #b3bccb;
+  --color-text-muted: #8a94a6;
+  --gold: #e2b95b;
+  --color-accent: #7aa2ff;
+  --color-accent-light: #1f2735;
+  --u: #7aa2ff;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+
+[data-style="modern"] {
+  --radius-sm: 8px;
+  --radius-md: 14px;
+}
+
+[data-style="modern"] body {
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-feature-settings: 'tnum' 1;
+}
+[data-style="modern"] h1 { font-weight: 700; letter-spacing: -0.03em; }
+[data-style="modern"] h2 { font-weight: 700; letter-spacing: -0.015em; }
+
+[data-style="modern"] .card,
+[data-style="modern"] .card-hover {
+  box-shadow: var(--shadow-sm);
+}
+[data-style="modern"] .card-hover:hover { box-shadow: var(--shadow-md); }
+[data-style="modern"] .btn-primary { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), 0 4px 12px color-mix(in srgb, var(--color-accent) 30%, transparent); }
+[data-style="modern"] .btn-primary:hover { background: var(--color-accent); color: var(--color-bg); filter: brightness(1.08); }
+[data-style="modern"] .site-header { border-bottom: 1px solid var(--color-border) !important; }
+[data-style="modern"] .nav-link::after { height: 3px; border-radius: 3px; }
+
+/* ───────────── Spieltisch: Holztisch ─────────────
+   The board area is a walnut table top (grain from stretched noise), each player's area a
+   felt playmat lying on it with a stitched edge. Inside a mat the color tokens switch to
+   light-on-dark, so every label, pile and menu in it follows. */
+.game-table[data-table] {
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.game-table[data-table="wood"] {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='600'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.0035 0.11' numOctaves='3' seed='11'/%3E%3CfeColorMatrix values='0 0 0 0 0.16 0 0 0 0 0.09 0 0 0 0 0.04 0 0 0 0.75 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23w)'/%3E%3C/svg%3E"),
+    linear-gradient(180deg, #74492a 0%, #5d3a20 55%, #4b2e19 100%);
+  background-size: 900px 600px, auto;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35), inset 0 2px 0 rgba(255, 220, 170, 0.18), 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+[data-table] .play-mat {
+  --color-surface: #283229;
+  --color-bg: #1a211b;
+  --color-border: rgba(255, 255, 255, 0.16);
+  --color-text: #f2ede2;
+  --color-text-secondary: #d3cbba;
+  --color-text-muted: #aaa292;
+  --color-accent: #f2ede2;
+  --color-accent-light: rgba(255, 255, 255, 0.1);
+  --gold: #e3c47c;
+  --u: #6fb4f2;
+  --r: #f07a6f;
+  color: var(--color-text);
+}
+
+[data-table="wood"] .play-mat {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.22 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse at 50% 40%, #2f3b31 0%, #222b24 100%) !important;
+  outline: 1px dashed rgba(255, 255, 255, 0.18);
+  outline-offset: -7px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* ───────────── Spieltisch: Grüner Filz ─────────────
+   One baize-covered card table with a wooden rail; the players' areas are zones marked on
+   the cloth rather than separate mats. */
+.game-table[data-table="felt"] {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.2 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse at 50% 35%, #2f7350 0%, #1f5439 60%, #173f2b 100%);
+  border: 12px solid #5a3820;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4), inset 0 0 40px rgba(0, 0, 0, 0.35), 0 0 0 1px #3a2412, 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+[data-table="felt"] .play-mat {
+  --color-surface: #23573c;
+  --color-bg: #1a4630;
+  background: rgba(0, 0, 0, 0.14) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}

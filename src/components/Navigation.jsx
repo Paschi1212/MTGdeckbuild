@@ -8,13 +8,31 @@ import CommanderSearchInput from './CommanderSearchInput'
 // "Entwürfe" lives as a tab inside "Meine Decks", and "Chat-Aufbau"/"Analysieren" as tabs
 // inside "Commander" — keeps the top nav from growing every time a new tool gets added.
 const NAV_LINKS = [
-  { to: '/upload', label: 'Sammlung' },
-  { to: '/collection', label: 'Meine Sammlung' },
-  { to: '/decks', label: 'Meine Decks' },
-  { to: '/select-commander', label: 'Deck bauen' },
-  { to: '/spieltisch', label: 'Spieltisch' },
-  { to: '/draft', label: 'Draft' }
+  { to: '/upload', label: 'Sammlung', icon: 'stack' },
+  { to: '/collection', label: 'Meine Sammlung', icon: 'binder' },
+  { to: '/decks', label: 'Meine Decks', icon: 'deckbox' },
+  { to: '/select-commander', label: 'Deck bauen', icon: 'quill' },
+  { to: '/spieltisch', label: 'Spieltisch', icon: 'die' },
+  { to: '/draft', label: 'Draft', icon: 'booster' }
 ]
+
+// Card-table objects for the "Kartenstube" style — hidden in every other style (.style-icon).
+const ICON_PATHS = {
+  stack: 'M7 4h10v14H7zM4 7v13h11',
+  binder: 'M5 3h13v18H5zM9 3v18M12 8h4M12 12h4',
+  deckbox: 'M5 8h14v12H5zM5 8l2-4h10l2 4M10 12h4',
+  quill: 'M20 4c-6 1-11 6-13 13l-2 3M20 4c-1 5-4 9-9 11M9 13l-2 4',
+  die: 'M4 4h16v16H4zM8.5 8.5h.01M15.5 15.5h.01M12 12h.01M15.5 8.5h.01M8.5 15.5h.01',
+  booster: 'M6 5l1.5-2 1.5 2 1.5-2 1.5 2 1.5-2 1.5 2 1.5-2L18 5v16H6zM9 10h6M9 14h6'
+}
+
+function StyleIcon({ name }) {
+  return (
+    <svg className="style-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={ICON_PATHS[name]} />
+    </svg>
+  )
+}
 
 function LogoIcon({ size = 44 }) {
   return (
@@ -28,7 +46,7 @@ function LogoIcon({ size = 44 }) {
   )
 }
 
-function NavTextLink({ to, label, onClick }) {
+function NavTextLink({ to, label, icon, onClick }) {
   return (
     <NavLink
       to={to}
@@ -36,7 +54,7 @@ function NavTextLink({ to, label, onClick }) {
       className={({ isActive }) => `nav-link text-sm font-medium whitespace-nowrap ${isActive ? 'nav-link-active' : ''}`}
       style={{ color: 'var(--color-text-secondary)', letterSpacing: '0.3px' }}
     >
-      {label}
+      {icon && <StyleIcon name={icon} />}{label}
     </NavLink>
   )
 }
@@ -116,13 +134,13 @@ export default function Navigation({ user, onLogout }) {
 
   return (
     <header
-      className="sticky top-0 z-50 flex items-center justify-between gap-4 px-4 md:px-12 lg:px-6 xl:px-12 py-4 md:py-6"
+      className="site-header sticky top-0 z-50 flex items-center justify-between gap-4 px-4 md:px-12 lg:px-6 xl:px-12 py-4 md:py-6"
       style={{ background: 'var(--color-bg)', borderBottom: '3px solid var(--color-accent)' }}
     >
       <Link to="/" className="flex items-center gap-3 flex-1 min-w-[36px]" style={{ color: 'var(--color-text)' }}>
         <LogoIcon size={36} />
         {/* Between 1024 and 1280px the six links need the room — the logo alone says it then. */}
-        <span className="font-bold text-base tracking-wide hidden sm:inline lg:hidden xl:inline truncate" style={{ letterSpacing: '0.5px' }}>
+        <span className="site-wordmark font-bold text-base tracking-wide hidden sm:inline lg:hidden xl:inline truncate" style={{ letterSpacing: '0.5px' }}>
           MTG DECK BUILDER
         </span>
       </Link>
@@ -188,6 +206,19 @@ export default function Navigation({ user, onLogout }) {
           </>
         )}
 
+        <Link
+          to="/einstellungen"
+          className={`${user ? 'hidden lg:flex' : 'flex'} w-11 h-11 md:w-12 md:h-12 items-center justify-center`}
+          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text)' }}
+          aria-label="Einstellungen"
+          title="Einstellungen: Stil, Hell/Dunkel, Spieltisch"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+          </svg>
+        </Link>
+
         <button
           onClick={toggle}
           className="w-11 h-11 md:w-12 md:h-12 flex items-center justify-center text-lg"
@@ -219,6 +250,7 @@ export default function Navigation({ user, onLogout }) {
           {NAV_LINKS.map(link => (
             <NavTextLink key={link.to} {...link} onClick={() => setMobileOpen(false)} />
           ))}
+          <NavTextLink to="/einstellungen" label="Einstellungen" onClick={() => setMobileOpen(false)} />
           <div className="flex items-center justify-between px-1 py-2 mt-1" style={{ borderTop: '1px solid var(--color-border)' }}>
             <span className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{user.email}</span>
             <button onClick={onLogout} className="btn-secondary text-xs px-4 py-1.5">

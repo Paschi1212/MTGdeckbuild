@@ -17,6 +17,7 @@ import BoardZoom from '../components/table/BoardZoom'
 import CleanupDiscard, { MAX_HAND_SIZE } from '../components/table/CleanupDiscard'
 import TableTimer from '../components/table/TableTimer'
 import CardLightbox from '../components/table/CardLightbox'
+import { getTableLook, subscribeAppearance } from '../lib/appearance'
 
 // Where a turn runs on by itself (see GameView): untap → upkeep → draw → main phase 1.
 const AUTO_NEXT_STEP = { untap: 'upkeep', upkeep: 'draw', draw: 'main1' }
@@ -289,6 +290,9 @@ function LobbyView({ lobbyId, me, onStarted, onSpectate }) {
 // ── Game ──────────────────────────────────────────────────────────────────────────────────
 
 function GameView({ lobbyId, me }) {
+  // Holztisch / Grüner Filz / Standard — chosen under Einstellungen (src/themes.css).
+  const [tableLook, setTableLook] = useState(getTableLook)
+  useEffect(() => subscribeAppearance(() => setTableLook(getTableLook())), [])
   const navigate = useNavigate()
   const { record, state, online, status, dispatch, boards: publicBoards, publishBoard, practice } = useGame(lobbyId, me)
   const [waitedLong, setWaitedLong] = useState(false)
@@ -562,7 +566,7 @@ function GameView({ lobbyId, me }) {
           />
         </div>
         <div className={showLog ? 'grid xl:grid-cols-[1fr_300px] gap-3 items-start' : ''}>
-          <div className="flex flex-col gap-3 min-w-0">
+          <div className="game-table flex flex-col gap-3 min-w-0" data-table={tableLook === 'standard' ? undefined : tableLook}>
             {others.length > 0 && (
               <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${others.length === 1 ? 560 : 380}px, 1fr))` }}>
                 {others.map(seat => (

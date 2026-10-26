@@ -26,7 +26,7 @@ export default function OpponentBoard({ seat, seats, player, snapshot, isActive,
   const board = snapshot || { battlefield: [], graveyard: [], exile: [], command: [], hand: 0, library: 0 }
   return (
     <section
-      className="flex flex-col overflow-hidden"
+      className="play-mat flex flex-col overflow-hidden"
       style={{ background: 'var(--color-surface)', border: `${isActive ? 2 : 1}px solid ${isActive ? 'var(--gold)' : 'var(--color-border)'}`, borderRadius: 'var(--radius-md)' }}
     >
       <BoardHeader seat={seat} seats={seats} player={player} isMonarch={isMonarch} online={online} dispatch={dispatch} onDetails={onDetails} />
