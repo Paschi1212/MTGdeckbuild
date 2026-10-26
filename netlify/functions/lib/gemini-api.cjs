@@ -705,21 +705,23 @@ async function suggestCommanders(preferences) {
     budget,
     powerLevel
   } = preferences
+  // The player's own description; older clients sent a fixed play style instead.
+  const idea = String(preferences.idea || playStyle || '').trim().slice(0, 1500)
 
   const prompt = `Du bist ein Magic: The Gathering Commander Deck Experte.
 
 USER PREFERENCES:
-- Lieblings-Farben: ${colors.join(', ')}
-- Spielstil: ${playStyle}
+- IDEE DES SPIELERS (wichtigstes Kriterium, in seinen eigenen Worten): ${idea || '(keine – schlage vielseitige, beliebte Commander vor)'}
+- Farben: ${colors.length ? colors.join(', ') : 'offen – wähle die Farben, die am besten zur Idee passen'}
 - Budget: €${budget}
 - Power Level: ${powerLevel}
 
 Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
 - "intro": kurzer deutscher Fließtext-Einstieg, 1-2 Sätze
-- "suggestions": die TOP 5 Commander (echte, existierende Magic-Karten), die in den Farben spielbar sind, zum Spielstil passen und fürs Budget geeignet sind. Für jeden: name, colors (z.B. "W U B"), reason (warum passt er), strategy (Schwerpunkt-Strategie), estimatedCost (geschätzte Deck-Kosten als String, z.B. "ca. 80€")`
+- "suggestions": die TOP 5 Commander (echte, existierende Magic-Karten), die genau die Idee des Spielers umsetzen, in den Farben spielbar sind und fürs Budget geeignet sind. Für jeden: name, colors (z.B. "W U B"), reason (warum passt er), strategy (Schwerpunkt-Strategie), estimatedCost (geschätzte Deck-Kosten als String, z.B. "ca. 80€")`
 
   try {
-    console.log('[Gemini] Suggesting commanders for:', playStyle)
+    console.log('[Gemini] Suggesting commanders for:', idea.slice(0, 80))
 
     const result = await generateContentWithRetry({
       model: GEMINI_MODEL,

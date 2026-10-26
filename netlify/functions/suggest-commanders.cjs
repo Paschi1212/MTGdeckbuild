@@ -16,7 +16,7 @@ exports.handler = async (event) => {
 
     const preferences = JSON.parse(event.body)
 
-    if (!preferences.colors || !preferences.playStyle) {
+    if (!Array.isArray(preferences.colors) || (!preferences.colors.length && !String(preferences.idea || preferences.playStyle || '').trim())) {
       return {
         statusCode: 400,
         body: JSON.stringify({ error: 'Missing required fields' })

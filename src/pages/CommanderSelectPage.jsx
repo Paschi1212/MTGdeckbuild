@@ -17,7 +17,7 @@ const HUB_TABS = [
 function buildCommanderSearchContextNote(preferences) {
   const parts = []
   if (preferences.colors.length) parts.push(`Farben: ${preferences.colors.join(', ')}`)
-  if (preferences.playStyle) parts.push(`Spielstil: ${preferences.playStyle}`)
+  if (preferences.idea.trim()) parts.push(`Idee: ${preferences.idea.trim()}`)
   if (preferences.budget) parts.push(`Budget: €${preferences.budget}`)
   if (preferences.powerLevel) parts.push(`Power Level: ${preferences.powerLevel}`)
   const prefsText = parts.length ? ` Bisherige Fragebogen-Auswahl: ${parts.join('; ')}.` : ''
@@ -38,7 +38,8 @@ export default function CommanderSelectPage() {
   const [step, setStep] = useState(location.state?.step || 'method') // method | questionnaire | search | manual | results | theme | themeResults
   const [preferences, setPreferences] = useState({
     colors: [],
-    playStyle: '',
+    // What the player wants to play, in their own words (no fixed play-style list).
+    idea: '',
     budget: 500,
     powerLevel: 'Semi-Casual'
   })
@@ -138,16 +139,6 @@ export default function CommanderSelectPage() {
     { id: 'C', name: 'Farblos', hex: '#C7C2D6', textColor: '#000' }
   ]
 
-  const playStyles = [
-    'Aggro - Schnelle Siege',
-    'Midrange - Balance',
-    'Control - Gegner bremsen',
-    'Combo - Infinite Synergien',
-    'Ramp - Big Mana',
-    'Tokens - Viele Creatures',
-    'Reanimation - Friedhof nutzen'
-  ]
-
   const toggleColor = (colorId) => {
     setPreferences(prev => ({
       ...prev,
@@ -164,7 +155,9 @@ export default function CommanderSelectPage() {
         method: 'POST',
         body: JSON.stringify({
           colors: preferences.colors,
-          playStyle: preferences.playStyle,
+          idea: preferences.idea.trim(),
+          // Older Claude bridges still expect this field — the idea fills it.
+          playStyle: preferences.idea.trim() || 'offen',
           budget: preferences.budget,
           powerLevel: preferences.powerLevel
         })
@@ -288,23 +281,22 @@ export default function CommanderSelectPage() {
               ))}
             </div>
             <p className="text-sm text-fg-muted">
-              {preferences.colors.length === 0 ? 'Wähle min. 1 Farbe' : `${preferences.colors.length} Farbe(n) gewählt`}
+              {preferences.colors.length === 0 ? 'Optional – ohne Auswahl sind alle Farben offen' : `${preferences.colors.length} Farbe(n) gewählt`}
             </p>
           </div>
 
           <div className="card mb-6">
-            <h2 className="text-xl font-bold mb-4">Spielstil</h2>
-            <select
-              value={preferences.playStyle}
-              onChange={(e) => setPreferences(prev => ({ ...prev, playStyle: e.target.value }))}
-              className="w-full text-fg rounded-xl p-3"
+            <h2 className="text-xl font-bold mb-1">Was möchtest du spielen?</h2>
+            <p className="text-sm text-fg-muted mb-3">In deinen Worten – Mechanik, Kreaturentyp, Lieblingskarte, Gefühl am Tisch. Je konkreter, desto passender die Commander.</p>
+            <textarea
+              value={preferences.idea}
+              onChange={(e) => setPreferences(prev => ({ ...prev, idea: e.target.value }))}
+              placeholder="z. B. Ich will viele kleine Kreaturen opfern und jedes Mal Leben abziehen – gern mit Vampiren, ohne Infinite-Combos."
+              rows={4}
+              maxLength={1500}
+              className="w-full text-fg rounded-xl p-3 text-sm leading-relaxed"
               style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--border)' }}
-            >
-              <option value="">Wähle einen Spielstil</option>
-              {playStyles.map(style => (
-                <option key={style} value={style}>{style}</option>
-              ))}
-            </select>
+            />
           </div>
 
           <div className="card mb-6">
@@ -353,7 +345,7 @@ export default function CommanderSelectPage() {
             </button>
             <button
               onClick={handleSuggestCommanders}
-              disabled={preferences.colors.length === 0 || !preferences.playStyle || loading}
+              disabled={(preferences.colors.length === 0 && !preferences.idea.trim()) || loading}
               className="btn-primary flex-1"
             >
               {loading ? 'Lädt...' : 'Empfehlungen Abrufen →'}
