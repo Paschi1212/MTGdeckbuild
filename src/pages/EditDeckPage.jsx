@@ -199,7 +199,7 @@ export default function EditDeckPage(embeddedState) {
   // themselves (excludeBinderName), so re-searching within the same deck still works fine.
   const availableQuantities = useMemo(() => getAvailableQuantities(collection, deckName), [collection, deckName])
   const availableCardNames = useMemo(
-    () => getAvailableCardNames(collection, deckName).slice(0, 150),
+    () => getAvailableCardNames(collection, deckName).slice(0, 2000),
     [collection, deckName]
   )
 

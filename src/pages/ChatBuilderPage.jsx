@@ -7,7 +7,8 @@ import { getSecondaryAvailability } from '../lib/secondaryCollections'
 import { saveDraftDeck } from '../lib/draftDecks'
 
 const TYPE_ORDER = ['Creature', 'Planeswalker', 'Battle', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Land', 'Sonstige']
-const COLLECTION_SAMPLE_LIMIT = 150
+// Every free card — the build should see the whole collection, not a slice of it.
+const COLLECTION_SAMPLE_LIMIT = 2000
 function buildContextNote(preferCollection) {
   const base = 'Der Nutzer baut hier ein komplett neues Deck ausschließlich per Chat auf (kein Formular) — führe ihn aktiv, warte nicht auf Bestätigung für jede einzelne Karte.'
   const collectionClause = preferCollection

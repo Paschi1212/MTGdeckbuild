@@ -707,6 +707,21 @@ async function suggestCommanders(preferences) {
   } = preferences
   // The player's own description; older clients sent a fixed play style instead.
   const idea = String(preferences.idea || playStyle || '').trim().slice(0, 1500)
+  // From the player's collection: legendary creatures & co. they own, and their free cards.
+  const ownedCommanders = (Array.isArray(preferences.ownedCommanders) ? preferences.ownedCommanders : [])
+    .map(c => ({ name: String(c?.name || '').slice(0, 150), colors: String(c?.colors || '').slice(0, 20) }))
+    .filter(c => c.name)
+    .slice(0, 150)
+  const collectionNames = (Array.isArray(preferences.collectionNames) ? preferences.collectionNames : [])
+    .map(n => String(n || '').slice(0, 150)).filter(Boolean).slice(0, 2000)
+  const collectionContext = ownedCommanders.length || collectionNames.length
+    ? `
+SAMMLUNG DES SPIELERS:
+- Mögliche Commander, die er BESITZT: ${ownedCommanders.length ? ownedCommanders.map(c => `${c.name}${c.colors ? ` (${c.colors})` : ''}`).join(', ') : '(keine erkannt)'}
+- Freie Karten (nicht in Decks verbaut, ${collectionNames.length}): ${collectionNames.join(', ') || '(keine)'}
+Bevorzuge Commander, die er besitzt und deren Deck sich zu einem großen Teil aus seinen freien Karten bauen lässt — mindestens 3 der 5 Vorschläge, wenn welche zur Idee passen. Nenne in "reason" bei jedem Vorschlag 2-4 konkrete Karten aus seiner Sammlung, die das Deck tragen würden (wortwörtlich aus der Liste oben). Ein Commander, den er nicht besitzt, ist nur dann gut, wenn er deutlich besser zur Idee passt.
+`
+    : ''
 
   const prompt = `Du bist ein Magic: The Gathering Commander Deck Experte.
 
@@ -715,7 +730,7 @@ USER PREFERENCES:
 - Farben: ${colors.length ? colors.join(', ') : 'offen – wähle die Farben, die am besten zur Idee passen'}
 - Budget: €${budget}
 - Power Level: ${powerLevel}
-
+${collectionContext}
 Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
 - "intro": kurzer deutscher Fließtext-Einstieg, 1-2 Sätze
 - "suggestions": die TOP 5 Commander (echte, existierende Magic-Karten), die genau die Idee des Spielers umsetzen, in den Farben spielbar sind und fürs Budget geeignet sind. Für jeden: name, colors (z.B. "W U B"), reason (warum passt er), strategy (Schwerpunkt-Strategie), estimatedCost (geschätzte Deck-Kosten als String, z.B. "ca. 80€")`
@@ -746,7 +761,9 @@ Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb de
       }
     }
 
-    const suggestions = await enrichWithImages(parsed.suggestions || [])
+    const ownedNames = new Set(ownedCommanders.map(c => normalizeCardName(c.name)))
+    const suggestions = (await enrichWithImages(parsed.suggestions || []))
+      .map(s => ({ ...s, owned: ownedNames.has(normalizeCardName(s.name)) }))
 
     return {
       intro: parsed.intro,
@@ -764,7 +781,10 @@ const CHAT_HISTORY_LIMIT = 10
 // deck's own list never needs truncating — unlike truncating it at some smaller number,
 // which left Gemini unable to see (and correctly count) everything already added.
 const CHAT_CARD_LIST_LIMIT = 99
-const CHAT_COLLECTION_LIMIT = 150
+// The deck build sees every free card (a big collection is ~2000 names); the plain chat
+// conversation a shorter list, to stay quick.
+const CHAT_COLLECTION_LIMIT = 600
+const BUILD_COLLECTION_LIMIT = 2000
 // Chat has no responseSchema (unlike the other Gemini calls here), so nothing else bounds
 // generation length — an unlucky long/rambling answer can blow past the 30s function timeout.
 const CHAT_MAX_OUTPUT_TOKENS = 500
@@ -989,7 +1009,17 @@ function clampDeckCards(cards, target) {
 
 async function generateDeckRound({ commander, strategyHint, collectionSampleNames, existingLandNames, existingSpellNames, landsNeeded, spellsNeeded, isFirstRound, edhecData, fixedLands = 0, fixedSpells = 0, excludedNames = [] }) {
   const collectionContext = collectionSampleNames?.length
-    ? `\nKARTEN IN DER SAMMLUNG DES SPIELERS (bevorzugt verwenden, wenn strategisch passend, muss nicht gekauft werden): ${collectionSampleNames.slice(0, CHAT_COLLECTION_LIMIT).join(', ')}\n`
+    ? `\nKARTEN IN DER SAMMLUNG DES SPIELERS (bevorzugt verwenden, wenn strategisch passend, muss nicht gekauft werden): ${collectionSampleNames.slice(0, BUILD_COLLECTION_LIMIT).join(', ')}\n`
+    : ''
+
+  // The strongest signal for "build from my collection": cards the player owns that real decks
+  // with this commander actually play.
+  const ownedSet = new Set((collectionSampleNames || []).map(normalizeCardName))
+  const ownedPlayed = ownedSet.size && edhecData?.allCards?.length
+    ? edhecData.allCards.filter(c => ownedSet.has(normalizeCardName(c.name))).map(c => c.name).slice(0, 120)
+    : []
+  const ownedPlayedContext = ownedPlayed.length
+    ? `\nBESITZT DER SPIELER BEREITS UND WIRD LAUT EDHREC MIT ${commander} GESPIELT (erste Wahl, wenn sie zur Strategie passen): ${ownedPlayed.join(', ')}\n`
     : ''
 
   // The player's must-have cards sit in the deck before the first round already.
@@ -1023,7 +1053,7 @@ async function generateDeckRound({ commander, strategyHint, collectionSampleName
   const prompt = `Du bist ein Magic: The Gathering Commander Deck Experte.
 
 COMMANDER: ${commander}
-${strategyHint ? `GEWÜNSCHTE STRATEGIE/SPIELSTIL (aus dem Gespräch mit dem Nutzer): ${strategyHint}\n` : ''}${collectionContext}${exclusionContext}${excludedContext}${edhecContext}
+${strategyHint ? `GEWÜNSCHTE STRATEGIE/SPIELSTIL (aus dem Gespräch mit dem Nutzer): ${strategyHint}\n` : ''}${collectionContext}${ownedPlayedContext}${exclusionContext}${excludedContext}${edhecContext}
 AUFGABE:
 ${isFirstRound ? 'Baue die Manabasis und den Rest eines vollständigen Commander-Decks.' : 'Ergänze das Deck um die fehlenden Karten (siehe unten, was schon drin ist).'} Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Fließtext außerhalb des JSON) mit:
 - "summary": ${isFirstRound ? `deutscher Fließtext, 4-6 Sätze — Früh-/Mittel-/Spätspiel-Plan, Kern-Synergien mit ${commander} (mit echten Kartennamen), primäre Win Condition. Keine generischen Floskeln.` : 'ein kurzer deutscher Satz, was diese Ergänzung bringt.'}

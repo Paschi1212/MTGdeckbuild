@@ -7,6 +7,31 @@ import ChatWidget from '../components/ChatWidget'
 import ChatBuilderPage from './ChatBuilderPage'
 import AnalyzePage from './AnalyzePage'
 import CommanderSearchInput from '../components/CommanderSearchInput'
+import { loadCollection, getAvailableCardNames } from '../lib/collection'
+import { loadCardData } from '../lib/cardData'
+import { canBeCommander } from '../lib/cardType'
+
+// Possible commanders the player owns (any binder or deck) — read from the card data cache,
+// with a time limit so a never-opened big collection doesn't hold up the suggestions.
+async function ownedCommanders(collection, timeoutMs = 12000) {
+  const cards = collection?.cards || []
+  if (!cards.length) return []
+  const deadline = Date.now() + timeoutMs
+  let known = { byId: {}, byName: {} }
+  await loadCardData({
+    ids: cards.map(c => c.scryfallId).filter(Boolean),
+    names: cards.filter(c => !c.scryfallId).map(c => c.name),
+    isCancelled: () => Date.now() > deadline,
+    onUpdate: (data) => { known = data }
+  })
+  const found = new Map()
+  for (const card of cards) {
+    const info = known.byId[card.scryfallId] || known.byName[card.name]
+    if (!info || found.has(card.name) || !canBeCommander(info)) continue
+    found.set(card.name, { name: info.name || card.name, colors: String(info.colorIdentity ?? info.colors ?? '').trim() })
+  }
+  return [...found.values()]
+}
 
 const HUB_TABS = [
   { id: 'find', label: '🔍 Commander finden' },
@@ -45,6 +70,7 @@ export default function CommanderSelectPage() {
   })
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [loadingNote, setLoadingNote] = useState('')
   const [selectedCommander, setSelectedCommander] = useState(null)
   const [searchCommanderInput, setSearchCommanderInput] = useState('')
   const [directCommanderInput, setDirectCommanderInput] = useState('')
@@ -151,9 +177,16 @@ export default function CommanderSelectPage() {
   const handleSuggestCommanders = async () => {
     setLoading(true)
     try {
+      // The collection goes along: commanders the player owns first, built from cards they have.
+      const collection = loadCollection()
+      setLoadingNote(collection ? 'Lese deine Sammlung …' : '')
+      const owned = collection ? await ownedCommanders(collection) : []
+      setLoadingNote('')
       const response = await aiFetch('/.netlify/functions/suggest-commanders', {
         method: 'POST',
         body: JSON.stringify({
+          ownedCommanders: owned,
+          collectionNames: collection ? getAvailableCardNames(collection).slice(0, 2000) : [],
           colors: preferences.colors,
           idea: preferences.idea.trim(),
           // Older Claude bridges still expect this field — the idea fills it.
@@ -348,7 +381,7 @@ export default function CommanderSelectPage() {
               disabled={(preferences.colors.length === 0 && !preferences.idea.trim()) || loading}
               className="btn-primary flex-1"
             >
-              {loading ? 'Lädt...' : 'Empfehlungen Abrufen →'}
+              {loading ? (loadingNote || 'Sucht passende Commander …') : 'Empfehlungen abrufen'}
             </button>
           </div>
 
@@ -372,6 +405,9 @@ export default function CommanderSelectPage() {
                   {/* No onClick passed here on purpose — CardTile's own click then zooms it
                       (its built-in default behavior), instead of jumping straight to select. */}
                   <CardTile card={card} />
+                  {card.owned && (
+                    <p className="text-xs font-semibold mt-1.5" style={{ color: 'var(--g)' }}>In deiner Sammlung</p>
+                  )}
                   <button
                     onClick={() => handleSelectCommander(card.name)}
                     className="btn-primary w-full mt-2 text-xs px-2 py-1.5"

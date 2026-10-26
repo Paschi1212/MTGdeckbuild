@@ -9,7 +9,7 @@ import ChatWidget from '../components/ChatWidget'
 
 const TYPE_ORDER = ['Creature', 'Planeswalker', 'Battle', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Land', 'Sonstige']
 
-const SAMPLE_CARD_LIMIT = 150
+const SAMPLE_CARD_LIMIT = 2000
 
 function buildCollectionSummary() {
   const stored = loadCollection()
