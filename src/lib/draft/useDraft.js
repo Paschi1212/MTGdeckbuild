@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { safeSetItem } from '../storage'
 import { joinChannel } from '../table/realtime'
 import { startDraft, pick as applyPick, expire, viewFor, botMove } from './engine'
 import { makeAllPacks, MODES, BOT_NAMES } from './packs'
@@ -11,7 +12,7 @@ const STATE_KEY = 'mtg_draft_state:' // host: the whole draft
 const VIEW_KEY = 'mtg_draft_view:' // everyone: the last own view (for deck building after a reload)
 
 const load = (key) => { try { return JSON.parse(localStorage.getItem(key) || 'null') } catch { return null } }
-const save = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)) } catch {} }
+const save = (key, value) => { safeSetItem(key, JSON.stringify(value)) }
 
 async function fetchJson(url) {
   const response = await fetch(url)

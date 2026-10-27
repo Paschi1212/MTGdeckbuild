@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { safeSetItem } from '../storage'
 import { joinChannel } from './realtime'
 
 // Lobbies live only as long as someone is in them: everything is presence on live channels.
@@ -12,7 +13,7 @@ const HOST_PREFIX = 'mtg_table_host:'
 
 // The creator's settings for a lobby, kept in this browser so a reload stays the host.
 export function rememberHosting(lobbyId, settings) {
-  try { localStorage.setItem(HOST_PREFIX + lobbyId, JSON.stringify(settings)) } catch {}
+  safeSetItem(HOST_PREFIX + lobbyId, JSON.stringify(settings))
 }
 
 export function hostingSettings(lobbyId) {

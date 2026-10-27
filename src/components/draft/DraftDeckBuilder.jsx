@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { safeSetItem } from '../../lib/storage'
 import { MODES, sortPool } from '../../lib/draft/packs'
 import { saveDraftDeck } from '../../lib/draftDecks'
 import ManaCost from '../ManaCost'
@@ -76,7 +77,7 @@ export default function DraftDeckBuilder({ draftId, me, view, isHost, draft, onH
     const next = !ready
     setReady(next)
     const deckForTable = built()
-    if (next) localStorage.setItem(`mtg_draft_built:${draftId}`, JSON.stringify(deckForTable))
+    if (next) safeSetItem(`mtg_draft_built:${draftId}`, JSON.stringify(deckForTable))
     draft.announce({
       ready: next,
       deck: next ? {

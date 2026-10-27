@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { loadCardData } from '../cardData'
+import { safeSetItem } from '../storage'
 
 // A player's cards at the table, like the Live Tester:
 //   private (never leaves this browser): library order, hand
@@ -306,7 +307,7 @@ function loadBoards(gameId) {
 }
 
 function saveBoards(gameId, boards) {
-  try { localStorage.setItem(BOARDS_PREFIX + gameId, JSON.stringify(boards)) } catch {}
+  safeSetItem(BOARDS_PREFIX + gameId, JSON.stringify(boards))
 }
 
 /**

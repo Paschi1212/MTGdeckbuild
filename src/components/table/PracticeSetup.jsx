@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { randomId } from '../../lib/table/realtime'
 import { saveGameRecord } from '../../lib/table/game'
+import { STORAGE_FULL } from '../../lib/table/solo'
 import { loadCommanderCard, deckCardCount, groupDecksByOwner } from '../../lib/table/decks'
 
 const MAX_SEATS = 6
@@ -15,6 +16,7 @@ export default function PracticeSetup({ decks }) {
   const groups = groupDecksByOwner(playable)
   const [picked, setPicked] = useState([])
   const [starting, setStarting] = useState(false)
+  const [error, setError] = useState(null)
 
   const toggle = (key) => setPicked(prev => (prev.includes(key)
     ? prev.filter(k => k !== key)
@@ -38,13 +40,19 @@ export default function PracticeSetup({ decks }) {
       }
     }))
     const gameId = `probe-${randomId(8)}`
-    saveGameRecord(gameId, {
+    const saved = saveGameRecord(gameId, {
       practice: true,
       seats,
       startedAt: Date.now(),
       events: [],
       decks: Object.fromEntries(seats.map((seat, index) => [seat.playerId, { label: chosen[index].label, commander: chosen[index].commander, cards: chosen[index].cards }]))
     })
+    // Not stored, the table page would look for an online lobby of that name and give up.
+    if (!saved) {
+      setError(STORAGE_FULL)
+      setStarting(false)
+      return
+    }
     navigate(`/spieltisch/${gameId}`)
   }
 
@@ -90,6 +98,7 @@ export default function PracticeSetup({ decks }) {
           <button type="button" onClick={start} disabled={picked.length < 2 || starting} className="btn-primary w-full min-h-[44px]">
             {starting ? 'Decke den Tisch …' : picked.length < 2 ? 'Mindestens 2 Decks wählen' : `Probetisch mit ${picked.length} Decks starten`}
           </button>
+          {error && <p className="text-sm" style={{ color: 'var(--r)' }}>{error}</p>}
         </>
       )}
     </section>

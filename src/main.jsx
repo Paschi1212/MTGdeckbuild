@@ -2,11 +2,14 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import { applyAppearance } from './lib/appearance'
+import { pruneStorage } from './lib/storage'
 import './index.css'
 import './themes.css'
 
 // Style, table look and light/dark on <html> before the first paint — no flash of the default.
 applyAppearance()
+// Old game tables and drafts out of the browser storage before they fill it up.
+pruneStorage()
 try {
   const theme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
   document.documentElement.setAttribute('data-theme', theme)

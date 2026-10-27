@@ -21,7 +21,7 @@ export async function createSoloTable({ label, commander, cards }) {
     }
   }
   const gameId = `probe-${randomId(8)}`
-  saveGameRecord(gameId, {
+  const saved = saveGameRecord(gameId, {
     practice: true,
     solo: true,
     seats: [seat],
@@ -29,8 +29,11 @@ export async function createSoloTable({ label, commander, cards }) {
     events: [],
     decks: { [playerId]: { label, commander: card?.name || commander || '', cards } }
   })
+  if (!saved) throw new Error(STORAGE_FULL)
   return gameId
 }
+
+export const STORAGE_FULL = 'Der Browserspeicher ist voll – der Tisch konnte nicht angelegt werden, obwohl alte Spieltische und Drafts schon entfernt wurden. Lösche unter „Meine Decks → Entwürfe“ Entwürfe, die du nicht mehr brauchst, und versuche es erneut.'
 
 /**
  * Opens the Live Tester in a new tab, so the deck being edited stays open (unsaved changes
@@ -42,5 +45,8 @@ export function openSoloTable({ label, commander, cards }) {
     const url = `/spieltisch/${gameId}`
     if (tab) tab.location.href = url
     else window.location.href = url
+  }).catch(error => {
+    tab?.close()
+    window.alert(error.message)
   })
 }

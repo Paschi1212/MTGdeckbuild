@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { joinChannel, randomId } from './realtime'
+import { safeSetItem } from '../storage'
 
 // A running game at the table, kitchen-table style: nobody enforces rules, everybody can
 // change everybody's numbers. The state is a list of small events ("Tom: life −5") that every
@@ -38,18 +39,24 @@ export function loadGameRecord(gameId) {
   try { return JSON.parse(localStorage.getItem(GAME_PREFIX + gameId) || 'null') } catch { return null }
 }
 
+// Returns whether it was stored — a practice table or Live Tester can't open without it.
 export function saveGameRecord(gameId, record) {
+  // Room is made if needed (old games, boards and drafts go first — src/lib/storage.js).
+  const saved = safeSetItem(GAME_PREFIX + gameId, JSON.stringify({ ...record, savedAt: Date.now() }))
   try {
-    localStorage.setItem(GAME_PREFIX + gameId, JSON.stringify({ ...record, savedAt: Date.now() }))
     // Only the last few games are kept.
     const games = Object.keys(localStorage)
       .filter(key => key.startsWith(GAME_PREFIX))
       .map(key => ({ key, savedAt: JSON.parse(localStorage.getItem(key) || '{}').savedAt || 0 }))
       .sort((a, b) => b.savedAt - a.savedAt)
-    for (const old of games.slice(KEEP_GAMES)) localStorage.removeItem(old.key)
+    for (const old of games.slice(KEEP_GAMES)) {
+      localStorage.removeItem(old.key)
+      localStorage.removeItem('mtg_table_boards:' + old.key.slice(GAME_PREFIX.length))
+    }
   } catch {
-    // Storage full — the game goes on, a reload would just ask the others again.
+    // Storage blocked — nothing to tidy.
   }
+  return saved
 }
 
 // ── Folding events into the table state ───────────────────────────────────────────────────
